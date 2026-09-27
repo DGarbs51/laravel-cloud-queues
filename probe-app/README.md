@@ -7,14 +7,16 @@ A minimal FastAPI app (Python 3.14, uv) whose `GET /verify` route reports what a
 ## Deploy to Laravel Cloud
 
 1. Create an application from this repository and select `probe-app` as the root directory (monorepo picker).
-2. Set the start command:
+2. Leave the build and deploy commands empty. Cloud detects FastAPI, installs dependencies with uv from `uv.lock`, and reads Python 3.14 from `.python-version`.
+3. Keep the start command Cloud pre-fills. It runs behind Cloud's nginx proxy on `$PORT` (3000):
 
    ```sh
-   uvicorn main:app --host 0.0.0.0 --port $PORT
+   uvicorn 'main:app' --host '' --port $PORT
    ```
 
-3. Add the environment variable `PROBE_TOKEN` with a long random value. `/verify` returns 503 until it is set.
-4. Optional: add a managed queue or a worker to the environment, redeploy, and compare the output.
+4. Add the environment variable `PROBE_TOKEN` with a long random value. `/verify` returns 503 until it is set.
+
+Managed queues cannot be added: the Cloud API currently rejects them for FastAPI applications. See `docs/audits/2026-09-27/platform-findings.md`.
 
 ## Use
 
