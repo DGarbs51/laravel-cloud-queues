@@ -34,7 +34,10 @@ Auditor tags: **C** Claude, **G** Grok, **X** Codex, **M** Gemini, **D** DeepSee
   - It says `demo/` exclusion is missing from the release gate (it is present).
 - **Duration rounding:** Grok says truncate (Laravel); DeepSeek says `max(0, round())` (Symfony). Editorial recommendation: truncate like Laravel and clamp at 0.
 
-## Open decisions (block editing the docs)
+## Decisions (resolved 2026-09-27 — see `docs/decisions.md`)
+
+D1: option (c) hybrid. D2: Laravel parity (in-process `SIGALRM`, exit 124). D3: dashboard retry supported. D4: policy stored in the message; `retry_until`/`max_exceptions` deferred. D5: `.options(...)` builder. The original options are kept below for context.
+
 
 1. **Failed-job event: size, replay, and durability.**
    - The reports agree there is a schema mismatch. G, X and D list Laravel's full field set: `_cloud_event`, `id`, `queue`, `started_at`, `attempts`, `payload`, `exception_preview`, `job_name`, `exception`. C and M argue for keeping `job_name`/`exception_preview`.
