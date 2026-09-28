@@ -282,7 +282,9 @@ def test_lock_timeout_while_a_write_blocks() -> None:
         outcome: list[bool] = []
 
         def blocked() -> None:
-            outcome.append(sink.emit({"pad": "x" * 100_000}))
+            # Larger than any default Unix socket buffer (Linux buffers ~200 KiB), so
+            # this write blocks and holds the sink lock until the 2 s write timeout.
+            outcome.append(sink.emit({"pad": "x" * 8_000_000}))
 
         thread = threading.Thread(target=blocked)
         thread.start()
