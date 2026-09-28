@@ -6,6 +6,8 @@ are tried in declaration order (so integral floats may select an earlier int).
 Any/unannotated values allow JSON containers and known scalar tags, but never
 construct dataclasses, models, custom classes or tagged tuples. Dataclasses and
 models use plain objects and are constructed only from the trusted annotation.
+Nested tuples need explicit element annotations; tuple-in-Any is unsupported.
+Finite Decimal exponents are not bounded beyond the JSON size/depth limits.
 """
 
 from __future__ import annotations
@@ -215,25 +217,32 @@ class CodecRegistry:
     def decode(self, data: JSONValue, annotation: object) -> object:
         """Validate first; decoding failures are deterministic job defects."""
         try:
-            return self._decode(_json(data), annotation)
+            return self._decode(_json(data), annotation, {})
         except Exception:
             raise CodecError("Value does not match its declared annotation") from None
 
-    def _decode(self, data: JSONValue, annotation: object) -> object:
+    def _decode(
+        self, data: JSONValue, annotation: object, failures: dict[tuple[int, int], object]
+    ) -> object:
         origin, args = get_origin(annotation), get_args(annotation)
         if origin is Annotated:
-            return self._decode(data, args[0])
+            return self._decode(data, args[0], failures)
         if origin in (Union, types.UnionType):
             for member in args:
+                key = (id(data), id(member))
+                if key in failures:
+                    continue
                 try:
-                    return self._decode(data, member)
+                    return self._decode(data, member, failures)
                 except Exception:
-                    pass
+                    # Keep annotations alive: their ids must not be reused during this decode.
+                    # Identity keys also support Annotated metadata that is not hashable.
+                    failures[key] = member
             raise ValueError("No union member matches")
         if isinstance(annotation, type) and issubclass(annotation, Enum):
             for member in annotation:
                 try:
-                    value = self._decode(data, type(member.value))
+                    value = self._decode(data, type(member.value), failures)
                     if type(value) is type(member.value) and value == member.value:
                         return member
                 except Exception:
@@ -243,7 +252,7 @@ class CodecRegistry:
             for literal in args:
                 if isinstance(literal, Enum):
                     try:
-                        if self._decode(data, type(literal)) is literal:
+                        if self._decode(data, type(literal), failures) is literal:
                             return literal
                     except Exception:
                         pass
@@ -306,26 +315,31 @@ class CodecRegistry:
         elif annotation is str and isinstance(data, str):
             return data
         elif (annotation is list or origin is list) and tag is None and isinstance(data, list):
-            return [self._decode(v, args[0] if args else Any) for v in data]
+            return [self._decode(v, args[0] if args else Any, failures) for v in data]
         elif (
             (annotation is tuple or origin is tuple)
             and tag == "tuple"
             and isinstance(payload, list)
         ):
             if not args and annotation is tuple:
-                return tuple(self._decode(v, Any) for v in payload)
+                return tuple(self._decode(v, Any, failures) for v in payload)
             if len(args) == 2 and args[1] is Ellipsis:
-                return tuple(self._decode(v, args[0]) for v in payload)
+                return tuple(self._decode(v, args[0], failures) for v in payload)
             if len(args) == len(payload):
-                return tuple(self._decode(v, a) for v, a in zip(payload, args, strict=True))
+                return tuple(
+                    self._decode(v, a, failures) for v, a in zip(payload, args, strict=True)
+                )
         elif (annotation is dict or origin is dict) and tag in (None, "dict"):
             if isinstance(payload, dict) and (not args or args[0] is str):
-                return {k: self._decode(v, args[1] if args else Any) for k, v in payload.items()}
+                return {
+                    k: self._decode(v, args[1] if args else Any, failures)
+                    for k, v in payload.items()
+                }
         elif untyped and tag in (None, "dict"):
             if isinstance(payload, list):
-                return [self._decode(v, Any) for v in payload]
+                return [self._decode(v, Any, failures) for v in payload]
             if isinstance(payload, dict):
-                return {k: self._decode(v, Any) for k, v in payload.items()}
+                return {k: self._decode(v, Any, failures) for k, v in payload.items()}
             return payload
         elif isinstance(annotation, type) and tag is None:
             if is_dataclass(annotation) and isinstance(data, dict):
@@ -336,14 +350,16 @@ class CodecRegistry:
                     for f in declared.values()
                 ):
                     raise ValueError("Dataclass fields mismatch")
-                return annotation(**{k: self._decode(v, hints[k]) for k, v in data.items()})
+                return annotation(
+                    **{k: self._decode(v, hints[k], failures) for k, v in data.items()}
+                )
             elif _model(annotation) and isinstance(data, dict):
                 model = cast("type[BaseModel]", annotation)
                 if data.keys() - model.model_fields.keys():
                     raise ValueError("Unknown model field")
                 decoded = {
                     model.model_fields[k].alias or k: self._decode(
-                        v, model.model_fields[k].annotation
+                        v, model.model_fields[k].annotation, failures
                     )
                     for k, v in data.items()
                 }

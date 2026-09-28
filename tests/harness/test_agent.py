@@ -83,7 +83,7 @@ def test_visibility_expiry_and_stale_receipts() -> None:
         ]
 
 
-def test_release_delay_and_omitted_receipt() -> None:
+def test_release_delay() -> None:
     with AgentEmulator.start(poll_wait=0.01) as emu, client(emu) as http:
         mid = emu.enqueue("body")
         first = http.get("/next").json()
@@ -96,12 +96,7 @@ def test_release_delay_and_omitted_receipt() -> None:
         assert time.monotonic() - before >= 1
         assert second["messageId"] == mid
         assert second["receiptHandle"] != first["receiptHandle"]
-        assert (
-            http.post(
-                "/result", json={"messageId": mid, "status": "released", "delay": 0}
-            ).status_code
-            == 200
-        )
+        assert http.post("/result", json=outcome(second, "released", delay=0)).status_code == 200
         third = http.get("/next").json()
         assert third["attributes"]["ApproximateReceiveCount"] == "3"
 
@@ -311,3 +306,32 @@ def test_stop_closes_incomplete_http_request() -> None:
         stream.sendall(b"POST /result HTTP/1.1\r\nContent-Length: 100\r\n\r\n{")
         emu.stop()
         assert not Path(emu.socket_path).exists()
+
+
+@pytest.mark.parametrize("redeliver", [False, True])
+def test_omitted_receipt_rejected_for_current_delivery(redeliver):
+    with AgentEmulator.start(stale_receipt_status=409) as emu, client(emu) as http:
+        mid = emu.enqueue("body")
+        current = http.get("/next").json()
+        if redeliver:
+            assert http.post("/result", json=outcome(current, "released")).status_code == 200
+            current = http.get("/next").json()
+        assert (
+            http.post("/result", json={"messageId": mid, "status": "processed"}).status_code == 409
+        )
+        assert len(emu.in_flight()) == 1
+        assert http.post("/result", json=outcome(current)).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("status", "delay", "expected"),
+    [("processed", 0, 422), ("released", 43201, 422), ("released", 43200, 200)],
+)
+def test_result_delay_contract(status, delay, expected):
+    with AgentEmulator.start() as emu, client(emu) as http:
+        emu.enqueue("body")
+        message = http.get("/next").json()
+        assert (
+            http.post("/result", json=outcome(message, status, delay=delay)).status_code == expected
+        )
+        assert bool(emu.in_flight()) == (expected == 422)

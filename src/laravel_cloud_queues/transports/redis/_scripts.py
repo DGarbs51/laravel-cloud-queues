@@ -39,9 +39,10 @@ local member = redis.call('lindex', KEYS[1], 0)
 if not member then return false end
 -- Validate before removing: Lua errors do not roll back prior writes.
 local ok, job = pcall(cjson.decode, member)
+-- cjson uses %.14g: counters above 14 digits lose integer precision.
 local malformed = not ok or type(job) ~= 'table' or type(job.id) ~= 'string'
     or type(job.body) ~= 'string' or type(job.attempts) ~= 'number'
-    or job.attempts < 0 or job.attempts >= 9007199254740991
+    or job.attempts < 0 or job.attempts >= 100000000000000
     or job.attempts ~= math.floor(job.attempts)
 local reserved = member
 if not malformed then
