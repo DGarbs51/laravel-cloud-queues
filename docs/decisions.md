@@ -83,5 +83,8 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
   3. Delete the message.
   - No failed-job store, dead-letter queue or retry command in v1. Re-running a failed job means dispatching it again.
 
-Open follow-ups:
-- a Redis conformance suite and a live worker-cluster smoke test.
+- **Testing (D6c):**
+  - Redis conformance suite against local Valkey and Redis containers in CI.
+  - Self-managed SQS against LocalStack.
+  - Once the package can dispatch and consume, a manual, optional live smoke test on Laravel Cloud: web dispatch through a probe route, a worker cluster running `laravel-cloud-queues work`, result verified through logs or a probe route.
+  - The live test is not a release gate, matching the scope's treatment of live Cloud verification.
