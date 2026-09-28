@@ -112,3 +112,7 @@ Smaller choices made when applying D1–D6 and the audit fixes to `PROJECT_SCOPE
 ## D8 — Worker lifecycle on worker clusters (2026-09-28)
 
 Per the Laravel Cloud team: worker clusters and App-cluster background processes run the worker as a long-lived, supervised service that is restarted on exit. It is not a run-once process. Stop-when-empty flags default to off and are discouraged there (they would restart-loop). Exit codes are diagnostic. Managed queues keep a platform-controlled lifecycle. See `PROJECT_SCOPE.md` §13.
+
+## D9 — Local SQS emulator (2026-09-28)
+
+Local development and agents use `moto` for SQS tests (no Docker required). CI uses LocalStack and is the authoritative gate. One test suite, backend selected by `LARAVEL_CLOUD_QUEUES_TEST_SQS=moto|localstack`. Local Redis tests use Laravel Herd's Valkey on `127.0.0.1:6379`.

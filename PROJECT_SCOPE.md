@@ -1129,6 +1129,8 @@ LocalStack should exercise the actual SQS transport implementation, including:
 - self-managed `sqs` mode configuration, including that `AWS_*` variables are ignored;
 - visibility renewal during a long job.
 
+The same SQS test suite runs against moto locally (no Docker needed) and LocalStack in CI, selected by `LARAVEL_CLOUD_QUEUES_TEST_SQS=moto|localstack`. LocalStack in CI is the authoritative release gate; moto is a local convenience and may emulate visibility timing, FIFO deduplication and fair queues less precisely.
+
 LocalStack verifies the arguments sent to SQS and its emulated behavior. It cannot prove server-side fairness or real SQS timing; record such cases at the `emulated` evidence tier.
 
 ### Redis/Valkey testing
