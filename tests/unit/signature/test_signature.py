@@ -155,3 +155,39 @@ def test_injected_unsupported_type_is_exempt():
     sig = inspect_handler(job, is_injected=lambda parameter: True)
     assert sig.serialized == ()
     assert encode_arguments(sig, default_codecs(), [], {}) == ((), {})
+
+
+def test_custom_codec_handler_registration_and_roundtrip():
+    class Token:
+        def __init__(self, text):
+            self.text = text
+
+    class TokenCodec:
+        tag = "token"
+        python_type = Token
+
+        def encode(self, value):
+            return value.text
+
+        def decode(self, data):
+            if not isinstance(data, str):
+                raise ValueError("Expected token text")
+            return Token(data)
+
+    def job(value):
+        return value.text
+
+    # Supply the local class directly; get_type_hints cannot resolve local string names.
+    job.__annotations__["value"] = Token
+    codecs = default_codecs()
+    codecs.register(TokenCodec())
+    sig = inspect_handler(job, is_injected=is_injected, codecs=codecs)
+    assert sig.serialized == ("value",)
+    args, kwargs = encode_arguments(sig, codecs, [Token("hello")], {})
+    decoded_args, decoded_kwargs = decode_arguments(sig, codecs, args, kwargs)
+    assert job(*decoded_args, **decoded_kwargs) == "hello"
+
+    # Custom registrations do not leak into either default or independent registries.
+    for other_codecs in (None, default_codecs()):
+        with pytest.raises(ConfigurationError):
+            inspect_handler(job, is_injected=is_injected, codecs=other_codecs)

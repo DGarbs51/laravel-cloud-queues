@@ -28,9 +28,16 @@ class JobSignature:
     """Parameter names supplied at run time."""
 
 
-def inspect_handler(func: Callable[..., Any], *, is_injected: InjectedPredicate) -> JobSignature:
+def inspect_handler(
+    func: Callable[..., Any],
+    *,
+    is_injected: InjectedPredicate,
+    codecs: CodecRegistry | None = None,
+) -> JobSignature:
     """Inspect once at registration. ``*args``/``**kwargs`` handler parameters are rejected
-    with ConfigurationError (they cannot be validated)."""
+    with ConfigurationError (they cannot be validated). Annotations use the supplied
+    codec registry, or a fresh default registry when ``codecs`` is None.
+    """
     try:
         signature = inspect.signature(func)
         hints = get_type_hints(func, include_extras=True)
@@ -40,7 +47,8 @@ def inspect_handler(func: Callable[..., Any], *, is_injected: InjectedPredicate)
         )
         serialized: list[str] = []
         injected: list[str] = []
-        codecs = default_codecs()
+        if codecs is None:
+            codecs = default_codecs()
         for parameter in parameters:
             if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 raise ConfigurationError("Job handlers cannot declare *args or **kwargs")
