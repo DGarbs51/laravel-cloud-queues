@@ -9,6 +9,7 @@ import pytest
 
 from laravel_cloud_queues.errors import ConfigurationError, InvalidQueueOptionError
 from laravel_cloud_queues.jobs.policy import (
+    MAX_JOB_TIMEOUT,
     ResolvedPolicy,
     RetryPolicy,
     WorkerDefaults,
@@ -58,12 +59,24 @@ def test_backoff_list_is_frozen_to_a_tuple() -> None:
         {"backoff": [True]},
         {"timeout": -0.1},
         {"timeout": math.inf},
+        {"timeout": 604_801},
         {"fail_on_timeout": 1},
     ],
 )
 def test_invalid_policy_is_a_configuration_error(kwargs: dict[str, object]) -> None:
     with pytest.raises(ConfigurationError):
         RetryPolicy(**kwargs)  # type: ignore[arg-type]
+
+
+def test_timeout_bounds() -> None:
+    """0 disables; at most 7 days (setitimer overflows on huge values)."""
+    assert MAX_JOB_TIMEOUT == 604_800
+    assert RetryPolicy(timeout=0).timeout == 0
+    assert RetryPolicy(timeout=MAX_JOB_TIMEOUT).timeout == MAX_JOB_TIMEOUT
+    assert WorkerDefaults(timeout=MAX_JOB_TIMEOUT).timeout == MAX_JOB_TIMEOUT
+    for invalid in (MAX_JOB_TIMEOUT + 0.5, -1, math.nan):
+        with pytest.raises(ConfigurationError):
+            WorkerDefaults(timeout=invalid)
 
 
 @pytest.mark.parametrize(

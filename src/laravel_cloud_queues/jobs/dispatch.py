@@ -10,8 +10,9 @@ unique ID chosen once here, ``""`` = omit; positive delay on FIFO rejected; FIFO
 standard queues and fair groups on FIFO queues rejected; any FIFO/fair option in redis mode
 rejected; group/dedup IDs 1-128 chars of SQS's allowed set) -> encode arguments -> build
 envelope (new uuid, policy, queue, dispatched_at, trace context) -> measure UTF-8 bytes vs
-``producer.max_payload_bytes`` (PayloadTooLargeError) -> ``producer.send`` -> emit ``queued``
-(managed mode only, best-effort) -> DispatchReceipt.
+``producer.max_payload_bytes``, else the ``MAX_BODY_BYTES`` decode ceiling
+(PayloadTooLargeError) -> ``producer.send`` -> emit ``queued`` (managed mode only,
+best-effort) -> DispatchReceipt.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from datetime import datetime, timezone
 from ..errors import InvalidQueueOptionError, PayloadTooLargeError
 from ..observability import inject_trace_context, lifecycle_event
 from ..transports.base import OutgoingMessage
-from .envelope import Envelope, encode_envelope
+from .envelope import MAX_BODY_BYTES, Envelope, encode_envelope
 from .job import AnyJob, DispatchOptions, DispatchReceipt
 from .policy import normalize_delay
 from .signature import encode_arguments
@@ -85,9 +86,12 @@ def prepare_dispatch(
             context=inject_trace_context(),
         )
     )
+    # Transports without a limit (redis) still get the decode ceiling, so every accepted
+    # dispatch can be decoded by the worker.
+    limit = MAX_BODY_BYTES if max_payload_bytes is None else max_payload_bytes
     size = len(body.encode("utf-8"))
-    if max_payload_bytes is not None and size > max_payload_bytes:
-        raise PayloadTooLargeError(size=size, limit=max_payload_bytes, queue=queue)
+    if size > limit:
+        raise PayloadTooLargeError(size=size, limit=limit, queue=queue)
     return PreparedDispatch(
         job_name=job.name,
         uuid=message_uuid,

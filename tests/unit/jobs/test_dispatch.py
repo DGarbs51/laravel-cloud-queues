@@ -22,7 +22,7 @@ from laravel_cloud_queues.errors import (
 )
 from laravel_cloud_queues.jobs import dispatch as dispatch_module
 from laravel_cloud_queues.jobs.dispatch import prepare_dispatch, send_prepared
-from laravel_cloud_queues.jobs.envelope import ENVELOPE_KEY, decode_envelope
+from laravel_cloud_queues.jobs.envelope import ENVELOPE_KEY, MAX_BODY_BYTES, decode_envelope
 from laravel_cloud_queues.jobs.job import DispatchOptions, DispatchReceipt
 from laravel_cloud_queues.transports import Backend
 from tests.unit.jobs.fakes import FakeProducer, RecordingTelemetry, make_registry
@@ -282,10 +282,20 @@ def test_payload_size_is_measured_in_utf8_bytes() -> None:
     assert len(exact_producer.sent) == 1
 
 
-def test_redis_has_no_package_size_limit() -> None:
+def test_redis_is_bounded_only_by_the_decode_ceiling() -> None:
+    """No transport limit (redis): beyond SQS's 1 MiB is fine, but a body the worker could
+    not decode (> MAX_BODY_BYTES) is rejected at dispatch."""
     registry, producer, _ = make_registry(mode="redis")
-    registry.job(name="a")(lambda text: None).dispatch("x" * 2_000_000)
+    job = registry.job(name="a", queue="q")(lambda text: None)
+    job.dispatch("x" * 2_000_000)
     assert len(producer.sent[0].body) > 2_000_000
+
+    with pytest.raises(PayloadTooLargeError) as info:
+        job.dispatch("x" * MAX_BODY_BYTES)
+    assert info.value.limit == MAX_BODY_BYTES
+    assert info.value.size > MAX_BODY_BYTES
+    assert info.value.queue == "q"
+    assert len(producer.sent) == 1
 
 
 # --- arguments ------------------------------------------------------------------------
