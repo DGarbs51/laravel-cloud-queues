@@ -880,7 +880,7 @@ deployed to Laravel Cloud to inspect what the platform injects.
 |---|---|
 | Python | CPython 3.10, 3.11, 3.12, 3.13, 3.14 (CI on Linux) |
 | Operating systems | Linux (production runtime on Laravel Cloud), macOS (development). Windows: best effort, not a release gate |
-| Frameworks | FastAPI (current release line, Pydantic v2) via `laravel_cloud_queues.fastapi`; plain Python via `Registry`. Django and Flask adapters are planned, not shipped, and have no extras yet |
+| Frameworks | FastAPI >= 0.121 (Pydantic v2) via `laravel_cloud_queues.fastapi`; plain Python via `Registry`. Django and Flask adapters are planned, not shipped, and have no extras yet |
 | Async | AnyIO on the asyncio backend. Trio is not supported |
 | Brokers | Laravel Cloud managed queues (pending platform support for Python), SQS (including LocalStack/moto), Redis/Valkey via `redis-py` 5+ |
 | Typing | `py.typed`; the package passes `mypy --strict`, and dispatch/`.options()` are checked against your handler signatures |
