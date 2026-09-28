@@ -129,6 +129,9 @@ jobs:
           # hostname against SAN, not the legacy CN (unsupported since Python 3.7+).
           openssl x509 -req -in .ci-tls/server.csr -CA .ci-tls/ca.crt -CAkey .ci-tls/ca.key \
             -CAcreateserial -out .ci-tls/server.crt -days 1 -extfile .ci-tls/server.ext
+          # The Valkey image runs as a non-root user; the throwaway test key must be
+          # readable inside the container.
+          chmod 0644 .ci-tls/server.key
 
       - name: Start a TLS-only Valkey container
         run: |
