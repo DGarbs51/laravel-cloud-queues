@@ -5,9 +5,15 @@ description = "Laravel Cloud platform probe for laravel-cloud-queues (repository
 requires-python = ">=3.14"
 dependencies = [
     "fastapi",
+    "laravel-cloud-queues[fastapi,redis]",
     "redis>=8.1.0",
     "uvicorn",
 ]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+# The package from this repository. Laravel Cloud builds with the whole repository
+# available but deploys only probe-app/, so install a built wheel (not editable).
+laravel-cloud-queues = { path = "..", editable = false }
