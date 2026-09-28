@@ -103,7 +103,7 @@
         "summary": "Laravel throws only on malformed JSON (JSON_THROW_ON_ERROR); a non-\"cloud\" driver silently skips managed-queue boot and a missing connection is auto-created. Symfony treats malformed JSON as unconfigured. The project rejects all three shapes at startup.",
         "decision": null
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
     },
     {
@@ -140,10 +140,10 @@
       "deviation": {
         "label": "credentials-explicit-only",
         "follows": "project",
-        "summary": "Laravel throws for an unknown string provider but falls through to key/secret or the SDK default chain when the credentials key is absent; Symfony uses the default chain for anything but \"ecs\". The project never uses the default chain in managed mode because Laravel Cloud object storage occupies AWS_*.",
-        "decision": null
+        "summary": "Laravel accepts ecs/instance strings, provider objects and callables; an absent credentials key falls through first to explicit key/secret (including token), then to the SDK default chain. Symfony uses the default chain for anything but ecs. The project accepts only ecs/instance strings in managed mode, rejecting missing or other values and never using the default chain because Cloud object storage occupies AWS_*.",
+        "decision": "D13"
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
     },
     {
@@ -232,7 +232,7 @@
       "conflict_rows": [
         "Queue URL"
       ],
-      "expected": "Queue URL: a value that is already a URL passes through unchanged; otherwise {prefix}/{queue}{suffix} for standard names and {prefix}/{base}{suffix}.fifo for names ending in .fifo, with trailing slashes trimmed from the prefix and the suffix appended only when the name does not already end with it (Str::finish). An empty or null queue means the configured default. Normalization inverts this to the logical name: strip {prefix}/ once, then strip the suffix once (before .fifo for FIFO names). Fixtures cover already-suffixed names, full URLs, empty suffix, trailing slashes and FIFO names.",
+      "expected": "Queue URL: a value that is already a URL passes through unchanged; otherwise build {prefix}/{queue}{suffix}, inserting the suffix before .fifo for FIFO names. Trim trailing slashes from the prefix. Str::finish strips all repeated trailing copies of a non-empty suffix from the name/base, then appends it once; an empty suffix is a no-op. An empty or null queue means the configured default. Normalization strips {prefix}/ once and the suffix once (before .fifo). With suffix -s, name-s-s builds .../name-s and normalizes to name. Fixtures cover repeated and already-suffixed names, full URLs, empty suffix, trailing slashes and FIFO names.",
       "tier": "unit",
       "required": true,
       "laravel_source": [
@@ -916,7 +916,7 @@
       "conflict_rows": [
         "200 without `messageId`"
       ],
-      "expected": "GET /next over the Unix socket (httpx Unix transport, base URL http://localhost, redirects disabled, bounded response size) with a 65-second request timeout. 204: no work. 200: body must decode to a JSON object or array, else fatal; missing, empty or non-string messageId is an empty poll; non-string receiptHandle becomes null; non-string body becomes \"\"; attributes.ApproximateReceiveCount is the attempt count; queueUrl is used for telemetry queue normalization, falling back to the configured queue when missing. Any other status, or an unreachable socket after retries, is fatal (AgentUnreachableError).",
+      "expected": "GET /next over the Unix socket (httpx Unix transport, base URL http://localhost, redirects disabled, bounded response size) with a 65-second request timeout. 204: no work. 200: body must decode to a JSON object or array, else fatal; missing, empty or non-string messageId is an empty poll; non-string receiptHandle becomes null; non-string body becomes \"\"; attributes.ApproximateReceiveCount is the attempt count; queueUrl is used for telemetry queue normalization, falling back to the configured queue when missing. Any other status, or an unreachable socket after retries, is fatal (AgentUnavailableError).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -970,7 +970,7 @@
       "conflict_rows": [
         "`GET /next` retries"
       ],
-      "expected": "GET /next is attempted up to 3 times per poll, sleeping 0 ms after the first failure and 500 ms after the second (Laravel retry([0, 500])). Connection errors and HTTP error statuses are retried (D13.3; Laravel's retry has no `when` filter); a 204 or 200 ends the poll; after the third failure the worker treats the agent as unreachable.",
+      "expected": "GET /next is attempted up to 3 times per poll, sleeping 0 ms after the first failure and 500 ms after the second (Laravel retry([0, 500])). Connection errors and HTTP 4xx/5xx responses are retried (D13.3); 204 ends the poll as empty and 200 is decoded. Returned 3xx and 201 responses are not retried and are rejected immediately. After retries, any status other than 200/204 or an unreachable socket is fatal (AgentUnavailableError).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -998,7 +998,7 @@
         }
       ],
       "deviation": null,
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["tests/integration/agent/test_socket.py::test_disconnect_retries", "tests/integration/agent/test_socket.py::test_protocol_fault_fixtures"]
     },
     {
@@ -1009,7 +1009,7 @@
       ],
       "covers": [],
       "conflict_rows": [],
-      "expected": "When attributes.ApproximateReceiveCount is absent or not an integer (agent or direct SQS), the attempt is 1.",
+      "expected": "For agent and direct SQS deliveries, parse numeric ApproximateReceiveCount strings as integers (for example \"3\" means attempt 3); missing or invalid values default to 1. Attempts are at least 1. Do not discard valid numeric strings merely because the JSON value is not an integer.",
       "tier": "unit",
       "required": true,
       "laravel_source": [
@@ -1017,6 +1017,16 @@
           "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
           "lines": "132-135",
           "symbol": "SqsJob::attempts"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Console/Kernel.php",
+          "lines": "120-127",
+          "symbol": "Kernel::$bootstrappers"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Bootstrap/HandleExceptions.php",
+          "lines": "41-77",
+          "symbol": "HandleExceptions::bootstrap, handleError"
         }
       ],
       "symfony_source": [
@@ -1029,10 +1039,10 @@
       "deviation": {
         "label": "missing-receive-count-is-one",
         "follows": "symfony",
-        "summary": "Laravel casts the missing attribute with (int), yielding 0, so such a message never reaches maxTries; Symfony uses max(1, ...). The project follows Symfony.",
-        "decision": null
+        "summary": "Laravel SqsJob::attempts indexes ApproximateReceiveCount without a fallback; the console HandleExceptions handler turns the missing-key warning into ErrorException (Undefined array key), rather than returning 0. Symfony casts and clamps with max(1, ...). The project parses numeric strings and uses 1 for missing/invalid values.",
+        "decision": "D13"
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["tests/unit/agent/test_consumer.py::test_receive_count", "tests/unit/agent/test_consumer.py::test_malformed_attributes"]
     },
     {
@@ -1119,6 +1129,11 @@
           "path": "src/Illuminate/Queue/Worker.php",
           "lines": "558-586",
           "symbol": "Worker::runJob, stopWorkerIfLostConnection"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "182-188",
+          "symbol": "Job::fail (mark failed before deleted check)"
         }
       ],
       "symfony_source": [
@@ -1128,8 +1143,13 @@
           "symbol": "AgentClient::report"
         }
       ],
-      "deviation": null,
-      "project_decision": null,
+      "deviation": {
+        "label": "outcome-event-after-ack-rejection",
+        "follows": "project",
+        "summary": "The project emits the chosen completion event after agent /result 4xx and sends no second outcome. Laravel can mark a successful handler failed after its processed report is rejected on the last permitted attempt, emitting failed without failed_job. The project keeps the chosen outcome instead.",
+        "decision": "D13"
+      },
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_result_failure[422]"]
     },
     {
@@ -1149,7 +1169,7 @@
       "conflict_rows": [
         "Agent-loss exit status"
       ],
-      "expected": "A 5xx from POST /result, or a connection failure after the bounded retries on GET /next or POST /result, is fatal: the worker logs the agent loss, does not fetch another job, does not assume acknowledgement, finishes its bookkeeping and exits with status 0 so the platform restarts it. Redelivery is left to agent/SQS visibility.",
+      "expected": "A 5xx from POST /result, or a connection failure after bounded retries on GET /next or POST /result (including a lost result response whose retries fail), is AgentUnavailableError: log agent loss, do not fetch another job or assume acknowledgement, finish bookkeeping and exit 0. Redelivery is left to agent/SQS visibility. The direct-broker ambiguous-ack exit-1 rule does not apply to the agent.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1214,13 +1234,13 @@
       ],
       "covers": [],
       "conflict_rows": [],
-      "expected": "When the outcome report's response is lost after the request may have been applied (timeout after send, connection reset mid-response), the delivery is marked ambiguous; the worker does not re-report a contradictory outcome and stops with exit 1 instead of fetching again. Acknowledgement failures are never treated as handler errors.",
+      "expected": "For direct brokers (SQS and Redis) only, when an outcome response is lost after the request may have been applied (timeout after send, connection reset mid-response) and bounded retries do not resolve it, mark the delivery ambiguous, never report a contradictory outcome, and stop with exit 1. Acknowledgement failures are never handler errors. Agent unavailability/5xx, including exhausted retries after a lost /result response, is AgentUnavailableError and exits 0 instead.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [],
       "symfony_source": [],
       "deviation": null,
-      "project_decision": "D7",
+      "project_decision": "D7, D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_ambiguous_ack", "demo/conformance/probes/test_brokers.py::test_ambiguous_direct_ack"]
     },
     {
@@ -1234,7 +1254,7 @@
         "§30.7"
       ],
       "conflict_rows": [],
-      "expected": "Direct receive (managed mode with the agent disabled, and sqs mode) calls ReceiveMessage with WaitTimeSeconds=20, MaxNumberOfMessages=1 and AttributeNames=[ApproximateReceiveCount]; an empty response sleeps --sleep seconds (default 3) before polling again; a receive error that is not a lost connection sleeps 1 second and retries.",
+      "expected": "Direct SQS receive (managed mode with agent disabled, and self-managed sqs mode) sets MaxNumberOfMessages=1, AttributeNames=[ApproximateReceiveCount] and VisibilityTimeout=lease (default 60 seconds; D13.8). One queue uses WaitTimeSeconds=20, with no extra --sleep after an empty long poll. Several queues use WaitTimeSeconds=0 in priority order, then --sleep (default 3 seconds) only when all are empty. A receive error that is not a lost connection sleeps 1 second and retries.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1264,10 +1284,10 @@
       "deviation": {
         "label": "receive-long-poll-params",
         "follows": "symfony",
-        "summary": "Laravel's SqsQueue::pop passes only QueueUrl and AttributeNames (queue-level defaults decide waiting and batch size); Symfony passes WaitTimeSeconds=20 and MaxNumberOfMessages=1. The project follows Symfony.",
-        "decision": null
+        "summary": "Laravel SqsQueue::pop passes only QueueUrl and AttributeNames; Symfony supplies WaitTimeSeconds=20 and MaxNumberOfMessages=1. The project follows those single-queue parameters, adds VisibilityTimeout=lease (D13.8), short-polls multiple queues in priority order, and sleeps only after all short polls are empty. Unlike the project, Laravel always sleeps --sleep after an empty pop, even if receive already waited.",
+        "decision": "D13"
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]"]
     },
     {
@@ -1414,7 +1434,7 @@
         "§30.28"
       ],
       "conflict_rows": [],
-      "expected": "redis mode uses keys {prefix}queues:<name> (pending list), :delayed and :reserved (sorted sets) and atomic Lua scripts: reserve migrates due delayed and expired reserved jobs, pops one job, increments its attempts and adds it to reserved with expiry now + timeout + margin; success removes it from reserved; retry moves the same job ID from reserved to delayed with the backoff (never a duplicate); terminal failure removes it from reserved after the failure record is logged; delay adds to the delayed set with the 900-second cap; blocking pop with a bounded wait. Attempts come from the reservation counter. No package payload size limit; FIFO/fair options raise InvalidQueueOptionError.",
+      "expected": "redis mode uses keys {prefix}queues:<name> (pending list), :delayed and :reserved (sorted sets) and atomic Lua scripts: reserve migrates due delayed and expired reserved jobs, pops one job, increments its attempts and adds it to reserved with expiry now + lease (default 60 seconds; D13.8), renewed every lease/3 while running, including timeout=0; success removes it from reserved; retry moves the same job ID from reserved to delayed with the backoff (never a duplicate); terminal failure removes it from reserved after the failure record is logged; delay adds to the delayed set with the 900-second cap; blocking pop with a bounded wait of --sleep seconds and no extra sleep after that wait. Attempts come from the reservation counter. No package payload size limit; FIFO/fair options raise InvalidQueueOptionError.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1446,7 +1466,7 @@
       ],
       "symfony_source": [],
       "deviation": null,
-      "project_decision": "D6, D7",
+      "project_decision": "D6, D7, D13",
       "probe": ["demo/conformance/probes/test_brokers.py::test_redis_processes", "tests/integration/redis/test_redis_integration.py::test_dispatch_reserve_complete", "tests/integration/redis/test_redis_integration.py::test_retry_preserves_exact_member_id_and_counts", "tests/integration/redis/test_redis_integration.py::test_delayed_job_becomes_visible_during_blocking_wait", "tests/integration/redis/test_redis_integration.py::test_no_package_payload_limit"]
     },
     {
@@ -1461,7 +1481,7 @@
         "§30.28"
       ],
       "conflict_rows": [],
-      "expected": "The watchdog extends the reserved-set score while a job runs. When a worker is killed mid-job the reservation expires and the next reserve redelivers the same job ID with attempts + 1.",
+      "expected": "Redis reservations expire at now + lease (default 60 seconds; D13.8). The watchdog renews the reserved-set score every lease/3 while the handler runs, including timeout=0. When a worker is killed mid-job, the reservation expires and the next reserve redelivers the same job ID with attempts + 1.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1478,7 +1498,7 @@
       ],
       "symfony_source": [],
       "deviation": null,
-      "project_decision": "D6, D7",
+      "project_decision": "D6, D7, D13",
       "probe": ["tests/integration/redis/test_redis_integration.py::test_expiry_after_crash_redelivers", "tests/integration/redis/test_redis_integration.py::test_watchdog_renewal_prevents_redelivery_past_initial_lease"]
     },
     {
@@ -1544,7 +1564,7 @@
       "conflict_rows": [
         "Default tries"
       ],
-      "expected": "A job without an explicit policy whose handler raises is failed terminally on its first delivery (attempt 1 >= tries 1): no release, one failed_job (managed) or one failure log line (sqs/redis), and the message is completed.",
+      "expected": "A job without an explicit policy whose handler raises is terminal on its first delivery (attempt 1 >= tries 1), with no release. Managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. Self-managed sqs/redis: write one full structured failure record to stdout first, then complete; no socket events (D6b/D12).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1567,7 +1587,7 @@
         }
       ],
       "deviation": null,
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[default]"]
     },
     {
@@ -1620,7 +1640,7 @@
         "§30.11"
       ],
       "conflict_rows": [],
-      "expected": "With tries=3 a job that always raises is released after attempts 1 and 2 (same message ID, receive counts 1, 2, 3) and failed terminally on attempt 3: failure record, then completion; no further delivery.",
+      "expected": "With tries=3 a job that always raises is released after attempts 1 and 2 (same message ID, receive counts 1, 2, 3) and failed terminally on attempt 3, with no further delivery. In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1642,7 +1662,7 @@
       ],
       "symfony_source": [],
       "deviation": null,
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[exhaustion]"]
     },
     {
@@ -1738,7 +1758,7 @@
         "§30.11"
       ],
       "conflict_rows": [],
-      "expected": "Calling fail(reason) records a terminal outcome regardless of remaining tries: the failure record is emitted/logged and the message is completed; no release, exactly one outcome report.",
+      "expected": "Calling fail(reason) records a terminal outcome regardless of remaining tries: no release, exactly one outcome report. In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1755,7 +1775,7 @@
       ],
       "symfony_source": [],
       "deviation": null,
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[fail]"]
     },
     {
@@ -1802,7 +1822,7 @@
       "conflict_rows": [
         "Timeout"
       ],
-      "expected": "Before each job the worker arms signal.setitimer(ITIMER_REAL, timeout) on the main thread with the message timeout, else the worker default (60); 0 disables it; the timer is disarmed after the job. When it fires and the job is still retryable (tries == 0 or attempt < tries, and not fail_on_timeout), the worker emits the released lifecycle event and exits immediately with os._exit(124) without releasing the message or applying backoff; the message returns through agent/SQS visibility or Redis reservation expiry with attempt + 1. Proven in real subprocesses for async handlers, sync Python loops and a native blocking call.",
+      "expected": "After decoding and pre-run checks, arm signal.setitimer(ITIMER_REAL, timeout) on the main thread around the handler and per-job teardown only, using the message timeout or worker default (60); 0 disables it. Disarm before outcome reporting and --rest (D13.2). If the alarm fires while retryable (tries == 0 or attempt < tries, and not fail_on_timeout), managed mode emits released; sqs/redis writes an info line with no socket event. Then exit immediately with os._exit(124), without releasing the message or applying backoff. Agent/SQS visibility or Redis reservation expiry redelivers with attempt + 1. Prove in subprocesses for async handlers, sync Python loops and a native blocking call.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1825,11 +1845,21 @@
           "path": "src/Illuminate/Foundation/Cloud/Queue.php",
           "lines": "473-497",
           "symbol": "Queue::finishProcessingJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "268-296",
+          "symbol": "Worker::daemon (timeout window and rest)"
         }
       ],
       "symfony_source": [],
-      "deviation": null,
-      "project_decision": "D2",
+      "deviation": {
+        "label": "timeout-window-handler-only",
+        "follows": "project",
+        "summary": "The project arms the timer only around the handler and per-job teardown, after decoding/pre-run checks, and disarms before reporting/rest. Laravel arms before process() and resets after reporting and --rest (Worker.php:268-296), so its alarm can fire during those phases.",
+        "decision": "D13"
+      },
+      "project_decision": "D2, D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_timeout[python]", "demo/conformance/probes/test_managed.py::test_timeout[async]", "demo/conformance/probes/test_managed.py::test_timeout[sleep]"]
     },
     {
@@ -1846,7 +1876,7 @@
         "§30.32"
       ],
       "conflict_rows": [],
-      "expected": "With fail_on_timeout true, a timeout fails the job: failure record (failed_job in managed mode), message completed, failed lifecycle event (no released), then os._exit(124).",
+      "expected": "With fail_on_timeout true, a timeout is terminal. In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12). Then os._exit(124); no released event and no release call.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1869,11 +1899,21 @@
           "path": "src/Illuminate/Queue/Jobs/Job.php",
           "lines": "294-347",
           "symbol": "Job::maxTries, maxExceptions, shouldFailOnTimeout, backoff, timeout, retryUntil"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "268-296",
+          "symbol": "Worker::daemon (timeout window and rest)"
         }
       ],
       "symfony_source": [],
-      "deviation": null,
-      "project_decision": "D2",
+      "deviation": {
+        "label": "timeout-window-handler-only",
+        "follows": "project",
+        "summary": "The project arms the timer only around the handler and per-job teardown, after decoding/pre-run checks, and disarms before reporting/rest. Laravel arms before process() and resets after reporting and --rest (Worker.php:268-296), so its alarm can fire during those phases.",
+        "decision": "D13"
+      },
+      "project_decision": "D2, D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_timeout[fail-on-timeout]"]
     },
     {
@@ -1887,7 +1927,7 @@
         "§30.32"
       ],
       "conflict_rows": [],
-      "expected": "When tries > 0 and attempt >= tries at the moment the alarm fires, the job is failed (failure record, completion, failed event) before exit 124; the message is not redelivered.",
+      "expected": "When tries > 0 and attempt >= tries at the alarm, the timeout is terminal. In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12). Then os._exit(124); no released event or release call, and no redelivery.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -1905,11 +1945,21 @@
           "path": "src/Illuminate/Queue/Jobs/Job.php",
           "lines": "182-225",
           "symbol": "Job::fail"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "268-296",
+          "symbol": "Worker::daemon (timeout window and rest)"
         }
       ],
       "symfony_source": [],
-      "deviation": null,
-      "project_decision": "D2",
+      "deviation": {
+        "label": "timeout-window-handler-only",
+        "follows": "project",
+        "summary": "The project arms the timer only around the handler and per-job teardown, after decoding/pre-run checks, and disarms before reporting/rest. Laravel arms before process() and resets after reporting and --rest (Worker.php:268-296), so its alarm can fire during those phases.",
+        "decision": "D13"
+      },
+      "project_decision": "D2, D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_timeout[last-attempt]"]
     },
     {
@@ -2016,7 +2066,7 @@
         "§30.11"
       ],
       "conflict_rows": [],
-      "expected": "A message whose wire name is not registered is failed on its first delivery without importing anything: failure record with the transport identity captured before decoding (message ID, receipt handle, queue, receive count), then completion. No retry regardless of the policy in the message.",
+      "expected": "An unregistered wire name is terminal on first delivery without importing anything or retrying regardless of message policy. Keep the transport identity captured before decoding (message ID, receipt handle, queue, receive count). In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -2041,10 +2091,10 @@
       "deviation": {
         "label": "deterministic-defects-terminal",
         "follows": "project",
-        "summary": "Laravel treats a malformed body or unknown class as an ordinary exception and retries it when tries > 1; Symfony deletes on decode failure without emitting events. The project fails deterministic defects on first delivery and emits failed and failed_job.",
+        "summary": "Laravel treats a malformed body or unknown class as an ordinary exception and retries it when tries > 1; Symfony deletes on decode failure without emitting events. The project fails deterministic defects on first delivery and emits failed_job then failed in managed mode.",
         "decision": null
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_poison[unknown]"]
     },
     {
@@ -2061,7 +2111,7 @@
         "§30.11"
       ],
       "conflict_rows": [],
-      "expected": "Decoded arguments that do not bind to or validate against the handler signature (missing, extra, wrong type, unsupported annotation) fail the job before execution on the first delivery; failure record then completion; no retry.",
+      "expected": "Arguments that do not bind to or validate against the handler signature (missing, extra, wrong type, unsupported annotation) fail before execution on the first delivery, with no retry. In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [],
@@ -2072,7 +2122,7 @@
         "summary": "Laravel has no argument validation step; a PHP TypeError during the handler follows the retry policy. The project validates before execution and fails deterministically.",
         "decision": null
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_poison[schema]"]
     },
     {
@@ -2089,7 +2139,7 @@
         "§30.11"
       ],
       "conflict_rows": [],
-      "expected": "A body that is not valid JSON, not an object, an unsupported envelope version, or a {\"@pointer\": ...} overflow pointer is failed on first delivery with the transport identity captured before decoding; failed_job carries the raw body as payload and job_name \"\" when displayName is unavailable; the message is completed. @pointer is reported as unsupported overflow.",
+      "expected": "A body that is not valid JSON, not an object, an unsupported envelope version, or a {\"@pointer\": ...} overflow pointer is terminal on first delivery with transport identity captured before decoding. In managed mode failed_job carries the raw body as payload and job_name \"\" when displayName is unavailable. @pointer is reported as unsupported overflow. In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -2122,7 +2172,7 @@
         "summary": "Laravel retries undecodable bodies when tries > 1 and hydrates @pointer bodies from the cache when overflow is enabled; the project fails both deterministically and does not implement overflow.",
         "decision": null
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_poison[json]", "demo/conformance/probes/test_managed.py::test_poison[array]", "demo/conformance/probes/test_managed.py::test_poison[version]", "demo/conformance/probes/test_managed.py::test_poison[pointer]"]
     },
     {
@@ -2137,7 +2187,7 @@
         "§30.12"
       ],
       "conflict_rows": [],
-      "expected": "On a terminal failure in managed mode the worker first completes the message (POST /result processed, or DeleteMessage), then emits failed_job, then the failed lifecycle event with the same timestamp. Failure records are best-effort: a log-socket outage at that moment loses the record but never changes the queue outcome. In direct SQS mode the delete happens before the record for the same reason.",
+      "expected": "In managed mode (agent or direct SQS): complete the message, then failed_job, then failed with the same timestamp. In self-managed sqs/redis: write the structured failure record to stdout first, then complete; no socket events (D6b/D12). Managed failure records are best-effort: a log-socket outage after completion loses the record but never changes the queue outcome. Self-managed modes write their only failure record before deletion (D6b). Terminal timeouts follow the same mode-specific order before exit 124.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -2180,7 +2230,7 @@
         }
       ],
       "deviation": null,
-      "project_decision": "D1",
+      "project_decision": "D1, D6b, D12, D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_failure_order"]
     },
     {
@@ -2196,13 +2246,13 @@
         "§30.11"
       ],
       "conflict_rows": [],
-      "expected": "In sqs and redis modes a terminal failure writes one structured JSON line with the full failure record to the worker's log output and then deletes the message / removes the reservation; no failed_job or lifecycle events are sent to the log socket in these modes.",
+      "expected": "In sqs and redis modes a terminal failure (including timeout) writes one structured JSON line with the full failure record to the worker stdout and then deletes the message / removes the reservation; no failed_job or lifecycle events are sent to the log socket in these modes.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [],
       "symfony_source": [],
       "deviation": null,
-      "project_decision": "D6b, D12",
+      "project_decision": "D6b, D12, D13",
       "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.default_failure]", "demo/conformance/probes/test_brokers.py::test_redis_processes[demo.default_failure]"]
     },
     {
@@ -2408,7 +2458,7 @@
       "conflict_rows": [
         "`duration_ms`"
       ],
-      "expected": "Managed mode emits {\"_cloud_event\": \"queue\", \"timestamp\", \"type\", \"queue\"[, \"duration_ms\"]} lines: started when a delivery begins (before decoding), and exactly one of processed/released/failed per delivery. timestamp is UTC \"Y-m-d H:i:s.u\" (six-digit microseconds, no T, no zone). queue is the normalized logical name. duration_ms is present only on processed/released/failed, measured from the started timestamp, truncated to an integer and never negative. The failed event shares the failed_job timestamp.",
+      "expected": "Managed mode emits {\"_cloud_event\": \"queue\", \"timestamp\", \"type\", \"queue\"[, \"duration_ms\"]} lines: started when a delivery begins (before decoding), and exactly one of processed/released/failed per delivery. timestamp is UTC \"Y-m-d H:i:s.u\" (six-digit microseconds, no T, no zone). queue is the normalized logical name. duration_ms is present only on processed/released/failed, measured from the started timestamp, truncated to an integer and never negative. The failed event shares the failed_job timestamp. Completion events are emitted immediately after outcome reporting, before --rest or idle time; terminal managed failure still emits failed_job before failed (D13.2).",
       "tier": "socket",
       "required": true,
       "laravel_source": [
@@ -2426,6 +2476,11 @@
           "path": "src/Illuminate/Foundation/Cloud/QueueConnector.php",
           "lines": "101-134",
           "symbol": "QueueConnector::configureWorker"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "268-296",
+          "symbol": "Worker::daemon (timeout window and rest)"
         }
       ],
       "symfony_source": [
@@ -2441,12 +2496,12 @@
         }
       ],
       "deviation": {
-        "label": "duration-non-negative",
+        "label": "completion-event-immediate",
         "follows": "project",
-        "summary": "Laravel truncates a signed Carbon millisecond diff without clamping; Symfony rounds and clamps at 0. The project truncates like Laravel and clamps at 0 like Symfony; the difference is unreachable with a monotonic clock.",
-        "decision": null
+        "summary": "The project emits completion events immediately after outcome reporting; Laravel emits at next pop/stop, so its duration_ms includes --rest and idle time before the next poll. The existing duration-non-negative policy also remains intentional: Laravel truncates a signed Carbon millisecond diff without clamping; the project truncates like Laravel and clamps at 0 like Symfony.",
+        "decision": "D13"
       },
-      "project_decision": null,
+      "project_decision": "D13",
       "probe": ["demo/conformance/probes/test_managed.py::test_outcomes", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
