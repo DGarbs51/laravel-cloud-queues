@@ -146,3 +146,10 @@ Made by the lead while freezing the contract pack (`docs/contract/architecture.m
 7. **Envelope layout:** Laravel's top-level `uuid` and `displayName`; every other field lives under one versioned `laravel_cloud_queues` object. Argument decoding is driven by the handler's type annotations; payloads never name Python types.
 8. **Redis reservation expiry is now + lease (60 s), renewed every third of the lease by the watchdog,** rather than now + job timeout + margin (§11). D7's watchdog already protects running jobs; this makes `timeout=0` safe and bounds redelivery after a crash or a timeout exit to one lease window. Direct SQS receive likewise sets `VisibilityTimeout` to the lease.
 9. **Explicit `JobContext.release()` always releases** (Laravel parity). When attempts are exhausted, the next delivery fails the pre-run check with `MaxAttemptsExceededError`.
+
+## D14 — Trust-boundary limits from cross-lab review R1 (2026-09-27)
+
+1. **Maximum job timeout: 604,800 seconds (7 days).** Declared policies, worker defaults and decoded envelopes reject larger values (`ConfigurationError` at declaration; `MalformedEnvelopeError` when decoding a message). `signal.setitimer` overflows on very large values, which would otherwise crash the worker instead of failing the message. `0` still disables the timeout.
+2. **Redis payloads are bounded by the envelope decode ceiling (16 MiB).** §8 bounds decoded size at the trust boundary; a Redis dispatch above that ceiling is rejected at dispatch with `PayloadTooLargeError` instead of being accepted and failing on receipt. SQS and managed queues keep the 1 MiB limit. This refines §8's "no package-imposed limit" for Redis.
+3. **Envelopes must be valid UTF-8.** Arguments containing lone surrogates are rejected at dispatch with `SerializationError`.
+4. **Decoding work is bounded, not only decoding size:** union decoding must not be exponential in nesting depth.
