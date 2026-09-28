@@ -166,3 +166,12 @@ def queue_stats(token: str = Query("")) -> dict[str, int]:
     import rqueue
 
     return rqueue.stats(rqueue.client())
+
+
+@app.post("/queue/burst")
+def queue_burst(n: int = Query(50, ge=1, le=500), token: str = Query("")) -> list[str]:
+    require_token(token)
+    import rqueue
+
+    r = rqueue.client()
+    return [rqueue.dispatch(r, "ok") for _ in range(n)]

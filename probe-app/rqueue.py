@@ -7,6 +7,7 @@ package implementation.
 
 import json
 import os
+import socket
 import time
 import uuid
 from typing import Any
@@ -51,7 +52,7 @@ def keys(queue: str = QUEUE) -> dict[str, str]:
 
 
 def record(r: redis.Redis, job_id: str, event: str, **extra: Any) -> None:
-    entry = {"event": event, "at": time.time(), "pid": os.getpid(), **extra}
+    entry = {"event": event, "at": time.time(), "host": socket.gethostname(), "pid": os.getpid(), **extra}
     r.rpush(f"{PREFIX}events:{job_id}", json.dumps(entry))
     r.expire(f"{PREFIX}events:{job_id}", 86400)
 
