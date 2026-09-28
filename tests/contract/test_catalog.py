@@ -123,7 +123,19 @@ def test_record_shape_and_unique_ids():
         assert f["title"] and f["expected"], f["id"]
         assert f["tier"] in TIERS, f["id"]
         assert isinstance(f["required"], bool), f["id"]
-        assert f["probe"] is None, f"{f['id']}: probe is filled by lane L10"
+        assert isinstance(f["probe"], list) and f["probe"], f["id"]
+        assert len(f["probe"]) == len(set(f["probe"])), f["id"]
+        for probe in f["probe"]:
+            assert isinstance(probe, str) and "::" in probe, f["id"]
+            path, node = probe.split("::", 1)
+            assert (ROOT / path).resolve().is_relative_to(ROOT), probe
+            assert (ROOT / path).is_file() and node.startswith("test_"), probe
+            function = node.split("[", 1)[0]
+            assert re.search(
+                rf"^(async )?def {re.escape(function)}\(",
+                (ROOT / path).read_text(encoding="utf-8"),
+                re.M,
+            ), probe
         assert "status" not in f and "result" not in f, f["id"]
         assert f["scope_refs"] and all(SCOPE_REF_RE.match(r) for r in f["scope_refs"]), f["id"]
         for src_key in ("laravel_source", "symfony_source"):
