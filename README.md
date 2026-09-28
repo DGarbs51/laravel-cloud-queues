@@ -541,8 +541,15 @@ with registry.testing():
 Jobs support `Depends()` like route handlers. Each delivery gets a fresh dependency scope:
 sub-dependencies are cached within one job, `yield` teardown runs on success, failure and
 release, `app.dependency_overrides` is honored, and teardown completes **before** the
-outcome is acknowledged. A teardown exception turns success into a handler failure (retry
-policy applies).
+outcome is acknowledged. As in a request, the handler's exception (or the release/fail
+raised through `JobContext`) is thrown into `yield` dependencies, so a
+`try: yield session; session.commit() except Exception: session.rollback(); raise`
+dependency commits only when the job succeeds. A teardown exception turns success into a
+handler failure (retry policy applies). Teardown after an explicit release or fail runs
+under a 10-second deadline that bounds **async** teardown; sync `yield` teardown runs in
+FastAPI's threadpool and is bounded only by the job timeout. Dependencies that read the
+HTTP request (`Request`, `Header()`, `Query()`, `Cookie()`, `Body()`, `Path()`, `Form()`,
+`File()`, `Security()`) are rejected at registration with a `ConfigurationError`.
 
 <!-- runnable -->
 ```python
@@ -700,9 +707,10 @@ Behavior:
   Transient receive errors are logged, followed by a 1-second sleep and a retry.
 - **Graceful shutdown (`SIGTERM`/`SIGINT`).** The worker stops fetching, lets the current
   job finish, reports its outcome, runs dependency teardown, exits the app lifespan and
-  exits 0. Repeated signals never skip reporting. If a signal arrives during an idle SQS
-  long poll, the worker waits for that poll to return (up to 20 s) and runs any message it
-  hands over rather than abandoning a message it now holds. Laravel Cloud sends `SIGTERM`
+  exits 0. Repeated signals never skip reporting. If a signal arrives during an idle poll,
+  the worker waits for that poll to return — up to 20 s for an SQS long poll, up to 65 s for
+  the Laravel Cloud agent's `GET /next` (like Laravel) — and runs any message it hands over
+  rather than abandoning a message the agent or SQS now holds. Laravel Cloud sends `SIGTERM`
   on deploy and gives Flex workers 90 seconds and Pro workers one hour to finish; if the
   platform kills the process anyway, SQS visibility or Redis reservation expiry redelivers
   the job.

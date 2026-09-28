@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import json
-import socket
 import threading
 from collections.abc import Sequence
-from contextlib import suppress
 from time import monotonic, sleep
-from typing import Any
 from weakref import WeakValueDictionary
 
 import httpx
@@ -16,9 +13,11 @@ import httpx
 from ...config import ManagedQueuesConfig
 from ...errors import AgentProtocolError, AgentUnavailableError
 from ..base import Delivery
-from ..sqs import normalize_queue
+from ..sqs import normalize_queue, receive_count
 
-_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+"""Bound on a ``GET /next`` body. A 1 MiB SQS body can double under the agent's JSON
+escaping, so 2 MiB would reject legal messages (and a rejected message poison-loops)."""
 _CONNECTION_ERRORS = (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError)
 
 
@@ -29,6 +28,9 @@ class AgentConsumer:
     Results retry only connection failures three times (100 ms apart). An outcome
     is claimed before sending, including when its acknowledgement is ambiguous.
     ``interrupt`` permanently stops polling but leaves result reporting available.
+    Like Laravel, it never aborts an in-flight ``GET /next``: a message the agent is
+    handing over must reach the worker, so an idle shutdown may wait for the current
+    poll (at most its 65 s timeout).
     """
 
     def __init__(self, managed: ManagedQueuesConfig) -> None:
@@ -42,8 +44,6 @@ class AgentConsumer:
         )
         self._stopping = threading.Event()
         self._lock = threading.Lock()
-        self._receiving = False
-        self._socket: socket.socket | None = None
         # Identity-based weak values avoid retaining bodies for the worker's lifetime.
         self._reported: WeakValueDictionary[int, Delivery] = WeakValueDictionary()
 
@@ -52,39 +52,29 @@ class AgentConsumer:
         return False
 
     def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
-        with self._lock:
+        for attempt in range(3):
             if self._stopping.is_set():
                 return None
-            self._receiving = True
-        try:
-            for attempt in range(3):
+            try:
+                status, body = self._request("GET", "/next", timeout=65)
+            except _CONNECTION_ERRORS:
                 if self._stopping.is_set():
                     return None
-                try:
-                    status, body = self._request("GET", "/next", timeout=65)
-                except _CONNECTION_ERRORS:
-                    if self._stopping.is_set():
-                        return None
-                    if attempt == 2:
-                        raise AgentUnavailableError(
-                            "The agent runtime socket is unreachable."
-                        ) from None
-                else:
-                    if status == 204:
-                        return None
-                    if status == 200:
-                        # Do not check stopping here: a handed-over message must run.
-                        return self._delivery(body)
-                    if not 400 <= status < 600 or attempt == 2:
-                        raise AgentUnavailableError(
-                            f"The agent returned HTTP {status} from GET /next."
-                        )
-                if attempt == 1 and self._stopping.wait(0.5):
+                if attempt == 2:
+                    raise AgentUnavailableError(
+                        "The agent runtime socket is unreachable."
+                    ) from None
+            else:
+                if status == 204:
                     return None
-            return None  # All attempts return, raise, or stop above.
-        finally:
-            with self._lock:
-                self._receiving = False
+                if status == 200:
+                    # Do not check stopping here: a handed-over message must run.
+                    return self._delivery(body)
+                if not 400 <= status < 600 or attempt == 2:
+                    raise AgentUnavailableError(f"The agent returned HTTP {status} from GET /next.")
+            if attempt == 1 and self._stopping.wait(0.5):
+                return None
+        return None  # All attempts return, raise, or stop above.
 
     def _delivery(self, body: bytes) -> Delivery | None:
         try:
@@ -102,11 +92,7 @@ class AgentConsumer:
         payload = data.get("body")
         attributes = data.get("attributes")
         count = attributes.get("ApproximateReceiveCount") if isinstance(attributes, dict) else None
-        # Labeled deviation: missing-receive-count-is-one (D13.5, Symfony parity).
-        try:
-            attempt = max(1, int(count)) if isinstance(count, (str, int, float)) else 1
-        except (ValueError, OverflowError):
-            attempt = 1
+        attempt = receive_count(count)  # missing-receive-count-is-one (D13.5)
         queue_url = data.get("queueUrl")
         queue = self._managed.queue
         meta = {}
@@ -161,9 +147,7 @@ class AgentConsumer:
         self, method: str, path: str, *, timeout: float, payload: dict[str, str | int] | None = None
     ) -> tuple[int, bytes]:
         try:
-            with self._client.stream(
-                method, path, json=payload, timeout=timeout, extensions={"trace": self._trace}
-            ) as response:
+            with self._client.stream(method, path, json=payload, timeout=timeout) as response:
                 # Only successful polls have a body we use. Never buffer error/result bodies.
                 if method != "GET" or response.status_code != 200:
                     return response.status_code, b""
@@ -182,31 +166,13 @@ class AgentConsumer:
         except httpx.HTTPError:
             raise AgentUnavailableError("The agent HTTP request failed.") from None
 
-    def _trace(self, event: str, info: dict[str, Any]) -> None:
-        # httpx's trace extension supplies an opaque httpcore network stream (Any).
-        # Capture its socket before response headers: pool.close() alone does not
-        # reliably wake a blocking recv on all supported platforms; shutdown does.
-        if event == "connection.connect_unix_socket.complete":
-            sock = info["return_value"].get_extra_info("socket")
-            if isinstance(sock, socket.socket):
-                with self._lock:
-                    self._socket = sock
-                    if self._receiving and self._stopping.is_set():
-                        self._shutdown_socket()
-
     def renew(self, delivery: Delivery, lease_seconds: int) -> None:
         """No-op: the agent owns visibility heartbeats for its deliveries."""
 
-    def _shutdown_socket(self) -> None:
-        if self._socket is not None:
-            with suppress(OSError):
-                self._socket.shutdown(socket.SHUT_RDWR)
-
     def interrupt(self) -> None:
-        with self._lock:
-            self._stopping.set()
-            if self._receiving:
-                self._shutdown_socket()
+        """Stop polling after the current ``GET /next`` (never aborts it); wakes a retry
+        backoff. Result reporting stays available."""
+        self._stopping.set()
 
     def close(self) -> None:
         self.interrupt()

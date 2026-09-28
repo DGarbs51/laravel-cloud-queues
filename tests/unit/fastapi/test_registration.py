@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Annotated, Any
 
 import pytest
-from fastapi import Depends, FastAPI, Security
+from fastapi import Body, Cookie, Depends, FastAPI, File, Form, Header, Path, Query, Security
 from fastapi.security import HTTPBearer
 from starlette.background import BackgroundTasks
 from starlette.requests import Request
@@ -183,6 +183,80 @@ def _needs_name(name: str) -> str:
 
 def _unresolved_job(name: str = Depends(_needs_name)) -> str:
     return name
+
+
+_MARKERS: list[Callable[..., Any]] = [Header, Query, Cookie, Body, Path, Form, File]
+
+
+def _marker_dependency(marker: Callable[..., Any]) -> Callable[..., Any]:
+    def dependency(value: str = marker()) -> str:
+        return value
+
+    dependency.__qualname__ = f"{marker.__name__.lower()}_dependency"
+    return dependency
+
+
+@pytest.mark.parametrize("marker", _MARKERS, ids=lambda marker: marker.__name__)
+def test_request_parameter_markers_in_dependencies_are_configuration_errors(
+    marker: Callable[..., Any],
+) -> None:
+    """PROJECT_SCOPE §13: Header()/Query()/... read an HTTP request a queue job does not
+    have. Reject at registration instead of failing (and retrying) every delivery."""
+    queues, _registry = _queues()
+    dependency = _marker_dependency(marker)
+
+    def job(user_id: int, value: str = Depends(dependency)) -> None:
+        assert value
+
+    with pytest.raises(ConfigurationError, match=rf"{marker.__name__}\(\) parameter 'value'"):
+        queues.job(job)
+
+
+@pytest.mark.parametrize("marker", _MARKERS, ids=lambda marker: marker.__name__)
+def test_request_parameter_markers_are_found_nested_annotated_and_on_the_handler(
+    marker: Callable[..., Any],
+) -> None:
+    queues, _registry = _queues()
+    leaf = _marker_dependency(marker)
+
+    def middle(inner: str = Depends(leaf)) -> str:
+        return inner
+
+    def nested_job(value: str = Depends(middle)) -> None:
+        assert value
+
+    def annotated_dependency(value: str) -> str:
+        return value
+
+    # Postponed annotations in this module cannot name the loop variable; set the
+    # evaluated ``Annotated`` form directly, as ``get_type_hints`` would return it.
+    annotated_dependency.__annotations__ = {"value": Annotated[str, marker()], "return": str}
+
+    def annotated_job(value: str = Depends(annotated_dependency)) -> None:
+        assert value
+
+    def handler_job(user_id: int, value: str = marker()) -> None:
+        assert value
+
+    for job in (nested_job, annotated_job, handler_job):
+        with pytest.raises(ConfigurationError, match=rf"{marker.__name__}\(\)"):
+            queues.job(job)
+
+
+def test_request_parameter_marker_added_through_overrides_fails_at_invoke() -> None:
+    queues, _registry = _queues()
+    app = queues.app
+
+    def clean() -> str:
+        return "ok"
+
+    def job(value: str = Depends(clean)) -> None:
+        assert value
+
+    queues.job(job)  # Registration passes: the override does not exist yet.
+    app.dependency_overrides[clean] = _marker_dependency(Header)
+    with pytest.raises(ConfigurationError, match=r"Header\(\) parameter 'value'"):
+        queues.job(job)
 
 
 def test_varargs_are_rejected() -> None:

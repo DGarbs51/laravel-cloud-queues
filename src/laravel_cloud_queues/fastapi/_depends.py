@@ -85,7 +85,7 @@ def reject_request_dependencies(
                 f"Job [{_qualname(func)}] cannot declare *args or **kwargs; "
                 "every parameter must be validated."
             )
-        kind = request_kind(parameter.annotation)
+        kind = request_kind(parameter.annotation) or request_marker(parameter)
         if kind is not None:
             raise _http_error(func, f"{kind} parameter {parameter.name!r}")
         depends = depends_of(parameter)
@@ -95,6 +95,10 @@ def reject_request_dependencies(
     injected = [parameter for parameter in parameters if depends_of(parameter) is not None]
     if not injected:
         return
+    # Signature walk first: FastAPI's own analysis raises on Form()/File() without
+    # python-multipart before the marker could be reported.
+    for parameter in injected:
+        _reject_markers(_dependency_call(parameter), func, overrides or {}, seen=set())
     try:
         dependant = get_dependant(
             path=QUEUE_JOB_PATH,
@@ -138,6 +142,20 @@ def depends_of(parameter: inspect.Parameter) -> params.Depends | None:
     if isinstance(parameter.default, params.Depends):
         return parameter.default
     return annotated_depends(parameter.annotation)
+
+
+def request_marker(parameter: inspect.Parameter) -> str | None:
+    """Name of a FastAPI request-parameter marker (``Header()``, ``Query()``, ``Cookie()``,
+    ``Body()``, ``Path()``, ``Form()``, ``File()``) declared as the default or in
+    ``Annotated`` metadata, else None. Queue jobs have no request to read them from."""
+
+    candidates: list[object] = [parameter.default]
+    if get_origin(parameter.annotation) is Annotated:
+        candidates.extend(get_args(parameter.annotation)[1:])
+    for candidate in candidates:
+        if isinstance(candidate, (params.Param, params.Body)):
+            return f"{type(candidate).__name__}()"
+    return None
 
 
 def annotated_depends(annotation: object) -> params.Depends | None:
@@ -238,6 +256,49 @@ def _signature_call(signature: inspect.Signature) -> Callable[..., None]:
     return dependency_call
 
 
+def _dependency_call(parameter: inspect.Parameter) -> Callable[..., Any] | None:
+    """The callable ``Depends()`` resolves for ``parameter`` (the annotation when omitted)."""
+
+    depends = depends_of(parameter)
+    if depends is None:
+        return None
+    if depends.dependency is not None:
+        return depends.dependency
+    annotation = parameter.annotation
+    if get_origin(annotation) is Annotated:
+        annotation = get_args(annotation)[0]
+    return annotation if callable(annotation) else None
+
+
+def _reject_markers(
+    call: Callable[..., Any] | None,
+    func: Callable[..., Any],
+    overrides: Mapping[Callable[..., Any], Callable[..., Any]],
+    *,
+    seen: set[int],
+) -> None:
+    """Refuse ``Header()``/``Query()``/``Cookie()``/``Body()``/``Path()``/``Form()``/``File()``
+    anywhere in the dependency tree, following ``dependency_overrides``."""
+
+    if call is None or id(call) in seen:
+        return
+    seen.add(id(call))
+    call = overrides.get(call, call)
+    try:
+        parameters = evaluated_parameters(call)
+    except (TypeError, ValueError):
+        return
+    for parameter in parameters:
+        marker = request_marker(parameter)
+        if marker is not None:
+            raise _http_error(
+                func,
+                f"{marker} parameter {parameter.name!r} "
+                f"(dependency {getattr(call, '__qualname__', call)!r})",
+            )
+        _reject_markers(_dependency_call(parameter), func, overrides, seen=seen)
+
+
 def _walk(
     dependant: Dependant,
     func: Callable[..., Any],
@@ -290,7 +351,7 @@ def _walk_override(
     except (TypeError, ValueError):
         parameters = ()
     for parameter in parameters:
-        kind = request_kind(parameter.annotation)
+        kind = request_kind(parameter.annotation) or request_marker(parameter)
         if kind is not None:
             raise _http_error(func, f"{kind} (dependency {getattr(call, '__qualname__', call)!r})")
         if isinstance(depends_of(parameter), params.Security):
