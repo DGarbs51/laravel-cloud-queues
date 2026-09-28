@@ -88,3 +88,18 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
   - Self-managed SQS against LocalStack.
   - Once the package can dispatch and consume, a manual, optional live smoke test on Laravel Cloud: web dispatch through a probe route, a worker cluster running `laravel-cloud-queues work`, result verified through logs or a probe route.
   - The live test is not a release gate, matching the scope's treatment of live Cloud verification.
+
+## D7 — Choices made while locking in the spec (2026-09-27)
+
+Smaller choices made when applying D1–D6 and the audit fixes to `PROJECT_SCOPE.md`. Review and override as needed.
+
+- `/result` 4xx is fatal and raises `AgentProtocolError`; both upstreams treat it as non-fatal (§11).
+- Worker exit codes: 0 clean stop, 1 agent unhealthy or other fatal transport error, 2 configuration error, 124 timeout. Laravel exits 0 on agent loss (§11, §23).
+- Fresh delays accept `int` or `timedelta`; positive fractions round up; >900 s, negative and non-finite values are rejected (§10).
+- The Redis backend applies the same 1 MiB payload limit and 900-second delay cap as SQS, so payloads and behavior stay portable; FIFO and fair-queue options are rejected in `redis` mode (§8, §10).
+- Self-managed SQS requires explicit credentials unless `LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS=default` opts into boto3's default chain (§6).
+- Direct SQS and Redis run a watchdog thread that renews visibility or reservations during a job (§11).
+- AnyIO on the asyncio backend only (§5).
+- Packaging: `hatchling`; extras `fastapi`, `redis`, `otel`; Pydantic support activates when installed (§4).
+- CI: CPython 3.10–3.14 on Linux; macOS not required (§5).
+- Worker targets may be a FastAPI app or a core registry object (§23).

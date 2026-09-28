@@ -18,6 +18,21 @@ The package must feel native to Python and to each supported Python framework. I
 
 The producer and consumer are two execution modes of the same Python application: the web/application process dispatches work and a separately deployed queue worker for that same application processes it. Cross-language PHP/Python job payload interoperability is out of scope.
 
+### Governing documents
+
+- `docs/decisions.md` records resolved decisions (D1–D6). This scope incorporates them; if the two ever disagree, the decision record wins until this scope is corrected.
+- `docs/references.md` lists the pinned public sources and the private Laravel repositories to verify platform behavior against. Private repositories are cited by name only; never copy their code or internal details into this public repository.
+- `docs/audits/2026-09-27/` holds the cross-lab audits, their verification reports, and `platform-findings.md` (live Laravel Cloud evidence).
+
+### Platform status (verified 2026-09-27)
+
+Laravel Cloud runs Python 3.10–3.14 applications, including FastAPI, but **managed queues are not yet available for Python**. The Cloud API rejects managed-queue creation for FastAPI applications, and Python containers receive no `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG`, no agent socket and no AWS credentials. Worker clusters do run Python. The observability log socket (`/tmp/cloud-init.sock`) is present in Python containers. See `docs/audits/2026-09-27/platform-findings.md`.
+
+Consequences for this project:
+
+- Managed-queue mode is built and tested against the pinned upstream contract, LocalStack and a local agent emulator. Live verification waits until Laravel Cloud enables managed queues for Python.
+- Worker-cluster modes (self-managed SQS and Redis/Valkey, §6) work on Laravel Cloud today and are first-class v1 features.
+
 ---
 
 ## 2. Compatibility baseline and source of truth
@@ -59,6 +74,12 @@ Use `laravel/symfony-on-cloud` as the main precedent for adapting Laravel Cloud 
 
 Laravel Framework behavior is the canonical compatibility reference. `symfony-on-cloud` is the secondary implementation reference where framework-neutral adaptation decisions are needed.
 
+Where this scope deliberately follows Symfony or a project decision instead of Laravel, it says so. The conformance catalog must record each such case as a labeled deviation with its source reference, not as a silent match.
+
+### Evidence hierarchy
+
+When sources disagree, trust them in this order: executed code path > tests > code comments > documentation. Upstream comments are known to be stale in places (for example, the Symfony transport class comment says the agent is chosen by socket presence, while its config and factory use the injected flag). Statements about proprietary Cloud services (agent, collector, dashboard) that appear only in comments are assumptions to verify, not facts.
+
 ### Upstream drift policy
 
 Pin the baseline above for deterministic CI and conformance results. Add a separate upstream-drift check that detects newer Laravel 13.x releases and relevant changes without silently changing the baseline. Updating the compatibility baseline must be an intentional change with corresponding test and documentation updates.
@@ -74,12 +95,13 @@ The package must:
 1. Dispatch jobs from Python application processes to Laravel Cloud Managed Queues.
 2. Run dedicated Python worker processes/containers that can execute on separate hardware from the producer.
 3. Consume through the Laravel Cloud in-container queue agent when that agent is enabled.
-4. Support direct SQS outside Laravel Cloud for local development, LocalStack, conformance testing, and compatibility/debug scenarios.
-5. Match Laravel Cloud queue lifecycle, retry, queue-name, FIFO, fair-queue, failure, timeout, and observability semantics closely enough that Python jobs behave operationally like first-class Laravel Cloud Managed Queue jobs.
-6. Provide a framework-native FastAPI experience while keeping the transport/runtime core independent from FastAPI.
-7. Provide a conformance harness that objectively reports what matches the Laravel baseline and what does not.
+4. Support Laravel Cloud **worker clusters** today with two self-managed backends: the customer's own SQS queues, and Redis/Valkey (for example Laravel Valkey attached to the environment).
+5. Support direct SQS and Redis locally for development, LocalStack/Valkey testing and conformance.
+6. Match Laravel Cloud queue lifecycle, retry, queue-name, FIFO, fair-queue, failure, timeout, and observability semantics closely enough that Python jobs behave operationally like first-class Laravel Cloud Managed Queue jobs.
+7. Provide a framework-native FastAPI experience while keeping the transport/runtime core independent from FastAPI.
+8. Provide a conformance harness that objectively reports what matches the Laravel baseline and what does not.
 
-Direct SQS is a tested compatibility/development mode. The package should **not** be positioned as a general-purpose SQS job framework; Laravel Cloud Managed Queues remain the production product center.
+Laravel Cloud Managed Queues remain the product center. Self-managed SQS and Redis/Valkey exist so Python applications on Laravel Cloud worker clusters have a supported queue today. They follow Laravel's `sqs` and `redis` queue-driver semantics; the package is not positioned as a general-purpose job framework.
 
 ---
 
@@ -105,7 +127,8 @@ Suggested high-level structure:
 │       ├── registry/
 │       ├── transports/
 │       │   ├── agent/
-│       │   └── sqs/
+│       │   ├── sqs/
+│       │   └── redis/
 │       ├── worker/
 │       ├── observability/
 │       ├── testing/
@@ -115,17 +138,23 @@ Suggested high-level structure:
 │   ├── unit/
 │   ├── integration/
 │   └── conformance/
-└── demo/
-    └── ...
+├── demo/
+│   └── ...
+├── probe-app/
+└── docs/
 ```
+
+`probe-app/` is a throwaway FastAPI app deployed to Laravel Cloud to inspect what the platform injects. It is repository-only tooling like `demo/`.
 
 The precise internal layout can change if the implementation team finds a cleaner separation, but the public boundaries should remain clear.
 
 ### Published distribution
 
-The top-level `demo/` directory is a development/conformance application and **must not be included in the PyPI wheel or source distribution payload unless there is a compelling packaging reason explicitly approved later**. Configure the build backend/package inclusion rules and add a packaging test proving `demo/` is absent from the built distribution.
+The top-level `demo/`, `probe-app/` and `docs/` directories are repository-only and **must not be included in the PyPI wheel or source distribution payload unless there is a compelling packaging reason explicitly approved later**. Use `hatchling` with explicit include rules, and add a packaging test proving these directories are absent from both the wheel and the sdist.
 
 Tests, local emulators, and development-only assets should likewise not accidentally inflate the runtime wheel.
+
+Packaging verification must build the wheel and the sdist, then install each into a fresh environment **outside** the repository checkout (never an editable install) and check: core import without optional extras, the `[fastapi]` extra, the console entry point, `py.typed`, public exports, and that no shipped module imports `demo/`, `probe-app/` or test tooling.
 
 ### Optional dependencies
 
@@ -136,7 +165,11 @@ Initial intended install shape:
 ```text
 pip install laravel-cloud-queues
 pip install "laravel-cloud-queues[fastapi]"
+pip install "laravel-cloud-queues[redis]"
+pip install "laravel-cloud-queues[otel]"
 ```
+
+Core depends on `boto3` and `anyio`. The Redis/Valkey backend needs the `[redis]` extra (`redis-py`). OpenTelemetry propagation needs the `[otel]` extra. Pydantic model support activates when a compatible Pydantic v2 is installed (FastAPI already brings it); it does not need its own extra.
 
 The architecture must reserve clean adapter boundaries for future:
 
@@ -155,7 +188,13 @@ Do not expose nonfunctional framework extras merely for appearance. Add Django/F
 
 Support **Python 3.10+**.
 
-CI must exercise the supported version matrix. The implementation should avoid unnecessarily raising the minimum version.
+CI must exercise CPython 3.10, 3.11, 3.12, 3.13 and 3.14 on Linux. macOS is a supported development platform but not a required CI runner. The implementation should avoid unnecessarily raising the minimum version.
+
+Python 3.10 constraints to respect: no `uuid.uuid7` (added in 3.14; use a small reviewed dependency or backport for UUIDv7), no `asyncio.TaskGroup`/`asyncio.timeout`, no `typing.Self` or `type` alias syntax without `typing_extensions`, no `except*`.
+
+### Async backend
+
+Core async orchestration uses AnyIO **on the asyncio backend**. Trio is not supported in v1.
 
 ### Typing
 
@@ -170,7 +209,8 @@ Requirements:
 - include `py.typed`;
 - exported generic types should be useful to downstream applications;
 - public decorator and dispatch typing should give strong IDE/mypy behavior;
-- tests may use narrowly scoped typing relaxations where justified, but production package code must remain strict.
+- tests may use narrowly scoped typing relaxations where justified, but production package code must remain strict;
+- downstream typing samples (positive and expected-error) must be type-checked in CI: direct calls, `dispatch`/`dispatch_async` argument checking, `.options(...)` types, handler parameters named `queue`/`delay`/`timeout`, and injected versus serialized parameters.
 
 ### Linting/formatting
 
@@ -186,12 +226,18 @@ A release must pass:
 - unit tests;
 - FastAPI integration tests;
 - LocalStack/SQS tests;
+- Redis/Valkey tests (Valkey and Redis containers in CI);
 - Cloud-agent emulator tests;
 - observability socket tests;
 - compatibility/conformance suite;
-- package build/install smoke tests;
+- downstream typing samples;
+- package build/install smoke tests from isolated wheel and sdist installs;
 - `py.typed` verification;
-- verification that `demo/` is excluded from published artifacts.
+- verification that `demo/`, `probe-app/` and `docs/` are excluded from published artifacts.
+
+Required integration services (LocalStack, Valkey/Redis, emulator) must run in CI. A missing service is a gate failure, not a silent skip. Pin the LocalStack and Valkey image versions. Upload the conformance JSON and process/socket logs as CI artifacts on failure.
+
+Local development may use any Redis-compatible server; Laravel Herd's bundled Valkey on `127.0.0.1:6379` works.
 
 Real Laravel Cloud Python deployment verification is expected later but is explicitly **not** a current release gate.
 
@@ -199,13 +245,24 @@ Real Laravel Cloud Python deployment verification is expected later but is expli
 
 ## 6. Configuration contract
 
-### Laravel Cloud production configuration
+### Backend modes (D6, D6a)
 
-`LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` is the canonical production configuration source.
+| Mode | Selected when | Broker | Receive |
+|---|---|---|---|
+| `managed` | `LARAVEL_CLOUD_QUEUES_BACKEND=managed`, or unset while `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` is present | Laravel Cloud SQS | Agent when `agent.enabled`, else direct SQS |
+| `sqs` | `LARAVEL_CLOUD_QUEUES_BACKEND=sqs` | Customer's own SQS | Direct SQS |
+| `redis` | `LARAVEL_CLOUD_QUEUES_BACKEND=redis` | Redis/Valkey | Redis transport |
 
-The package should auto-detect Laravel Cloud configuration and require minimal/no manual AWS or queue wiring in a Cloud deployment.
+- When `LARAVEL_CLOUD_QUEUES_BACKEND` is unset and no managed config is present, fail with a configuration error.
+- The presence of `REDIS_URL` or `AWS_*` variables never selects a backend. Laravel Cloud injects `REDIS_URL` for attached Valkey caches and `AWS_*` for attached object storage.
+- Every setting may also be passed in code; code wins over the environment.
+- Laravel Cloud-injected assignment remains authoritative in managed mode.
 
-Known baseline shape includes concepts such as:
+### Managed configuration
+
+`LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` is the managed-mode configuration source. The package auto-detects it and needs no manual AWS or queue wiring.
+
+Shape at the pinned baseline (`CloudBootstrapper.php` adds the `after_commit`, `overflow` and `credential_cache` keys):
 
 ```json
 {
@@ -218,7 +275,10 @@ Known baseline shape includes concepts such as:
     "suffix": "-<environment-specific-suffix>",
     "queue": "default",
     "region": "<region>",
-    "credentials": "ecs"
+    "credentials": "ecs",
+    "after_commit": false,
+    "overflow": {"enabled": false, "store": null, "always": false, "delete_after_processing": true},
+    "credential_cache": {"enabled": false, "store": null, "fallback_store": "file"}
   },
   "agent": {
     "enabled": true,
@@ -227,31 +287,53 @@ Known baseline shape includes concepts such as:
 }
 ```
 
-The exact parser must be based on current pinned upstream behavior rather than this illustrative shape.
+Rules:
 
-### Validation
+- Malformed JSON, `driver` other than `cloud`, or a missing `connection` while the variable is set is a configuration error. This follows Laravel's throwing decoder; do **not** copy Symfony's lenient parser, which treats malformed JSON as "not configured".
+- `queues` may be a JSON list or an object; an object contributes its keys. It is an inventory, not a dispatch allowlist.
+- Queue defaults: the sender uses `connection.queue`; the worker assignment is top-level `queue`, else `default`.
+- `region` is required. Do not default it.
+- `credentials: "ecs"` selects the ECS container credential provider **explicitly**, with refreshable credentials. `instance` selects the instance-profile provider. Any other string is a configuration error. Never fall back to boto3's default credential chain: Laravel Cloud object storage places R2 keys in `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` and an R2 endpoint in `AWS_ENDPOINT_URL`, which the default chain and endpoint resolution would pick up.
+- `after_commit`, `overflow` and `credential_cache` are parsed and preserved. v1 does not implement them. If `overflow.enabled` or `credential_cache.enabled` is true, log a startup warning that the setting is not supported and state the consequence (overflow: oversized payloads are rejected; credential cache: each worker resolves its own credentials).
+- Agent socket: `agent.socket` from the config, else `LARAVEL_CLOUD_AGENT_SOCKET`, else `/tmp/cloud-agent.sock`. The environment variable never overrides an explicit config value.
+- Unknown fields are preserved for forward compatibility.
+- Never log the config's credentials, receipt handles or full job payloads by default.
 
-Parse configuration once into strongly typed internal models and validate eagerly at startup.
+### Self-managed SQS configuration (`sqs` mode)
 
-Requirements:
+| Variable | Meaning |
+|---|---|
+| `LARAVEL_CLOUD_QUEUES_SQS_PREFIX` | Queue URL prefix, e.g. `https://sqs.us-east-2.amazonaws.com/<account>` (required) |
+| `LARAVEL_CLOUD_QUEUES_SQS_SUFFIX` | Optional queue name suffix |
+| `LARAVEL_CLOUD_QUEUES_SQS_QUEUE` | Default queue (default `default`) |
+| `LARAVEL_CLOUD_QUEUES_SQS_REGION` | Region (required) |
+| `LARAVEL_CLOUD_QUEUES_SQS_KEY` / `_SQS_SECRET` | Credentials (required unless `_SQS_CREDENTIALS=default`) |
+| `LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS` | Set to `default` to opt into boto3's default credential chain (local profiles, IAM roles). Never implicit, because on Laravel Cloud the default chain holds object-storage keys |
+| `LARAVEL_CLOUD_QUEUES_SQS_ENDPOINT` | Endpoint override (LocalStack) |
 
-- fail fast with package-level configuration errors;
-- validate required fields and supported driver modes;
-- preserve unknown fields where practical for forward compatibility;
-- never silently reinterpret malformed Cloud configuration;
-- local explicit settings/env overrides are allowed for local development and test transports;
-- Laravel Cloud-injected assignment remains authoritative in Cloud.
+All values are passed to the boto3 client explicitly. The client must ignore `AWS_ENDPOINT_URL` and `AWS_ENDPOINT_URL_SQS` unless `_SQS_ENDPOINT` is set. Refuse `_SQS_ENDPOINT` when `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` is also present.
+
+### Redis/Valkey configuration (`redis` mode)
+
+| Variable | Meaning |
+|---|---|
+| `LARAVEL_CLOUD_QUEUES_REDIS_URL` | Connection URL; falls back to `REDIS_URL` only in `redis` mode. `rediss://` enables TLS |
+| `LARAVEL_CLOUD_QUEUES_REDIS_QUEUE` | Default queue (default `default`) |
+| `LARAVEL_CLOUD_QUEUES_REDIS_PREFIX` | Key prefix (default `laravel-cloud-queues:`) |
 
 ### Queue URL/name rules
 
-Match Laravel's prefix/suffix semantics, including FIFO suffix placement:
+Match Laravel's `SqsQueue::getQueue` / `suffixQueue` semantics:
 
-- standard: `{prefix}/{queue}{suffix}`
-- FIFO: `{prefix}/{base}{suffix}.fifo`
+- standard: `{prefix}/{queue}{suffix}`;
+- FIFO (logical name ends in `.fifo`): `{prefix}/{base}{suffix}.fifo`;
+- the suffix is appended only if the name does not already end with it (`Str::finish`);
+- trailing slashes are trimmed from the prefix;
+- a value that is already a full URL passes through unchanged.
 
-Queue normalization for observability must invert those rules and return the logical managed queue name.
+Queue normalization for observability inverts those rules and returns the logical queue name. Conformance must include already-suffixed names, full URLs, empty suffix, trailing slashes and FIFO names. Laravel Cloud queue names are at most 39 characters including `.fifo`.
 
-Dispatching to an unprovisioned/nonexistent managed queue must raise a dedicated typed package error such as `ManagedQueueNotFoundError`. Never silently fall back to the default queue and never auto-create hosted queues.
+Dispatching to a nonexistent queue raises `ManagedQueueNotFoundError`, translated from the SQS error code `AWS.SimpleQueueService.NonExistentQueue` (and boto3's `QueueDoesNotExist`). Laravel does not pre-validate against the `queues` inventory; neither does this package. Never silently fall back to the default queue and never auto-create queues.
 
 ---
 
@@ -311,9 +393,9 @@ Document explicit names as preferable when teams want queued messages to survive
 Support both:
 
 1. explicit module/job inclusion — canonical production/default approach;
-2. opt-in automatic package discovery — convenience feature.
+2. opt-in automatic package discovery of configured packages — convenience feature.
 
-Do not require recursive implicit scanning.
+Do not require recursive implicit scanning. Discovery is driven only by application configuration, **never** by message content: a worker must never import a module or look up a callable because a payload names it. Duplicate wire names are a registration error.
 
 Core/vanilla Python can use a standalone registry. FastAPI uses an explicit application integration. Workers accept an import target such as `myapp.main:app`.
 
@@ -338,8 +420,34 @@ The envelope should include enough data for:
 - positional arguments;
 - keyword arguments;
 - queue metadata needed for execution/debugging;
+- the job's retry policy (D4);
 - trace/context metadata;
 - future extension without breaking v1.
+
+Required top-level keys, spelled exactly as Laravel's payload spells them, because Laravel Cloud reads them:
+
+- `uuid`: unique job UUID;
+- `displayName`: the job's wire name (explicit name or import path); Laravel derives the failed-job `job_name` from it.
+
+The remaining v1 fields (version, wire name, args, kwargs, policy, context) may use package-chosen names under a versioned structure.
+
+### Retry policy in the message (D4)
+
+At dispatch, store the effective `tries`, `backoff`, `timeout` and `fail_on_timeout` in the envelope. The worker follows the message, and worker defaults apply only to fields the message omits. A deploy therefore never changes the rules for jobs already queued, and dashboard retries keep their original rules. The envelope reserves room for `retry_until` and `max_exceptions`, which are deferred from v1.
+
+### Dashboard retry (D3)
+
+Laravel Cloud's dashboard can retry failed jobs. The envelope must survive being re-queued verbatim: a re-queued envelope is a new delivery whose attempt count starts again at 1. Conformance must re-send a captured failed payload and verify the worker runs it as a fresh first attempt. The live check stays `skipped` until Laravel Cloud supports managed queues for Python.
+
+### Trust boundary
+
+Message bodies are untrusted input.
+
+- Resolve job names only through the registry and value types only through registered codecs.
+- Never import modules, look up callables or instantiate classes named by payload data.
+- Bound nesting depth and total decoded size; reject NaN/Infinity, duplicate keys and type-tag collisions deterministically.
+- Validate decoded arguments against the handler signature and supported annotations **before** execution; binding alone is not validation.
+- Runtime objects (`JobContext`, injected dependencies) are never serializable and cannot be supplied through payload data.
 
 The producer and worker are the same Python application at different execution points, but workers may run on separate hardware and on a different deployment revision. Never rely on local filesystem state, memory, or process-local objects in a job payload.
 
@@ -378,11 +486,13 @@ The envelope must be designed so future payload migrations/version adapters can 
 
 ### Payload size
 
-Before sending, measure the fully encoded message body against the actual transport limit.
+Before sending, measure the fully encoded message body in UTF-8 bytes against the transport limit: **1,048,576 bytes** for SQS (Laravel's `SqsQueue::MAX_SQS_PAYLOAD_SIZE`, and Laravel Cloud's documented job payload limit). Redis uses the same limit so payloads stay portable between backends.
 
-If oversized, raise a stable typed `PayloadTooLargeError` containing useful size/limit information.
+If oversized, raise a stable typed `PayloadTooLargeError` containing useful size/limit information. A queue can have a lower `MaximumMessageSize`; map that SQS rejection to `PayloadTooLargeError` too, without classifying unrelated `InvalidParameterValue` errors as size errors.
 
 Never silently truncate, compress, or offload in v1.
+
+Laravel already implements overflow at the pinned baseline: when enabled, oversized bodies are stored in a cache and the message carries `{"@pointer": "laravel:sqs-payloads:<uuid>"}`. v1 does not implement overflow. A received `@pointer` body is a deterministic, non-retryable failure reported as unsupported overflow.
 
 Add a prominent roadmap/TODO for:
 
@@ -391,7 +501,7 @@ Add a prominent roadmap/TODO for:
 - configurable thresholds;
 - transparent worker hydration/cleanup.
 
-Laravel's own evolving overflow/large-payload implementation should be reviewed when that future work begins.
+Laravel's existing cache-backed overflow (`SqsQueue::overflow`, `SqsJob` pointer hydration) is the starting point to review when that work begins.
 
 ---
 
@@ -406,7 +516,12 @@ receipt = send_email.dispatch(user_id=123)
 receipt = await send_email.dispatch_async(user_id=123)
 ```
 
-Both paths must share the same validation, serialization, routing, tracing, and transport semantics.
+Both paths must share the same validation, serialization, routing, tracing, and transport semantics through one pipeline.
+
+- `dispatch_async` must never block the event loop. Offload every blocking boto3 or Redis call, including credential resolution, and telemetry socket writes.
+- `dispatch` (sync) called while an event loop is running in the same thread must not start a nested loop; document that async code should use `dispatch_async`.
+- Choose SQS FIFO deduplication IDs once per logical dispatch and reuse them across internal network retries.
+- Laravel Cloud web requests are cut off after 20 seconds (`NGINX_HTTP_TIMEOUT=20`). Dispatch and eager execution inside a request must stay well within that.
 
 ### Dispatch receipt
 
@@ -433,25 +548,29 @@ Handler return values are ignored. There is no job result backend, result pollin
 
 ## 10. Queue selection and message options
 
-A job can declare a default queue and dispatch can override it.
+A job can declare a default queue and dispatch can override it through the `.options(...)` builder (D5):
 
 ```python
 @queues.job(queue="emails")
-async def send_email(...) -> None:
+async def send_email(user_id: int) -> None:
     ...
 
-await send_email.dispatch_async(..., queue="priority")
+send_email.dispatch(user_id=1)
+await send_email.options(queue="priority", delay=30).dispatch_async(user_id=1)
 ```
 
-The exact technique for distinguishing job arguments from dispatch options must be unambiguous and type-friendly. A builder/options object may be preferable to injecting transport keywords into a job's own keyword namespace; the agents should choose an API that cannot collide with legitimate handler parameters.
+- `.options(...)` returns a typed copy of the job carrying dispatch options: `queue`, `delay`, FIFO `group` and `deduplication_id`, fair-queue `message_group`.
+- `dispatch` and `dispatch_async` keep exactly the job's own parameter signature, so options never collide with handler parameters (a handler may legitimately take `queue`, `delay` or `timeout`).
+- `mypy --strict` checks both the option types and the job's argument types.
 
 ### Delays
 
 Fresh-message delays on standard SQS queues must respect the SQS per-message maximum of 900 seconds.
 
-Invalid longer delays must fail loudly.
-
-FIFO queues do not support per-message delay. Reject that combination.
+- Accept `int` seconds or `timedelta`. A positive fractional delay rounds **up** to the next whole second, matching the retry-delay rule, so a short delay never becomes immediate.
+- Reject negative, non-finite and >900-second delays with `InvalidQueueOptionError` before sending. (Symfony rejects >900; Laravel forwards and lets SQS fail. Labeled deviation.)
+- FIFO queues do not support per-message delay: reject a positive delay on a `.fifo` queue. (Symfony rejects; Laravel silently omits `DelaySeconds`. Labeled deviation.)
+- The Redis backend applies the same 900-second cap so application behavior is portable.
 
 Retries are different from fresh delays: retry backoff uses message visibility and can extend up to SQS's 12-hour visibility limit.
 
@@ -466,13 +585,18 @@ Support:
 - sensible defaults compatible with Laravel/SQS;
 - strict validation.
 
-Default FIFO group should match Laravel's behavior where appropriate (logical queue name). Default dedup ID should be unique when content-based dedup is not being explicitly relied upon.
+- Default FIFO group: the logical queue name **including** `.fifo` (Laravel `SqsQueue::getQueueableOptions`). Document that this serializes the whole queue.
+- Default dedup ID: a new unique ID per logical dispatch.
+- Content-based deduplication: supported only when the caller explicitly passes an empty dedup ID, in which case the attribute is omitted (Laravel's convention). Document that the envelope contains a fresh `uuid` and trace data, so content-based dedup will not collapse identical business calls; use an explicit business dedup ID for that.
+- Validate group and dedup IDs against SQS rules (1–128 characters, allowed character set) before sending.
 
 ### Fair queues
 
 For standard queues, support SQS message groups as fair-queue tenant keys.
 
-Do not conflate standard-queue fair message groups with FIFO ordering groups. Reject invalid cross-model combinations rather than silently ignoring attributes.
+Do not conflate standard-queue fair message groups with FIFO ordering groups. Reject FIFO-only options on standard queues and fair-queue groups on FIFO queues, rather than silently ignoring attributes. (Symfony behavior; Laravel does not reject. Labeled deviation.)
+
+The Redis backend has no FIFO or fair-queue semantics: FIFO and fair-queue options raise `InvalidQueueOptionError` in `redis` mode.
 
 ---
 
@@ -488,61 +612,63 @@ Synchronous calls can use boto3 directly. Async-facing APIs must isolate blockin
 
 ### Receive path on Laravel Cloud
 
-When the injected agent config says the agent is enabled, receive through the in-container Laravel Cloud agent over its Unix socket.
+When the injected agent config says the agent is enabled, the worker receives **only** through the in-container Laravel Cloud agent over its Unix socket, for its assigned queue. It ignores requested queue names on this path. (Symfony behavior. Laravel additionally requires the requested queue to match the worker queue and otherwise pops SQS directly. Labeled deviation.) A conflicting CLI queue selection in agent mode is a startup error, not a silent override.
 
-Do not decide agent use merely by probing socket existence; treat Cloud configuration as authoritative.
+Do not decide agent use by probing socket existence; the injected config is authoritative.
 
-Baseline socket default: `/tmp/cloud-agent.sock` when not otherwise configured.
+HTTP over the Unix socket uses `httpx` with a Unix-socket transport, base URL `http://localhost`, redirects disabled, and a bounded response size.
 
-Baseline behavior:
+#### `GET /next`
 
-- `GET /next`
-- long-poll timeout long enough to outlast the agent poll cycle (Laravel baseline uses 65 seconds);
-- HTTP 204 means no work;
-- HTTP 200 must contain a valid structured message;
-- unexpected status, malformed response, or unreachable agent is a transport-fatal condition.
+- Request timeout **65 seconds**, which outlasts the agent's poll cycle.
+- Retries: up to **3 attempts**, retrying after 0 ms and 500 ms on connection errors (Laravel's `retry([0, 500])`; Symfony makes one attempt).
+- **204:** no work.
+- **200:** decode JSON. If the body does not decode to a JSON object or array, that is fatal. If `messageId` is missing, empty or not a string, treat it as an empty poll. A non-string `receiptHandle` becomes null; a non-string `body` becomes `""`.
+- **Any other status, or an unreachable socket after retries:** fatal.
 
-Message data includes concepts such as:
+Message fields: `messageId`, `receiptHandle`, `body`, `attributes` (containing `ApproximateReceiveCount`), `queueUrl`. `queueUrl` is used for telemetry queue normalization; if missing, fall back to the configured queue.
 
-- `messageId`;
-- `receiptHandle`;
-- `body`;
-- `attributes`;
-- `queueUrl`.
+#### `POST /result`
 
-### Report path
+The agent owns the SQS operation for agent-delivered messages.
 
-The agent owns the SQS terminal operation for agent-delivered messages.
+- Body: `messageId`, `receiptHandle` (omitted when null), `status` (`processed` or `released`), `delay` (seconds; omitted when null; `0` is kept). There is no `queueUrl` and no `failed` status: a terminal failure reports `processed`.
+- Timeout **10 seconds** per attempt; up to **3 attempts**, 100 ms apart, on connection errors only.
+- **5xx, or connection failure after retries:** the agent is unhealthy. Do not fetch another job, do not assume acknowledgement, exit the worker, and let agent/SQS visibility redeliver.
+- **4xx:** the agent rejected this outcome. Log it as a typed `AgentProtocolError`, do not assume acknowledgement, and exit the worker. (Stricter than both upstreams, which treat 4xx as non-fatal. Labeled deviation.)
+- Treat a repeated POST after a lost response as possibly already applied; never report a contradictory second outcome.
 
-Report outcome via:
+Exit status when the worker stops because the agent is unhealthy: **1**, logged as agent loss. (Laravel exits 0 through its lost-connection path. Labeled deviation: a non-zero status keeps the event visible.)
 
-- `POST /result`
-- status `processed`, or
-- status `released` with delay.
+The agent extends visibility in three-minute increments while a job runs (Laravel Cloud docs). Its source is not available to this project (see `docs/references.md`); treat its behavior beyond the documented protocol as unverified.
 
-Use bounded retries for transient connectivity issues. If reporting ultimately fails, treat the worker as fatally unhealthy:
-
-- do not fetch another job;
-- do not assume acknowledgement happened;
-- terminate the worker;
-- allow agent/SQS visibility semantics to cause later redelivery.
-
-At-least-once execution and duplicate possibility after ambiguous acknowledgement must be documented. Applications should design jobs with normal queue idempotency expectations.
+At-least-once execution and duplicate possibility after ambiguous acknowledgement must be documented. Applications should design jobs to be idempotent.
 
 ### Direct SQS receive mode
 
-Outside Cloud/agent mode, direct SQS receive is supported for local development and compatibility tests.
+Used in `managed` mode when the agent is disabled, and in `sqs` mode.
 
-Use long polling and request `ApproximateReceiveCount`.
+- `ReceiveMessage` with `WaitTimeSeconds=20`, `MaxNumberOfMessages=1`, and `ApproximateReceiveCount` requested. A missing receive count is treated as 1.
+- Success deletes the original message.
+- Retry calls `ChangeMessageVisibility` on the original message with the latest receipt handle.
+- Terminal failure deletes after failure reporting.
+- Never create a duplicate message to implement retry.
+- **Visibility renewal:** there is no agent heartbeat outside the agent path. While a job runs, a watchdog outside the handler extends visibility before it lapses, so it keeps working even while a sync handler blocks the event loop. Loss of the lease is a transport condition, not a handler exception. Without renewal a long job may be redelivered and run concurrently.
+- The 12-hour visibility maximum is measured by SQS from the original receive. Compute retry visibility conservatively and handle an SQS rejection explicitly.
 
-For direct mode:
+### Redis/Valkey transport (`redis` mode)
 
-- success deletes the original message;
-- retry calls `ChangeMessageVisibility` on the original message;
-- terminal failure deletes after failure reporting;
-- never create a duplicate message merely to implement retry.
+Follows Laravel's `RedisQueue` semantics, implemented with atomic Lua scripts:
 
-Direct SQS mode should be fully tested but not marketed as the primary production use case.
+- **Keys** (under the configured prefix): `queues:<name>` pending list, `queues:<name>:delayed` sorted set, `queues:<name>:reserved` sorted set.
+- **Reserve:** atomically migrate due delayed and expired reserved jobs back to pending, pop one job, increment its attempts, and add it to the reserved set with an expiry of now + job timeout + margin.
+- **Success:** remove from the reserved set.
+- **Retry:** atomically move from reserved to delayed with the backoff; same job ID, never a duplicate.
+- **Terminal failure:** remove from reserved after failure reporting.
+- **Delay:** add to the delayed set.
+- **Reservation renewal:** the same watchdog extends the reserved expiry while a job runs.
+- Attempt count comes from the job's reservation counter, the Redis equivalent of `ApproximateReceiveCount`.
+- TLS via `rediss://`. Blocking pop with a bounded wait; no busy polling.
 
 ---
 
@@ -552,9 +678,16 @@ Match Laravel/SQS-native retry semantics.
 
 ### Attempts
 
-`ApproximateReceiveCount` is the source of truth for the delivery attempt count.
+`ApproximateReceiveCount` (SQS) or the reservation counter (Redis) is the source of truth for the delivery attempt count.
 
-Default `tries` is **1**, matching Laravel's worker default unless overridden by job/worker policy.
+Default `tries` is **1**, matching Laravel's worker default unless overridden by job/worker policy. Do not copy Symfony Messenger's default of 3 retries (4 deliveries).
+
+Attempt checks, matching Laravel `Worker`:
+
+- **Before running:** if `tries > 0` and `attempt > tries`, fail the job without running it. This catches deliveries that exceeded the budget through crashes or timeouts.
+- **After an exception:** if `tries > 0` and `attempt >= tries`, the failure is terminal; otherwise release for retry.
+- `tries = 0` means unlimited attempts.
+- An explicit `JobContext.release()` consumes an attempt like any other delivery.
 
 ### Retry policy
 
@@ -605,21 +738,46 @@ Calling explicit release/fail must short-circuit normal success behavior safely 
 
 ### Backoff
 
-Visibility timeout is whole seconds and must not accidentally floor positive sub-second retry delays to zero. Mirror the protective behavior in the current cross-framework reference: positive sub-second delays should round upward; explicit zero can remain zero.
+`backoff` is an integer or a list. The delay for a retry is `backoff[attempt - 1]`; past the end of the list, the last value repeats. Default backoff is **0**.
+
+Visibility timeout is whole seconds and must not accidentally floor positive sub-second retry delays to zero. Positive sub-second delays round upward; explicit zero stays zero. (Symfony behavior; Laravel truncates. Labeled deviation.)
 
 Clamp retry visibility to 43,200 seconds (12 hours).
+
+Deferred from v1 (D4): `retry_until` deadlines and `max_exceptions` counters. Both exist in Laravel; the envelope reserves room for them.
 
 ### Terminal failed jobs
 
 There is no independent Python production failed-job store.
 
-On terminal failure:
+On terminal failure in `managed` mode:
 
-- emit Cloud-compatible failed-job information;
-- complete/delete the queue message according to agent/direct transport semantics;
-- let Laravel Cloud own operational failed-job inspection/retry workflows.
+- emit the `failed_job` event (§15, D1);
+- complete the message: `processed` to the agent, or `DeleteMessage` in direct mode;
+- let Laravel Cloud own failed-job inspection and retry.
+
+On terminal failure in `sqs` and `redis` modes (D6b):
+
+1. write the full failure record as one structured JSON line to the worker's log output (visible in Laravel Cloud's Logs tab);
+2. also emit the `failed_job` event to the log socket when it exists (best-effort; unverified whether it surfaces anywhere);
+3. delete the message.
+
+There is no dead-letter queue or retry command in v1; re-running a failed job means dispatching it again.
+
+Deterministic decode failures (malformed envelope, unsupported version, unknown job, codec or argument errors, `@pointer` bodies) keep the transport identity (message ID, receipt handle or reservation, queue, receive count) captured **before** decoding. They are terminal on first delivery: emit `failed` and `failed_job` from the worker, then complete the message. Never import a module to "repair" an unknown job.
 
 Local harnesses may capture failures for assertions only.
+
+Do not port Laravel's `FailedJobProvider` fetch path, which downloads and decrypts failed payloads from URLs (D3).
+
+### Delivery state machine
+
+Each delivery has exactly one outcome owner and moves through: `received → running → outcome chosen → reporting → completed | ambiguous`.
+
+- Handler failure, decode failure and acknowledgement failure are distinct categories.
+- An acknowledgement failure is never treated as a handler error and never triggers a second, contradictory release or fail.
+- After an ambiguous completion (for example a lost `/result` response), the worker stops instead of fetching again.
+- `JobContext.release()` and `fail()` record the chosen outcome for the worker; they do not perform blocking I/O inside the handler. If user code catches the control-flow signal, the recorded outcome still wins over success.
 
 ---
 
@@ -641,12 +799,14 @@ Do not build multi-message concurrent execution into v1.
 
 ### Async runtime
 
-Use **AnyIO** for core async orchestration.
+Use **AnyIO** (asyncio backend) for core async orchestration.
 
 - async handlers execute naturally;
-- sync handlers execute directly in the worker process;
+- sync handlers execute directly in the worker process's main thread, so the `SIGALRM` timeout (§14) can interrupt them;
 - do not use a thread pool for sync handler execution merely for throughput;
 - process-level failure/timeout semantics remain enforceable.
+
+A sync handler blocks the event loop while it runs. Anything that must keep working during a job (visibility or reservation renewal, §11) runs on a watchdog thread, not on the loop.
 
 ### FastAPI lifespan
 
@@ -665,6 +825,8 @@ Requirements:
 - resolve dependencies per job;
 - support `yield` dependency teardown;
 - ensure cleanup on success/failure/release paths;
+- teardown completes **before** the outcome is acknowledged: success means handler completion plus successful teardown. A teardown exception turns success into a handler failure (retry policy applies). Teardown after an explicit release or fail still runs, under a bounded deadline;
+- honor `app.dependency_overrides` and cached sub-dependencies within one job;
 - app-lifespan resources remain process-scoped;
 - request-only concepts such as an HTTP `Request` must produce a clear error unless a deliberate queue-aware substitute exists;
 - FastAPI-specific DI machinery stays isolated from the core transport/runtime.
@@ -680,7 +842,16 @@ On `SIGTERM`/`SIGINT`:
 - exit application lifespan;
 - exit cleanly.
 
-If the platform forcibly kills the process before completion, rely on agent/SQS visibility for redelivery.
+If the platform forcibly kills the process before completion, rely on agent/SQS visibility (or Redis reservation expiry) for redelivery.
+
+Shutdown races to handle explicitly:
+
+- a signal arriving during an idle `GET /next` or blocking pop: stop waiting; if a message is handed over anyway, run it to completion rather than abandoning a message the agent now holds;
+- a signal during outcome reporting: finish reporting within its bounded retries;
+- repeated signals do not skip reporting;
+- SIGKILL cannot promise cleanup.
+
+Laravel Cloud gives Flex workers 90 seconds and Pro workers one hour to finish on shutdown; Flex also caps job runtime at 90 seconds. Document these limits for Cloud users.
 
 ### Worker lifecycle options
 
@@ -689,10 +860,18 @@ Provide useful framework-neutral CLI controls including equivalents of:
 - `--max-jobs`;
 - `--max-time`;
 - `--stop-when-empty`;
-- `--stop-when-empty-for`;
-- any small rest/sleep controls justified by local/direct mode.
+- `--stop-when-empty-for` (seconds since the last job, or since start);
+- `--timeout` (worker default job timeout, default 60);
+- `--sleep` (seconds to wait after an empty poll in direct/Redis mode, default 3);
+- `--rest` (seconds between jobs, default 0).
 
-On Laravel Cloud, queue assignment remains authoritative.
+Direct-mode receive errors sleep 1 second and retry unless they indicate a lost connection.
+
+Memory-limit worker recycling (Laravel `--memory`, exit 12) is deferred from v1; Laravel Cloud restarts a worker that exceeds its memory allocation and redelivers the job.
+
+Laravel Cloud restarts custom worker processes when they exit, so exit codes 124 (timeout) and 1 (agent loss) lead to a fresh worker.
+
+On Laravel Cloud, queue assignment remains authoritative. Worker clusters scale on CPU, memory or a fixed count, not on queue depth; document this for `sqs` and `redis` modes.
 
 ### Queue selection
 
@@ -704,25 +883,29 @@ laravel-cloud-queues work myapp.main:app
 
 On Cloud, the injected worker/queue assignment is authoritative. Do not pretend a conflicting CLI queue selection overrides hosted worker assignment.
 
-Outside Cloud/direct mode, allow explicit queue selection, including multiple named queues where appropriate.
+Outside agent mode, allow explicit queue selection, including multiple named queues as a comma-separated priority list: poll in order, first queue with work wins.
 
 ---
 
 ## 14. Timeout semantics
 
-Timeouts are process-level correctness behavior, not merely asyncio cancellation.
+Timeouts are process-level behavior matching Laravel's worker (D2), not asyncio cancellation.
 
-Requirements:
+Mechanism:
 
-- job-level timeout;
-- worker-level default;
-- explicit fail-on-timeout behavior;
-- recognizable nonzero process exit on timeout, preferably matching Laravel's Cloud timeout exit semantics where applicable (baseline Laravel uses exit status 124);
-- by default, a timed-out retryable job should be released rather than terminally failed;
-- fail-on-timeout converts it to terminal failure;
-- synchronous native/blocking code must not defeat timeout correctness simply because Python cannot cancel a thread.
+1. Before each job, arm `signal.setitimer(ITIMER_REAL, timeout)` on the main thread. The timeout comes from the message (D4), else the worker default (60 seconds). `0` disables the timeout.
+2. When the alarm fires, the handler:
+   1. applies the terminal checks: attempts exhausted (`tries > 0` and `attempt >= tries`) or `fail_on_timeout`; if either holds, the job is failed (§12 terminal failure, including `failed_job`) and the message completed;
+   2. emits the lifecycle event: `failed` if the job was failed, otherwise `released`;
+   3. exits immediately with `os._exit(124)`, skipping Python cleanup.
+3. A retryable timeout does **not** release the message and does not apply backoff. The message returns through agent/SQS visibility or Redis reservation expiry, and its receive count increments on redelivery.
+4. After a successful job, disarm the timer.
 
-Design implementation carefully around Python process/signal behavior and platform constraints. Conformance tests must prove the observable semantics, not merely that an asyncio timeout exception occurred.
+Laravel Cloud restarts the exited worker. The FastAPI lifespan runs once per worker process, so it starts again in the new process.
+
+Known limitation, shared with Laravel: Python runs signal handlers between bytecode instructions, so a job blocked in native code or a blocking call can overrun its timeout until control returns to the interpreter. Document this; do not claim a stronger guarantee. No supervisor process in v1.
+
+Conformance tests must prove the observable semantics in real subprocesses (exit code 124, lifecycle event, message redelivered with an incremented count, terminal failure on the last attempt, fail-on-timeout), for async handlers, sync Python loops and a native blocking call.
 
 ---
 
@@ -732,44 +915,60 @@ Dashboard parity is a v1 release blocker.
 
 ### Cloud lifecycle events
 
-Emit Laravel Cloud-compatible queue lifecycle events:
+Emit Laravel Cloud-compatible queue lifecycle events (`Illuminate\Foundation\Cloud\Queue`):
 
-- queued;
-- started;
-- processed;
-- released;
-- failed.
+```json
+{"_cloud_event": "queue", "timestamp": "2026-09-27 12:00:00.123456", "type": "processed", "queue": "emails", "duration_ms": 42}
+```
 
-Match queue normalization, timestamp precision/format, duration fields, and event schema to the pinned Laravel baseline.
+- `type`: `queued`, `started`, `processed`, `released` or `failed`.
+- `timestamp`: UTC, format `Y-m-d H:i:s.u` (six-digit microseconds, no `T`, no zone suffix).
+- `queue`: the normalized logical queue name (§6).
+- `duration_ms`: non-negative integer milliseconds, truncated (Laravel), present only on `processed`, `released` and `failed`.
+- `queued` is emitted by the producer after a successful send; `started` when a delivery begins; exactly one completion event per delivery.
 
-### Failed job event
+### Failed job event (D1)
 
-Match the current Laravel Cloud failed-job event contract closely enough for the dashboard to identify and display Python failures.
+Emit Laravel's `failed_job` event (`Illuminate\Foundation\Cloud\FailedJobProvider::log`):
 
-Relevant fields include concepts such as:
+| Field | Value |
+|---|---|
+| `_cloud_event` | `"failed_job"` |
+| `id` | New UUIDv7 bound to the failure timestamp (distinct from the payload `uuid` and the SQS message ID) |
+| `queue` | Normalized queue name |
+| `started_at` | Delivery start, same timestamp format |
+| `attempts` | Integer attempt count |
+| `payload` | The original message body **as a string** |
+| `exception_preview` | `"<ExceptionClass>: <message> in <file>:<line>"` (or without `: <message>` when empty), at most 1,001 characters |
+| `job_name` | The payload's `displayName` |
+| `exception` | Full exception with traceback |
 
-- event type;
-- failure ID (UUIDv7 where compatible);
-- queue;
-- started timestamp;
-- attempts;
-- payload;
-- job name/display name;
-- exception preview;
-- exception detail.
+Order: emit `failed_job` first, then the `failed` lifecycle event with the same timestamp (Laravel order; Symfony reverses it).
 
-The agents must inspect the exact pinned Laravel and `symfony-on-cloud` source before freezing this schema. If the cross-framework adapter contains a temporary platform workaround (for example, log-line size handling) that differs from framework behavior, document the difference, encode it in conformance evidence, and choose the behavior that maximizes actual Laravel Cloud dashboard compatibility.
+Size policy (D1). The Laravel Cloud log collector is documented in `symfony-on-cloud` as dropping lines over 16 KiB (unverified here; see `docs/references.md`):
+
+1. If the whole encoded line fits the limit, send it as is.
+2. Otherwise trim `exception` (keep the head and a truncation marker) until the line fits.
+3. If it still does not fit, trim `payload` as well and add `"replayable": false`. Dashboard retry will not reproduce that job.
+4. Measure the final encoded line in bytes, including JSON escaping and multibyte characters.
+
+Never apply Symfony's payload projection (which keeps only `uuid`, `displayName` and a truncated `body`): it discards the Python envelope's arguments and context even for small messages.
+
+Failure records are **best-effort**: the message is completed before the record is written, so a log-socket outage at that moment loses the record. Document this; there is no Python failed-job store.
+
+Not emitted in v1: the `retried_at` variant of `failed_job` that Laravel emits when a failed job is forgotten.
 
 ### Socket protocol
 
-Laravel Cloud observability uses newline-delimited JSON over a persistent stream/Unix socket.
+Laravel Cloud observability uses newline-delimited JSON over a persistent Unix stream socket (`Illuminate\Foundation\Cloud\Events`).
 
-Baseline log socket:
-
-- env override `LARAVEL_CLOUD_LOG_SOCKET`;
-- default `unix:///tmp/cloud-init.sock`;
-- short connection/write timeout;
-- one JSON object per line.
+- Address: `LARAVEL_CLOUD_LOG_SOCKET` when set, else `unix:///tmp/cloud-init.sock`. Verified present in Python containers on Laravel Cloud even though the variable is not set.
+- Connect timeout 2 seconds; write timeout 2 seconds; persistent connection.
+- Before each write, detect EOF and reconnect.
+- Write the whole line, looping over partial writes; give up after repeated zero-byte writes and disconnect.
+- One JSON object per line, trailing newline. Encoding matches Laravel's flags: slashes and Unicode unescaped, zero fractions preserved, invalid UTF-8 replaced.
+- Serialize writes from concurrent producers so lines never interleave.
+- Telemetry failures are logged locally without recursion and never raised to the caller.
 
 ### Failure policy
 
@@ -779,7 +978,9 @@ An observability socket outage must never convert a successful queue job into a 
 
 Record/log telemetry degradation locally and let the conformance report surface it.
 
-Agent `/result` reporting is **not** observability; it is part of queue correctness and remains fatal when unavailable after bounded retries.
+Agent `/result` reporting is **not** observability; it is part of queue correctness and remains fatal when unavailable after bounded retries (§11).
+
+In `sqs` and `redis` modes, lifecycle events are still emitted to the log socket when it exists. Whether they surface anywhere in Laravel Cloud outside managed queues is unverified; the Queues dashboard covers managed queues only.
 
 ---
 
@@ -792,7 +993,7 @@ Requirements:
 - no hard OpenTelemetry dependency in core;
 - versioned envelope metadata/context section;
 - inject standard trace context on dispatch when tracing is available;
-- extract/activate it on worker execution;
+- extract/activate it on worker execution, and reset it after each job so context never leaks between jobs;
 - do not conflate application trace propagation with Laravel Cloud's required queue lifecycle events;
 - failure to use optional tracing must not break queue execution.
 
@@ -889,13 +1090,15 @@ Future principles:
 
 Provide a fast test mode for application code.
 
-It must still exercise:
+It must still exercise, through the same code paths as the real worker:
 
 - argument binding;
 - payload validation;
 - serialization/deserialization;
 - handler registration;
 - FastAPI DI and cleanup where applicable.
+
+Eager mode works both inside and outside a running event loop without nesting loops.
 
 It may execute immediately and surface handler exceptions to the test.
 
@@ -916,7 +1119,24 @@ LocalStack should exercise the actual SQS transport implementation, including:
 - FIFO behavior;
 - fair-queue attributes;
 - queue-not-found behavior;
-- payload size behavior where feasible.
+- payload size behavior where feasible;
+- self-managed `sqs` mode configuration, including that `AWS_*` variables are ignored;
+- visibility renewal during a long job.
+
+LocalStack verifies the arguments sent to SQS and its emulated behavior. It cannot prove server-side fairness or real SQS timing; record such cases at the `emulated` evidence tier.
+
+### Redis/Valkey testing
+
+Run the `redis` transport against real Valkey and Redis in CI (containers) and locally (any Redis-compatible server, such as Laravel Herd's Valkey on `127.0.0.1:6379`). Cover:
+
+- dispatch, reserve, success, retry with backoff (same job ID), terminal failure;
+- delayed jobs and the 900-second cap;
+- attempt counting across redeliveries;
+- reservation expiry after a worker is killed (redelivery with an incremented attempt);
+- reservation renewal during a long job;
+- atomicity under concurrent workers (no job delivered to two workers at once while reserved);
+- TLS (`rediss://`) connection;
+- rejection of FIFO and fair-queue options.
 
 ### Agent emulator
 
@@ -930,6 +1150,8 @@ Build a local Laravel Cloud queue-agent emulator that exposes the baseline proto
 - deterministic fault injection for disconnects, malformed responses, HTTP errors, delayed responses, etc.
 
 It need not reproduce unrelated Laravel Cloud implementation internals. It exists to provide a deterministic compatibility contract.
+
+`symfony-on-cloud`'s `tests/Fixtures/agent-server.php` is only a canned stub (a fixed response for every `GET /next`, `200` for everything else). Use it as a starting point for protocol shape, not as a model: the Python emulator holds message state, validates `/result` bodies, tracks receive counts and releases, and injects faults. Test the real worker as a subprocess against it.
 
 ### Observability collector
 
@@ -990,8 +1212,18 @@ Provide endpoints/fixtures/jobs that exercise at least:
 - observability socket outage not failing successful job;
 - agent `/result` failure terminating worker;
 - graceful shutdown;
-- trace-context propagation when optional tracing is installed;
-- eager testing behavior.
+- trace-context propagation when optional tracing is installed, and absence of errors when it is not;
+- eager testing behavior;
+- dashboard-retry replay of a captured failed payload (D3);
+- `failed_job` size policy: fits, exception trimmed, not replayable (D1);
+- retry policy carried in the message across a simulated deploy (D4);
+- `.options(...)` builder with handler parameters named `queue`/`delay`/`timeout` (D5);
+- backend selection and configuration errors (D6a);
+- self-managed `sqs` mode ignoring `AWS_*` variables;
+- `redis` mode dispatch, retry, delay, timeout and terminal failure;
+- log-only terminal failures outside managed mode (D6b);
+- two sequential jobs on one worker with isolated dependencies, trace context and `JobContext`;
+- undecodable-message handling, including `@pointer` bodies.
 
 ### Human-readable output
 
@@ -1027,8 +1259,12 @@ Each result should include:
 - evidence;
 - error/exception if present;
 - upstream source/baseline reference;
+- evidence tier: `unit`, `socket`, `emulated`, or `live`;
+- deviation label, when the behavior intentionally differs from Laravel;
 - environment metadata;
 - Python/package/framework versions.
+
+The report carries a schema version and run-level metadata (revision, environment, timestamp) separate from per-feature evidence.
 
 Prefer evidence over assertions. For example, retry compatibility should record the original and retried message IDs and attempt counts so the report proves the same SQS message was released rather than duplicated.
 
@@ -1046,9 +1282,11 @@ Build a machine-readable conformance catalog that maps feature IDs to:
 - test implementation;
 - result.
 
-The suite must not mutate its expectations merely to make the Python implementation pass.
+The suite must not mutate its expectations merely to make the Python implementation pass. Correcting an expectation that is proven wrong against source is allowed, with the evidence recorded.
 
 When Python intentionally differs because of language/framework constraints, report `partial` or a documented justified deviation instead of pretending full compatibility.
+
+The catalog is a versioned file in the repository. Every capability required by this scope has exactly one catalog record; duplicate or missing IDs fail the suite. Every required feature must `pass` at its declared evidence tier. Only features on an explicit, reviewed exception list may be `skipped`, `partial` or `unsupported`: currently the live Laravel Cloud managed-queue checks, pending platform support for Python. The report command exits non-zero on any missing record or unapproved non-pass status.
 
 ---
 
@@ -1072,7 +1310,22 @@ Exact subcommands may evolve, but there should be one canonical worker/runtime C
 
 Future Django/Flask integrations may add native wrappers while delegating to the same core worker.
 
-CLI errors should be actionable and package-level, not raw boto3/HTTP stack traces by default.
+CLI errors should be actionable and package-level, not raw boto3/HTTP stack traces by default; a `--debug` flag may show tracebacks.
+
+`inspect` reports registry and configuration (mode, queues, registered jobs) without opening broker connections or printing secrets. It never performs destructive queue operations.
+
+The worker target may be a FastAPI app (`module:app`) or a core registry object (`module:registry`), so plain-Python apps need no FastAPI.
+
+`conformance` runs against repository tooling (`demo/`, emulators); when that tooling is absent from an installed package, it explains how to run it from a checkout rather than failing obscurely.
+
+Worker exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | Clean stop (signal, `--max-jobs`, `--max-time`, `--stop-when-empty`) |
+| 1 | Agent unhealthy or other fatal transport error |
+| 2 | Configuration error at startup |
+| 124 | Job timeout (§14) |
 
 ---
 
@@ -1090,9 +1343,21 @@ Define a coherent typed exception hierarchy. Likely concepts include:
 - invalid queue option combination;
 - agent unreachable/protocol error;
 - transport error;
-- job explicit failure.
+- job explicit failure;
+- unsupported overflow payload.
 
-Do not expose AWS SDK-specific exceptions as the normal public contract when a stable package-level error is appropriate.
+Each error has one classification, used consistently by the worker, CLI, eager mode and transports:
+
+| Class | Examples | Worker behavior |
+|---|---|---|
+| Dispatch error | configuration, queue not found, payload too large, invalid option | Raised to the caller; nothing sent |
+| Deterministic job defect | malformed envelope, unsupported version, unknown job, codec or argument mismatch, `@pointer` | Terminal on first delivery |
+| Handler failure | exception from the handler or its teardown | Retry policy applies |
+| Fatal worker error | agent unhealthy, lost lease, ambiguous acknowledgement | Stop the worker |
+
+`ManagedQueueNotFoundError` and `PayloadTooLargeError` expose stable fields (queue name; size and limit). Chained exceptions never carry secrets.
+
+Do not expose AWS SDK or Redis client exceptions as the normal public contract when a stable package-level error is appropriate.
 
 ---
 
@@ -1116,10 +1381,11 @@ It must include clear, copyable steps for:
 12. local development/direct SQS or LocalStack configuration;
 13. eager testing;
 14. running the demo/conformance suite;
-15. understanding Laravel Cloud zero/low-config behavior;
-16. current support matrix;
-17. known limitations and roadmap, especially compression/large-payload S3 offload;
-18. statement that `demo/` is development/conformance tooling and is not shipped in the PyPI package.
+15. understanding Laravel Cloud zero/low-config behavior, and the current platform status (managed queues not yet available for Python);
+16. running on Laravel Cloud worker clusters today with self-managed SQS or Laravel Valkey (`LARAVEL_CLOUD_QUEUES_BACKEND`), including the `AWS_*` collision with object storage;
+17. current support matrix;
+18. known limitations and roadmap, especially compression/large-payload S3 offload, the native-code timeout limitation, best-effort failure records, and at-least-once delivery;
+19. statement that `demo/` and `probe-app/` are development tooling and are not shipped in the PyPI package.
 
 The README should lead with the simplest FastAPI path, then explain deeper concepts.
 
@@ -1149,7 +1415,21 @@ Do not publish `1.0.0` until:
 
 After 1.0, breaking public API changes require a major version.
 
-Clearly distinguish public modules from internal modules.
+Clearly distinguish public modules from internal modules: document the public import surface; underscore-prefixed modules and subpackages are not stable.
+
+---
+
+## 26a. Security
+
+- Message bodies are untrusted: follow §8's trust-boundary rules.
+- Never log `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` credentials, SQS or Redis credentials, receipt handles or full job payloads by default.
+- `failed_job` events carry job payloads and exceptions into Laravel Cloud's logs and dashboard. Document that job arguments should not contain secrets.
+- Credential selection is explicit in every mode (§6); never fall back silently to ambient credentials.
+- Refuse endpoint overrides when managed configuration is present.
+- Keep TLS verification on for SQS and `rediss://` connections.
+- The agent socket is an unauthenticated local socket: never proxy it to a network listener.
+- Test sockets live in private temporary directories and are never created by deleting existing paths.
+- This repository is public: never copy code or internal details from private Laravel repositories (see `docs/references.md`).
 
 ---
 
@@ -1180,8 +1460,14 @@ Do **not** allow these to expand v1:
 - Flask production adapter;
 - result backend / RPC-style `await job.result()`;
 - internal worker concurrency >1;
-- production Python failed-job database;
-- generic AWS SQS product positioning;
+- production Python failed-job database, dead-letter queues or failed-job retry commands;
+- general-purpose job-framework positioning (self-managed SQS and Redis exist for Laravel Cloud worker clusters);
+- `retry_until`, `max_exceptions` and memory-limit worker recycling;
+- Laravel overflow (`@pointer`) payloads and credential caching;
+- porting Laravel's `FailedJobProvider` fetch path or emitting `retried_at`;
+- Trio;
+- a supervisor process for hard timeouts;
+- database queue backend;
 - job chains;
 - batches;
 - unique jobs;
@@ -1204,9 +1490,12 @@ Prominent TODOs/roadmap items should include:
 2. transparent S3/object-storage large-payload offload;
 3. Django adapter;
 4. Flask adapter;
-5. live Laravel Cloud end-to-end smoke suite once the Python runtime is available;
-6. evaluate advanced queue workflow features only after core compatibility is proven;
-7. evaluate future Laravel Managed Queue changes detected by upstream drift CI.
+5. live Laravel Cloud managed-queue verification once Laravel Cloud enables managed queues for Python (platform work: allow FastAPI/Python in managed-queue validation; inject managed config and AWS container credentials into Python containers; allow a Python worker command; run the agent in Python worker containers);
+6. live worker-cluster smoke test (D6c): manual and optional, available once the package can dispatch and consume;
+7. `retry_until` and `max_exceptions`;
+8. dead-letter handling and failed-job tooling outside managed mode;
+9. evaluate advanced queue workflow features only after core compatibility is proven;
+10. evaluate future Laravel Managed Queue changes detected by upstream drift CI.
 
 ---
 
@@ -1239,6 +1528,16 @@ The initial implementation is acceptable when all of the following are true:
 23. `demo/` is absent from the built PyPI artifacts.
 24. CI passes all required quality gates.
 25. No live Laravel Cloud deployment is required yet; that test is documented as pending.
+26. `managed`, `sqs` and `redis` backends are selected only by `LARAVEL_CLOUD_QUEUES_BACKEND` or managed config, and ambiguous configuration fails clearly.
+27. Self-managed SQS never uses ambient `AWS_*` credentials or endpoints unless explicitly opted in.
+28. The Redis/Valkey backend passes its conformance suite against Valkey and Redis.
+29. Retry policy travels in the message and survives a simulated deploy.
+30. A captured failed payload replays as a fresh first attempt.
+31. `failed_job` events follow the D1 size policy and Laravel's field set and order.
+32. Timeouts exit 124 with the correct lifecycle event and redelivery in real subprocess tests.
+33. Downstream typing samples pass `mypy --strict`, including the `.options(...)` builder.
+34. Wheel and sdist install cleanly outside the repository and exclude `demo/`, `probe-app/` and `docs/`.
+35. The conformance report exits non-zero on any missing record or unapproved non-pass status.
 
 ---
 
@@ -1246,7 +1545,7 @@ The initial implementation is acceptable when all of the following are true:
 
 Success is not merely “Python can push to and read from SQS.”
 
-Success means a Python/FastAPI application can use Laravel Cloud Managed Queues in a way that is:
+Success means a Python/FastAPI application can use Laravel Cloud queues — worker clusters today, Managed Queues as soon as the platform enables them for Python — in a way that is:
 
 - operationally compatible with the Laravel 13.x Cloud queue contract;
 - visible in Laravel Cloud's queue observability/failure model;
