@@ -158,7 +158,13 @@ class SqsConsumer(SqsTransport):
         self._report(delivery)
 
     def release(self, delivery: Delivery, delay_seconds: int) -> None:
-        self._report(delivery, visibility=max(0, min(MAX_VISIBILITY_SECONDS, delay_seconds)))
+        limit = MAX_VISIBILITY_SECONDS
+        if delivery.received_at > 0:
+            # SQS measures its 12-hour ceiling from the original receive, not this
+            # update. Reserve a second for transit; server rejection remains fatal.
+            elapsed = max(0.0, monotonic() - delivery.received_at)
+            limit = max(0, limit - math.ceil(elapsed) - 1)
+        self._report(delivery, visibility=max(0, min(limit, delay_seconds)))
 
     def renew(self, delivery: Delivery, lease_seconds: int) -> None:
         if not 0 < lease_seconds <= MAX_VISIBILITY_SECONDS:

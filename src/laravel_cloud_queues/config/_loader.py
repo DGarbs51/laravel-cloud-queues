@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NoReturn
 
 from ..errors import ConfigurationError
 from ._models import (
@@ -42,6 +42,10 @@ def _boolean(value: object, setting: str) -> bool:
     if not isinstance(value, bool):
         raise ConfigurationError(f"{setting} must be a boolean.")
     return value
+
+
+def _invalid_json_constant(value: str) -> NoReturn:
+    raise ValueError("Non-JSON numeric constant.")
 
 
 def load_config(
@@ -111,7 +115,7 @@ def load_config(
     if mode == "managed":
         if isinstance(document, str):
             try:
-                document = json.loads(document)
+                document = json.loads(document, parse_constant=_invalid_json_constant)
             except (ValueError, RecursionError):
                 raise ConfigurationError("Managed configuration is not valid JSON.") from None
         raw = _object(document, "Managed configuration")
@@ -196,7 +200,7 @@ def load_config(
         _string(direct_credentials.key, "SQS key")
         _string(direct_credentials.secret, "SQS secret")
     elif direct_credentials not in ("ecs", "instance", "default"):
-        raise ConfigurationError("Unknown SQS direct_credentials provider.")
+        raise ConfigurationError("Unknown SQS credentials provider.")
     return QueueConfig(
         mode="sqs",
         log_socket=log,

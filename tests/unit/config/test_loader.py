@@ -39,6 +39,7 @@ def test_backend_must_be_explicit(env):
     [
         "",
         "{secret",
+        '{"driver":"cloud","connection":{"region":"us-east-1","credentials":"ecs"},"unknown":NaN}',
         "null",
         "[]",
         {},

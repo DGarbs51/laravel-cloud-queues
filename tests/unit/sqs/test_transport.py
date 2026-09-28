@@ -19,8 +19,7 @@ from laravel_cloud_queues.errors import (
     TransportError,
 )
 from laravel_cloud_queues.transports.base import Delivery, OutgoingMessage
-from laravel_cloud_queues.transports.sqs import SqsConsumer, SqsProducer
-from laravel_cloud_queues.transports.sqs import _client
+from laravel_cloud_queues.transports.sqs import SqsConsumer, SqsProducer, _client
 
 CONNECTION = SqsConnectionConfig(
     "https://sqs.us-east-1.amazonaws.com/123",
@@ -305,3 +304,15 @@ def test_client_is_lazy_and_created_once_in_calling_thread(monkeypatch):
 def test_invalid_lease(lease):
     with pytest.raises(ConfigurationError):
         SqsConsumer(CONNECTION, lease_seconds=lease)
+
+
+def test_release_respects_remaining_twelve_hour_window(monkeypatch):
+    from laravel_cloud_queues.transports import sqs
+
+    monkeypatch.setattr(sqs, "monotonic", lambda: 110.25)
+    consumer = SqsConsumer(CONNECTION)
+    consumer._client = Mock()
+    consumer.release(replace(DELIVERY, received_at=100), 43200)
+    consumer._client.change_message_visibility.assert_called_once_with(
+        QueueUrl=URL, ReceiptHandle=DELIVERY.receipt, VisibilityTimeout=43188
+    )
