@@ -1,6 +1,8 @@
 # Upstream evidence map (lane L0R)
 
-Verification of the `AGENT_BUILD_PROMPT.md` "Resolved conflicts" table and the lead's open questions against the pinned sources. Every claim below was re-read at the pin; nothing was carried over from the 2026-09-27 audits without re-checking.
+> Historical build record. Section references (`§N`) point to `PROJECT_SCOPE.md`, which was removed on 2026-09-28; see git history. Current behaviour is defined by `docs/decisions.md` and `docs/contract/`.
+
+Verification of the build's "Resolved conflicts" table and the lead's open questions against the pinned sources. Every claim below was re-read at the pin; nothing was carried over from the 2026-09-27 audits without re-checking.
 
 Pins (verified locally with `git rev-parse HEAD` / `git describe --tags`, working trees clean):
 

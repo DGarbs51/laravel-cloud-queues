@@ -1,4 +1,4 @@
-"""Offline unit tests for .github/scripts/upstream_drift.py (PROJECT_SCOPE.md §2).
+"""Offline unit tests for .github/scripts/upstream_drift.py.
 
 Exercises only the pure parsing/comparison functions with canned GitHub API JSON.
 No network access; ``github_get``/``fetch_*`` are not called here.

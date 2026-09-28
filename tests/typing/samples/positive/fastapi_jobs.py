@@ -1,4 +1,4 @@
-"""FastAPI jobs must keep a checkable handler signature (PROJECT_SCOPE.md §5, §17).
+"""FastAPI jobs must keep a checkable handler signature.
 
 ``Depends()`` parameters stay in the static signature. A direct call passes them
 explicitly. ``dispatch`` omits them because they are injected at run time and the

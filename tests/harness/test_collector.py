@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.log_collector import (
+from tests.harness.log_collector import (
     LogCollector,
     validate_failed_job_event,
     validate_lifecycle_event,

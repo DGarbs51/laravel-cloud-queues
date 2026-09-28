@@ -1,11 +1,11 @@
-# Executable conformance demo
+# Conformance suite
 
-`demo/` is repository-only. It is excluded from the wheel and source distribution,
-as are the harness, tests and `probe-app/`. Run from a repository checkout:
+`tests/conformance/` is repository-only, like the rest of `tests/` and the harness: it is
+excluded from the wheel and source distribution. Run from a repository checkout:
 
 ```sh
 uv sync
-uv run python -m demo.conformance --sqs moto --report compatibility-report.json
+uv run python -m tests.conformance --sqs moto --report compatibility-report.json
 ```
 
 The installed command `uv run laravel-cloud-queues conformance` delegates to the same
@@ -19,7 +19,7 @@ they never flush a database. To use another service:
 ```sh
 export LARAVEL_CLOUD_QUEUES_TEST_REDIS_URL=redis://127.0.0.1:6379/15
 export LARAVEL_CLOUD_QUEUES_TEST_REDIS_TLS_URL='rediss://localhost:6380/0?ssl_ca_certs=/path/ca.crt'
-uv run python -m demo.conformance --sqs moto
+uv run python -m tests.conformance --sqs moto
 ```
 
 The TLS probe requires a TLS-enabled Redis/Valkey service with certificate verification.
@@ -32,8 +32,8 @@ dependencies and access to the package cache/index used by the existing packagin
 A quick, service-free check and a focused product check:
 
 ```sh
-uv run python -m demo.conformance --only envelope.v1_shape envelope.codecs agent.receive_count_default -q
-uv run python -m demo.conformance --only retry.exhaustion timeout.release_exit_124 -q
+uv run python -m tests.conformance --only envelope.v1_shape envelope.codecs agent.receive_count_default -q
+uv run python -m tests.conformance --only retry.exhaustion timeout.release_exit_124 -q
 uv run pytest tests/conformance tests/contract -q
 ```
 
@@ -57,7 +57,7 @@ SQS emulation proves message attributes and client semantics, not live server fa
 
 ## Producer and worker
 
-`demo.app:app` is a real FastAPI app bound to `LaravelCloudQueues`. It exposes
+`tests.conformance.app:app` is a real FastAPI app bound to `LaravelCloudQueues`. It exposes
 `POST /dispatch/{wire_job_name}` with JSON `{"kwargs": {...}, "options": {...}}`, plus
 `GET /health`. The jobs include sync/async handlers, lifespan state, yield dependencies,
 named queues, retries, explicit release/fail, timeouts, collisions with option names,
@@ -69,14 +69,14 @@ For a manual Redis demonstration, start the worker and producer in different ter
 export LARAVEL_CLOUD_QUEUES_BACKEND=redis
 export LARAVEL_CLOUD_QUEUES_REDIS_URL=redis://127.0.0.1:6379/15
 export LARAVEL_CLOUD_QUEUES_REDIS_PREFIX=lcq-manual-demo:
-uv run laravel-cloud-queues work demo.app:app
+uv run laravel-cloud-queues work tests.conformance.app:app
 # In another terminal with the same environment:
-uv run python -m demo.produce demo.sync --kwargs '{"label":"hello"}'
+uv run python -m tests.conformance.produce demo.sync --kwargs '{"label":"hello"}'
 ```
 
-`demo.produce` uses FastAPI's TestClient to call the dispatch HTTP route in its own process,
+`tests.conformance.produce` uses FastAPI's TestClient to call the dispatch HTTP route in its own process,
 so no ASGI server dependency is needed. It shares only the broker with the separate worker.
-You may also serve the app using `uvicorn demo.app:app` if uvicorn is installed. This is a
+You may also serve the app using `uvicorn tests.conformance.app:app` if uvicorn is installed. This is a
 local compatibility fixture with synthetic payloads, not a public application endpoint.
 `LCQ_DEMO_EVENTS=/path/events.jsonl` records handler/dependency/lifespan observations without
 arguments; `LCQ_DEMO_NAMED_QUEUE` selects an isolated named queue for concurrent probes.
@@ -88,9 +88,9 @@ successful producer return and its absence after a failed send. Real producer di
 SQS attributes, retries, FIFO/fair options and ignored ambient `AWS_*` values are exercised
 against moto/LocalStack in self-managed SQS mode.
 
-The managed emulator and Unix log collector come from `harness/`. The worker runs via
-`laravel-cloud-queues work demo.app:app` (the equivalent Python module entry point inside
-probes). Short-lease tests use public `WorkerOptions`; `demo.fault_worker` deliberately
+The managed emulator and Unix log collector come from `tests/harness/`. The worker runs via
+`laravel-cloud-queues work tests.conformance.app:app` (the equivalent Python module entry point inside
+probes). Short-lease tests use public `WorkerOptions`; `tests.conformance.fault_worker` deliberately
 loses a response after an actual SQS delete to prove the worker stops on ambiguous ack.
 Timeout probes assert exit 124, lifecycle output and redelivery counts; retry probes record
 the original/retried message IDs and attempts. The native-call probe records delayed Python
@@ -107,7 +107,7 @@ The `conformance` GitHub Actions job provisions pinned LocalStack and Valkey ser
 verified TLS, then runs:
 
 ```sh
-uv run python -m demo.conformance --sqs localstack --report compatibility-report.json
+uv run python -m tests.conformance --sqs localstack --report compatibility-report.json
 ```
 
 It always uploads the JSON report and `conformance-artifacts/`, and the aggregate `ci` gate
@@ -116,6 +116,6 @@ authoritative SQS gate; moto is local convenience. A local report validates CI w
 runs quality tools; only GitHub can attest to the full remote matrix result.
 
 Live Laravel Cloud managed queues and dashboard retry remain skipped with their explicit
-catalog approvals until Python managed queues are supported (§1). No live Cloud deployment
+catalog approvals until Python managed queues are supported. No live Cloud deployment
 or paid service is needed. During lane integration, unmerged contract implementations fail
 normally; they are not converted into temporary approvals or hidden skips.

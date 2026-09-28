@@ -1,4 +1,4 @@
-"""Laravel Cloud queue event builders (PROJECT_SCOPE.md §15, D1, D6b).
+"""Laravel Cloud queue event builders (D1, D6b).
 
 Wire shape follows ``Illuminate\\Foundation\\Cloud\\Queue`` and
 ``FailedJobProvider::log``. The D1 size policy is measured on the encoded NDJSON
@@ -311,7 +311,7 @@ def failure_log_record(
     The payload is included in full. D1's 16 KiB trim is not applied: these lines go to
     the worker's own stdout, not the Cloud failed-job collector. There is no receipt
     handle field; pass the broker message id as ``message_id``. Job arguments should
-    not contain secrets (PROJECT_SCOPE.md §26a).
+    not contain secrets.
     """
 
     return {

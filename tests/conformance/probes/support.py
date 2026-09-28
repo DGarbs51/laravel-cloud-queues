@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from demo.conformance import ROOT
-from demo.conformance.plugin import Evidence, safe
-from harness.agent_emulator import AgentEmulator
-from harness.log_collector import LogCollector
-from harness.process import Process
-from harness.pytest_plugin import ProcessFactory
-from harness.sqs import SQSEndpoint
+from tests.conformance import ROOT
+from tests.conformance.plugin import Evidence, safe
+from tests.harness.agent_emulator import AgentEmulator
+from tests.harness.log_collector import LogCollector
+from tests.harness.process import Process
+from tests.harness.pytest_plugin import ProcessFactory
+from tests.harness.sqs import SQSEndpoint
 
 
 def environment(artifacts: Path) -> dict[str, str | None]:
@@ -108,7 +108,7 @@ def worker(
             "-m",
             "laravel_cloud_queues.cli",
             "work",
-            "demo.app:app",
+            "tests.conformance.app:app",
             "--sleep",
             "0.05",
             *options,
@@ -132,7 +132,7 @@ def produce(
         [
             sys.executable,
             "-m",
-            "demo.produce",
+            "tests.conformance.produce",
             job,
             "--kwargs",
             json.dumps(kwargs or {"label": job}),

@@ -1,6 +1,6 @@
 # Worker contract: delivery state machine and outcome ownership
 
-PROJECT_SCOPE.md §11-§14, D2, D4, D6b, D7, D12, D13. Laravel references: `Illuminate\Queue\Worker`,
+Decisions D2, D4, D6b, D7, D12, D13. Laravel references: `Illuminate\Queue\Worker`,
 `Foundation\Cloud\{Queue,QueueConnector,FailedJobProvider,CloudJob}` (see
 `upstream-evidence.md` for line numbers).
 

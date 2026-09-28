@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from demo.conformance import ROOT
+from tests.conformance import ROOT
 
 from .support import capture, environment, produce, rows, sqs_env, until, worker
 
@@ -162,7 +162,7 @@ def test_visibility_renewal(run_process, artifacts, sqs_endpoint, evidence):
     # Public WorkerOptions exposes a short lease for a bounded process proof.
     code = (
         "from laravel_cloud_queues.worker import Worker, WorkerOptions, resolve_target; "
-        "raise SystemExit(Worker(resolve_target('demo.app:app'), "
+        "raise SystemExit(Worker(resolve_target('tests.conformance.app:app'), "
         "WorkerOptions(max_jobs=1, lease_seconds=1)).run())"
     )
     process = run_process([sys.executable, "-c", code], env=env, cwd=ROOT, output_dir=artifacts)
@@ -183,7 +183,10 @@ def test_ambiguous_direct_ack(run_process, artifacts, sqs_endpoint, evidence):
     first = produce(run_process, artifacts, env)
     second = produce(run_process, artifacts, env)
     process = run_process(
-        [sys.executable, "-m", "demo.fault_worker"], env=env, cwd=ROOT, output_dir=artifacts
+        [sys.executable, "-m", "tests.conformance.fault_worker"],
+        env=env,
+        cwd=ROOT,
+        output_dir=artifacts,
     )
     result = process.wait(15)
     capture(evidence, artifacts)

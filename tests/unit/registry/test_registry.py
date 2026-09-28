@@ -1,4 +1,4 @@
-"""Registry rules, loading and the default invoker (PROJECT_SCOPE.md §7, §18)."""
+"""Registry rules, loading and the default invoker."""
 
 from __future__ import annotations
 

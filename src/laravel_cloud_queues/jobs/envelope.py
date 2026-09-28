@@ -1,4 +1,4 @@
-"""Envelope v1 (PROJECT_SCOPE.md §8). CONTRACT — implemented by lane L3b.
+"""Envelope v1.
 
 Wire shape (one JSON object; keys other than ``uuid``/``displayName`` live under the
 versioned ``laravel_cloud_queues`` section)::

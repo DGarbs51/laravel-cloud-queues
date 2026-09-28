@@ -4,7 +4,7 @@
 
 Lifespan and dependency teardown append lines to ``$LCQ_FA_EVENTS``. Teardown records
 whether the Redis reserved set still holds the delivery. Acknowledgement removes that
-member (PROJECT_SCOPE.md §13; Laravel ``RedisQueue`` deletes with ``zrem`` on
+member (Laravel ``RedisQueue`` deletes with ``zrem`` on
 ``queues:{name}:reserved`` — ``RedisQueue.php:619``, key shape ``RedisQueue.php:683``).
 """
 

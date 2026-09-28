@@ -257,7 +257,7 @@ def _transactional_dependencies(log: list[str]) -> tuple[Callable[..., Any], Cal
 def test_yield_dependencies_observe_the_handler_exception_like_fastapi(
     failure: BaseException | None, expected: set[str]
 ) -> None:
-    """PROJECT_SCOPE §13/§17: a yield dependency's ``except`` runs on failure and release,
+    """A yield dependency's ``except`` runs on failure and release,
     exactly as FastAPI throws a route's exception into request-scoped dependencies."""
     log: list[str] = []
     async_db, sync_db = _transactional_dependencies(log)

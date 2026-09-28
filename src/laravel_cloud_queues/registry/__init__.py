@@ -1,5 +1,4 @@
-"""Job registry, invoker hook and worker target (PROJECT_SCOPE.md §7, §18).
-CONTRACT — implemented by lane L3c."""
+"""Job registry, invoker hook and worker target."""
 
 from __future__ import annotations
 

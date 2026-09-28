@@ -1,4 +1,4 @@
-"""``registry.testing()``: recorder and eager execution (PROJECT_SCOPE.md §20)."""
+"""``registry.testing()``: recorder and eager execution."""
 
 from __future__ import annotations
 

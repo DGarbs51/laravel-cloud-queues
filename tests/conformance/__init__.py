@@ -1,4 +1,4 @@
-"""Catalog-driven pytest runner and fail-closed compatibility report (§21–22)."""
+"""Catalog-driven pytest runner and fail-closed compatibility report."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import importlib.metadata
 import json
 import os
 import platform
-import re
 import subprocess
 from collections import Counter
 from datetime import datetime, timezone
@@ -23,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "docs/contract/catalog.json"
 
 
-def catalog_errors(catalog: dict[str, Any], scope: str | None = None) -> list[str]:
+def catalog_errors(catalog: dict[str, Any]) -> list[str]:
     errors = []
     features = catalog.get("features", [])
     if not features:
@@ -42,23 +41,6 @@ def catalog_errors(catalog: dict[str, Any], scope: str | None = None) -> list[st
             or not set(entry["allowed_statuses"]) <= {"skipped", "partial", "unsupported"}
         ):
             errors.append(f"Invalid exception: {entry['id']}")
-    if scope is not None:
-        block = scope.split("### Required demo capabilities\n", 1)[1].split(
-            "### Human-readable output", 1
-        )[0]
-        required = [
-            line[2:].rstrip().rstrip(";.").strip()
-            for line in block.splitlines()
-            if line.startswith("- ")
-        ]
-        acceptance = scope.split("## 30. Acceptance criteria", 1)[1].split("## 31.", 1)[0]
-        required += [f"§30.{number}" for number in re.findall(r"^(\d+)\. ", acceptance, re.M)]
-        covers = Counter(item for feature in features for item in feature.get("covers", []))
-        errors.extend(
-            f"Missing or duplicate catalog coverage: {item}"
-            for item in required
-            if covers[item] == 0 or (not item.startswith("§30.") and covers[item] != 1)
-        )
     return errors
 
 
@@ -223,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args, pytest_args = parser.parse_known_args(argv)
     catalog = json.loads(CATALOG.read_text())
-    errors = catalog_errors(catalog, (ROOT / "PROJECT_SCOPE.md").read_text())
+    errors = catalog_errors(catalog)
     features = [f for f in catalog["features"] if not args.only or f["id"] in args.only]
     references = sorted({ref for f in features for ref in (f.get("probe") or [])})
     plugin = ConformancePlugin(references)

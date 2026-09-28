@@ -1,4 +1,4 @@
-"""The queue worker (PROJECT_SCOPE.md §11-§14). CONTRACT — implemented by lane L6.
+"""The queue worker.
 
 State machine per delivery (exactly one outcome owner):
 received -> [decode: defect => terminal] -> [pre-run attempt check] -> running

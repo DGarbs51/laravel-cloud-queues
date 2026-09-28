@@ -19,7 +19,7 @@ from typing import Literal, cast
 
 from typing_extensions import Self
 
-from harness._socket import SocketService, UnixServer
+from tests.harness._socket import SocketService, UnixServer
 
 DEFAULT_QUEUE_URL = "https://sqs.us-east-1.amazonaws.com/123456789012/default"
 Endpoint = Literal["next", "result"]

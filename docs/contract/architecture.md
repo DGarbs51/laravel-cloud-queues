@@ -1,6 +1,6 @@
 # Architecture and contract
 
-Contract pack for the v0.1 build (AGENT_BUILD_PROMPT.md "Contract pack"). The typed
+Contract pack for the v0.1 build. The typed
 interfaces in `src/laravel_cloud_queues/` are the contract of record; this file explains
 how they fit together. Changing a contract signature needs the lead's approval.
 
@@ -84,8 +84,8 @@ lease expiry, explicit release).
 | L7 observability | `observability/`, `tests/fixtures/events/` |
 | L6 worker + CLI | `worker/`, `cli/` |
 | L8 FastAPI | `fastapi/` |
-| L9 local platform | `harness/` |
-| L10 demo + conformance | `demo/` |
+| L9 local platform | `harness/` (now `tests/harness/`) |
+| L10 demo + conformance | `demo/` (now `tests/conformance/`) |
 
 Each lane also owns its tests under `tests/unit/<area>/` and `tests/integration/<area>/`.
 `errors.py`, `config/_models.py`, `transports/base.py`, `__init__.py` and `pyproject.toml`
@@ -93,7 +93,7 @@ are lead-owned: request changes on the todo.
 
 ## Test conventions
 
-- `uv run pytest` from the repository root. `harness` is importable (pytest `pythonpath`).
+- `uv run pytest` from the repository root. `tests.harness` is importable (pytest `pythonpath`).
 - Markers: `agent`, `sqs`, `redis`, `socket`, `subprocess`, `runtime_proof`, `packaging`,
   `conformance`. Services are skipped when absent, and fail when
   `LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES=1` (CI).

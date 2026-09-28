@@ -1,4 +1,4 @@
-"""JobContext exactly-once semantics (PROJECT_SCOPE.md §12 "Explicit control", D13.9)."""
+"""JobContext exactly-once semantics (D13.9)."""
 
 from __future__ import annotations
 

@@ -67,7 +67,7 @@ CPython runs a Python signal handler between bytecode instructions. `sum(range(n
 
 On both 3.10 and 3.14 a 0.45 s timeout became a 1.34–1.37 s exit 124 (overrun about 0.9 s). The same call starved the watchdog: with a 0.36 s lease, no `renew` was recorded during the call, another process received the message once visibility expired, and the owner's renewal then failed. Failure was timestamped within 1 ms of `sum` returning (`renew_failed_after_s=0.0`). The owner exited 1 and did not record success.
 
-That is the same limitation §14 and D2 state for Laravel: a job blocked in native code can overrun its timeout until control returns to the interpreter. Holding the GIL adds a second effect the alarm overrun alone does not show: renewal does not run either, so the lease can be lost and another worker can take the message while the first is still inside the call.
+That is the same limitation D2 states for Laravel: a job blocked in native code can overrun its timeout until control returns to the interpreter. Holding the GIL adds a second effect the alarm overrun alone does not show: renewal does not run either, so the lease can be lost and another worker can take the message while the first is still inside the call.
 
 ## Implications for the real worker (L6)
 

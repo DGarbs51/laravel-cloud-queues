@@ -98,7 +98,7 @@ def test_backoff_selection_last_value_repeats_and_rounds_up(
 
 
 def test_default_tries_is_one_so_first_error_is_terminal(make: Any) -> None:
-    """Laravel default ``tries`` is 1 (§12): the first exception fails the job."""
+    """Laravel default ``tries`` is 1: the first exception fails the job."""
     d = delivery("raise")
     h = make([d], mode="managed")
     h.run()

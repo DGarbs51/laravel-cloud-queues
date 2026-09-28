@@ -1,6 +1,6 @@
 name: Upstream drift check
 
-# Advisory only (decision D11, PROJECT_SCOPE.md §2 "Upstream drift policy"). This
+# Advisory only (decision D11). This
 # workflow never fails the build and never edits the pinned baseline; it only
 # reports what changed upstream so a human can decide whether to update the pin.
 

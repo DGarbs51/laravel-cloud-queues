@@ -1,4 +1,4 @@
-"""Configuration models (PROJECT_SCOPE.md §6, D6/D6a). Frozen, secret-safe ``repr``."""
+"""Configuration models (D6, D6a). Frozen, secret-safe ``repr``."""
 
 from __future__ import annotations
 

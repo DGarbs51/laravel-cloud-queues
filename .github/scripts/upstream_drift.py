@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Weekly advisory upstream drift check (PROJECT_SCOPE.md §2, decision D11).
+"""Weekly advisory upstream drift check (decision D11).
 
 Stdlib only. Compares the pinned compatibility baseline (laravel/framework and
 laravel/symfony-on-cloud, see docs/decisions.md D13 and docs/references.md) against
@@ -38,7 +38,7 @@ DEFAULT_BASELINE = {
     "symfony_sha": "50c945170b6cb5690370d15fd725c6f82495e9ba",
 }
 
-# PROJECT_SCOPE.md §2 "Primary Laravel Framework references" plus the Redis/Valkey
+# The primary Laravel Framework references plus the Redis/Valkey
 # files this project also depends on for compatibility (Foundation/Cloud/* covers the
 # whole directory).
 WATCHED_FRAMEWORK_PREFIXES = (
@@ -56,7 +56,7 @@ WATCHED_FRAMEWORK_PREFIXES = (
     "src/Illuminate/Queue/Connectors/SqsConnector.php",
 )
 
-# PROJECT_SCOPE.md §2 "Secondary cross-framework reference".
+# Secondary cross-framework reference.
 WATCHED_SYMFONY_PREFIXES = (
     "src/Queue",
     "src/Observability",

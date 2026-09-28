@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from harness.sqs import ServiceUnavailable
+from tests.harness.sqs import ServiceUnavailable
 
 if TYPE_CHECKING:
     from redis import Redis

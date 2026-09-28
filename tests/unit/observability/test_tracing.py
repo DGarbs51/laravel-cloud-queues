@@ -1,4 +1,4 @@
-"""OpenTelemetry propagation resets between jobs (PROJECT_SCOPE.md §16)."""
+"""OpenTelemetry propagation resets between jobs."""
 
 from __future__ import annotations
 
@@ -41,8 +41,7 @@ def test_inject_trace_context_writes_w3c_traceparent() -> None:
 def test_sequential_activations_reset_the_span_context() -> None:
     """Two jobs in a row must not leak span context.
 
-    Conformance target: extract + attach for the job, detach afterwards
-    (PROJECT_SCOPE.md §16).
+    Conformance target: extract + attach for the job, detach afterwards.
     """
 
     carrier_a, carrier_b = _carriers()

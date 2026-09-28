@@ -1,6 +1,6 @@
 # Project decisions
 
-Decisions that resolve open questions from `docs/audits/2026-09-27/README.md`. They take precedence over conflicting wording in `PROJECT_SCOPE.md` and `AGENT_BUILD_PROMPT.md` until those documents are updated. See `docs/references.md` for where to verify each one.
+Decisions that resolve open questions from the 2026-09-27 audits (see git history). They are the project's record of intended behaviour; the original scope and build prompt they amended were removed on 2026-09-28 (see git history). See `docs/references.md` for where to verify each one.
 
 ## D1 — Failed-job events: hybrid size policy (2026-09-27)
 
@@ -91,27 +91,27 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
 
 ## D7 — Choices made while locking in the spec (2026-09-27)
 
-Smaller choices made when applying D1–D6 and the audit fixes to `PROJECT_SCOPE.md`. Review and override as needed.
+Smaller choices made when applying D1–D6 and the audit fixes to the original scope. Review and override as needed.
 
-- ~~`/result` 4xx is fatal~~ Revised 2026-09-28: 4xx is logged as `AgentProtocolError` and the worker continues, matching Laravel and Symfony (§11).
-- Worker exit codes: 0 clean stop or agent unhealthy (revised 2026-09-28 to match Laravel), 1 other fatal transport error, 2 configuration error, 124 timeout (§11, §23).
-- Fresh delays accept `int` or `timedelta`; positive fractions round up; >900 s, negative and non-finite values are rejected (§10).
-- The Redis backend has no transport payload limit (revised 2026-09-28; bounded by the 16 MiB envelope decode ceiling since D14.2); it keeps the 900-second delay cap, and FIFO and fair-queue options are rejected in `redis` mode (§8, §10).
-- Self-managed SQS requires explicit credentials unless `LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS=default` opts into boto3's default chain (§6).
-- Direct SQS and Redis run a watchdog thread that renews visibility or reservations during a job (§11). Confirmed 2026-09-28:
+- ~~`/result` 4xx is fatal~~ Revised 2026-09-28: 4xx is logged as `AgentProtocolError` and the worker continues, matching Laravel and Symfony.
+- Worker exit codes: 0 clean stop or agent unhealthy (revised 2026-09-28 to match Laravel), 1 other fatal transport error, 2 configuration error, 124 timeout.
+- Fresh delays accept `int` or `timedelta`; positive fractions round up; >900 s, negative and non-finite values are rejected.
+- The Redis backend has no transport payload limit (revised 2026-09-28; bounded by the 16 MiB envelope decode ceiling since D14.2); it keeps the 900-second delay cap, and FIFO and fair-queue options are rejected in `redis` mode.
+- Self-managed SQS requires explicit credentials unless `LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS=default` opts into boto3's default chain.
+- Direct SQS and Redis run a watchdog thread that renews visibility or reservations during a job. Confirmed 2026-09-28:
   - lease window 60 s by default;
   - renewal every third of the window;
   - the thread starts with the job and stops before the outcome is reported;
   - a failed renewal (message deleted or reassigned) is a lost lease: never report success for a job the worker no longer owns;
   - `timeout=0` (unlimited) is allowed because the lease keeps renewing.
-- AnyIO on the asyncio backend only (§5).
-- Packaging: `hatchling`; extras `fastapi`, `redis`, `otel`; Pydantic support activates when installed (§4).
-- CI: CPython 3.10–3.14 on Linux; macOS not required (§5).
-- Worker targets may be a FastAPI app or a core registry object (§23).
+- AnyIO on the asyncio backend only.
+- Packaging: `hatchling`; extras `fastapi`, `redis`, `otel`; Pydantic support activates when installed.
+- CI: CPython 3.10–3.14 on Linux; macOS not required.
+- Worker targets may be a FastAPI app or a core registry object.
 
 ## D8 — Worker lifecycle on worker clusters (2026-09-28)
 
-Per the Laravel Cloud team: worker clusters and App-cluster background processes run the worker as a long-lived, supervised service that is restarted on exit. It is not a run-once process. Stop-when-empty flags default to off and are discouraged there (they would restart-loop). Exit codes are diagnostic. Managed queues keep a platform-controlled lifecycle. See `PROJECT_SCOPE.md` §13.
+Per the Laravel Cloud team: worker clusters and App-cluster background processes run the worker as a long-lived, supervised service that is restarted on exit. It is not a run-once process. Stop-when-empty flags default to off and are discouraged there (they would restart-loop). Exit codes are diagnostic. Managed queues keep a platform-controlled lifecycle.
 
 ## D9 — Local SQS emulator (2026-09-28)
 
@@ -121,13 +121,13 @@ Local development and agents use `moto` for SQS tests (no Docker required). CI u
 
 - The build runs with Claude Opus 5.5 as lead orchestrator using the `solo-orchestrator` skill inside Solo. The lead routes lanes to any configured model; reviews preferably come from a different lab.
 - Explicit stay-on-main run: lanes use their own worktrees and branches, and the lead integrates accepted lanes directly into `main`. There is no final PR.
-- Each push to `main` deploys `probe-app/` to Laravel Cloud, used as a continuous production deploy test. Keep `main` deployable, and move `probe-app/`'s workers to `laravel-cloud-queues work` once the package can consume.
+- Each push to `main` deploys `probe-app/` to Laravel Cloud, used as a continuous production deploy test. Keep `main` deployable, and move `probe-app/`'s workers to `laravel-cloud-queues work` once the package can consume. *Superseded 2026-09-28:* `probe-app/` and its Cloud application were removed; the `fastapi-cloud-queues` and `python-cloud-queues` canaries, which install released versions from PyPI, replace it. Pushes to `main` no longer deploy anything.
 
 ## D11 — CI provider (2026-09-28)
 
 GitHub Actions:
-- Full gate (§5) on every push to `main` and on pull requests: Python 3.10–3.14 matrix on Linux, with LocalStack and Valkey/Redis service containers.
-- Upstream drift check (§2) on a weekly schedule, advisory only.
+- Full gate on every push to `main` and on pull requests: Python 3.10–3.14 matrix on Linux, with LocalStack and Valkey/Redis service containers.
+- Upstream drift check on a weekly schedule, advisory only.
 
 ## D12 — No lifecycle events outside managed queues (2026-09-28)
 
@@ -137,19 +137,19 @@ Per the Laravel Cloud team, only managed queues receive queue lifecycle events t
 
 Made by the lead while freezing the contract pack (`docs/contract/architecture.md`), with source evidence in `docs/contract/upstream-evidence.md`. Reviewed against the pinned sources by an agent from another lab (Codex GPT-6 Astra, review R2); its corrections are applied below.
 
-1. **Terminal-failure order is mode-specific (D1, D6b, D12).** In managed mode, through either the agent or direct SQS, complete the message, then emit `failed_job`, then `failed` with the same timestamp. Laravel's `Job::fail` deletes the job (agent `processed` / `DeleteMessage`) before `JobFailed` triggers `FailedJobProvider::log`. This corrects the reversed managed-mode order in §11/§12 and matches D1/§15. In self-managed `sqs`/`redis` modes, preserve D6b: write the structured failure record to stdout **first**, then complete (delete/remove the reservation), so deletion cannot precede the only failure record. These modes send no socket events (D12). Terminal timeouts follow the same mode-specific order, then exit 124.
+1. **Terminal-failure order is mode-specific (D1, D6b, D12).** In managed mode, through either the agent or direct SQS, complete the message, then emit `failed_job`, then `failed` with the same timestamp. Laravel's `Job::fail` deletes the job (agent `processed` / `DeleteMessage`) before `JobFailed` triggers `FailedJobProvider::log`. This corrects the reversed managed-mode order in the original scope and matches D1. In self-managed `sqs`/`redis` modes, preserve D6b: write the structured failure record to stdout **first**, then complete (delete/remove the reservation), so deletion cannot precede the only failure record. These modes send no socket events (D12). Terminal timeouts follow the same mode-specific order, then exit 124.
 2. **Completion events are immediate; the timeout covers only handler execution and per-job teardown.** Deviation `completion-event-immediate` (follows project): emit completion lifecycle events right after the outcome is reported, with `failed_job` before `failed` on terminal failure. Laravel emits lazily at the next `pop`, on `WorkerStopping`, or right after `failed_job`, so its `duration_ms` includes `--rest` and idle time before the next poll. Deviation `timeout-window-handler-only` (follows project): arm the timer after decoding/pre-run checks, around the handler and per-job teardown, and disarm before outcome reporting or `--rest`. Laravel arms before `process()` and resets after reporting/rest, so it can time out during either. Both timing choices are intentional project deviations.
-3. **`GET /next` retries follow Laravel:** up to 3 attempts (retry after 0 ms and 500 ms) on connection errors **and HTTP 4xx/5xx responses**. A 204 ends the poll as empty; a 200 is decoded; any other final status is fatal. Returned 3xx and 201 responses are not retried and are rejected immediately. This corrects §11's connection-errors-only wording: Laravel's `retry([0, 500], throw: false)` has no `when` filter, but `Response::throw()` throws only for HTTP client/server errors.
+3. **`GET /next` retries follow Laravel:** up to 3 attempts (retry after 0 ms and 500 ms) on connection errors **and HTTP 4xx/5xx responses**. A 204 ends the poll as empty; a 200 is decoded; any other final status is fatal. Returned 3xx and 201 responses are not retried and are rejected immediately. This corrects the original scope's connection-errors-only wording: Laravel's `retry([0, 500], throw: false)` has no `when` filter, but `Response::throw()` throws only for HTTP client/server errors.
 4. **Managed config is stricter than Laravel (deviations `managed-config-strict-shape` and `credentials-explicit-only`, follows project).** A `driver` other than `cloud`, a missing `connection` or `region`, and any `credentials` value other than the strings `ecs`/`instance` are configuration errors, including an absent value. Laravel skips a non-`cloud` driver and auto-creates `connection`. It also accepts provider objects/callables; when `credentials` is absent, it honors explicit `key`/`secret` (including `token`) before falling back to the SDK default chain. The project forbids that chain in managed mode because it holds object-storage keys on Laravel Cloud.
 5. **Additional labeled deviations recorded in the conformance catalog:** deterministic decode/unknown-job failures are terminal on first delivery (Laravel uses normal retries; the project follows Symfony's terminal decode rule while keeping Laravel's managed events). Numeric `ApproximateReceiveCount` strings are parsed; missing/invalid values default to 1. Symfony casts and clamps; Laravel indexes the key without a fallback, and its console `HandleExceptions` handler raises `ErrorException` for a missing key. Agent telemetry uses `queueUrl` with a config fallback (Symfony). Direct SQS uses `MaxNumberOfMessages=1`; one queue uses `WaitTimeSeconds=20` with no extra `--sleep` after an empty long poll; several queues use `WaitTimeSeconds=0` in priority order, then `--sleep` if all are empty (`receive-long-poll-params`, follows Symfony's long-poll parameters, with project polling/sleep rules). Laravel always sleeps after an empty pop. Redis uses a bounded blocking wait of `--sleep` seconds. After agent `/result` 4xx, log `AgentProtocolError`, send no second outcome, and emit the chosen completion event (`outcome-event-after-ack-rejection`, follows project): Laravel can instead emit `failed` without `failed_job` when a successful handler's processed report is rejected on its last attempt. Ambiguous direct-broker acknowledgements exit 1; agent unavailability/5xx, including exhausted retries after a lost `/result` response, is `AgentUnavailableError` and exits 0.
-6. **Dependencies:** `httpx` (agent client, §11), `typing-extensions` (Python 3.10 typing) and `click` (CLI, §23; Flask's CLI is click-based, so the command group mounts into it directly) are core dependencies. UUIDv7 is implemented in-package because `failed_job.id` must be bound to the failure timestamp.
+6. **Dependencies:** `httpx` (agent client), `typing-extensions` (Python 3.10 typing) and `click` (CLI; Flask's CLI is click-based, so the command group mounts into it directly) are core dependencies. UUIDv7 is implemented in-package because `failed_job.id` must be bound to the failure timestamp.
 7. **Envelope layout:** Laravel's top-level `uuid` and `displayName`; every other field lives under one versioned `laravel_cloud_queues` object. Argument decoding is driven by the handler's type annotations; payloads never name Python types.
-8. **Redis reservation expiry is now + lease (60 s), renewed every third of the lease by the watchdog,** rather than now + job timeout + margin (§11). D7's watchdog already protects running jobs; this makes `timeout=0` safe and bounds redelivery after a crash or a timeout exit to one lease window. Direct SQS receive likewise sets `VisibilityTimeout` to the lease.
+8. **Redis reservation expiry is now + lease (60 s), renewed every third of the lease by the watchdog,** rather than now + job timeout + margin. D7's watchdog already protects running jobs; this makes `timeout=0` safe and bounds redelivery after a crash or a timeout exit to one lease window. Direct SQS receive likewise sets `VisibilityTimeout` to the lease.
 9. **Explicit `JobContext.release()` always releases** (Laravel parity). When attempts are exhausted, the next delivery fails the pre-run check with `MaxAttemptsExceededError`.
 
 ## D14 — Trust-boundary limits from cross-lab review R1 (2026-09-27)
 
 1. **Maximum job timeout: 604,800 seconds (7 days).** Declared policies, worker defaults and decoded envelopes reject larger values (`ConfigurationError` at declaration; `MalformedEnvelopeError` when decoding a message). `signal.setitimer` overflows on very large values, which would otherwise crash the worker instead of failing the message. `0` still disables the timeout.
-2. **Redis payloads are bounded by the envelope decode ceiling (16 MiB).** §8 bounds decoded size at the trust boundary; a Redis dispatch above that ceiling is rejected at dispatch with `PayloadTooLargeError` instead of being accepted and failing on receipt. SQS and managed queues keep the 1 MiB limit. This refines §8's "no package-imposed limit" for Redis.
+2. **Redis payloads are bounded by the envelope decode ceiling (16 MiB).** The envelope decoder bounds decoded size at the trust boundary; a Redis dispatch above that ceiling is rejected at dispatch with `PayloadTooLargeError` instead of being accepted and failing on receipt. SQS and managed queues keep the 1 MiB limit. This refines the original scope's "no package-imposed limit" for Redis.
 3. **Envelopes must be valid UTF-8.** Arguments containing lone surrogates are rejected at dispatch with `SerializationError`.
 4. **Decoding work is bounded, not only decoding size:** union decoding must not be exponential in nesting depth.

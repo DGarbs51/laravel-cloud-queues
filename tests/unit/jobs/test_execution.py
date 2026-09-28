@@ -1,5 +1,5 @@
 """Shared execution path: prepare_execution defects and run_prepared outcome mapping
-(PROJECT_SCOPE.md §8 trust boundary, §12, §16; docs/contract/worker.md step 5)."""
+(docs/contract/worker.md step 5)."""
 
 from __future__ import annotations
 

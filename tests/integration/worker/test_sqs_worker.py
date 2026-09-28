@@ -1,6 +1,6 @@
 """Real worker subprocesses against SQS (moto locally, LocalStack in CI), ``sqs`` mode.
 
-Timeouts follow D2 / §14 (Laravel ``Queue/Worker.php:319-356`` and
+Timeouts follow D2 (Laravel ``Queue/Worker.php:319-356`` and
 ``Foundation/Cloud/QueueConnector.php:101-134``: no release on timeout, exit 124, the message
 returns through visibility with an incremented receive count). Retries follow
 ``Queue/Worker.php:648-687`` (release the same message) and the pre-run check ``:701-718``.
@@ -16,10 +16,10 @@ from typing import Any
 
 import pytest
 
-from harness.log_collector import LogCollector
-from harness.sqs import SQSEndpoint
 from laravel_cloud_queues.config import load_config
 from laravel_cloud_queues.registry import Registry
+from tests.harness.log_collector import LogCollector
+from tests.harness.sqs import SQSEndpoint
 from tests.integration.worker.apps.basic import build
 from tests.integration.worker.support import Workers, clean_env, native_iterations
 
@@ -145,7 +145,7 @@ def test_retryable_timeout_exits_124_and_redelivers_with_next_attempt(sqs: Sqs, 
     assert first.statuses == ["released"]
     assert first.failure_records == []
     if job == "slow_native":
-        # Native code overruns the 0.5 s timeout until control returns (§14).
+        # Native code overruns the 0.5 s timeout until control returns.
         assert first.job_lines[0]["duration_ms"] >= 1000
     else:
         assert first.job_lines[0]["duration_ms"] < 1500

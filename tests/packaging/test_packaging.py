@@ -1,4 +1,4 @@
-"""Packaging verification (PROJECT_SCOPE.md §4 "Published distribution", §30.1/23/34).
+"""Packaging verification.
 
 Builds the wheel and sdist once per test session, inspects their contents, then
 installs each into a fresh virtualenv *outside* this repository checkout (never
@@ -24,21 +24,15 @@ pytestmark = pytest.mark.packaging
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYTHON_TAG = f"{sys.version_info.major}.{sys.version_info.minor}"
 
-# PROJECT_SCOPE.md §4 "Published distribution": these repository-only directories
-# must never reach the built artifacts.
+# These repository-only directories must never reach the built artifacts.
 FORBIDDEN_DIR_PREFIXES = (
-    "demo/",
-    "probe-app/",
-    "probe_app/",
     "docs/",
     "tests/",
-    "harness/",
     ".github/",
-    ".cloud/",
 )
 
 # Module names a shipped file must never import (repo-only tooling).
-FORBIDDEN_IMPORT_ROOTS = frozenset({"demo", "probe_app", "harness"})
+FORBIDDEN_IMPORT_ROOTS = frozenset({"tests"})
 
 # hatchling unconditionally adds .gitignore to every sdist and it cannot be excluded
 # (see https://github.com/pypa/hatch/issues/1203) — harmless, allow it explicitly.

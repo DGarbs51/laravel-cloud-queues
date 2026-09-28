@@ -34,7 +34,7 @@ observability events), not Laravel's PHP API.
 - [Observability](#observability)
 - [Local development](#local-development)
 - [Testing your application](#testing-your-application)
-- [Demo and conformance suite](#demo-and-conformance-suite)
+- [Conformance suite](#conformance-suite)
 - [Support matrix and public API](#support-matrix-and-public-api)
 - [Known limitations and roadmap](#known-limitations-and-roadmap)
 - Further reading: [`docs/architecture.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/architecture.md),
@@ -264,16 +264,15 @@ as a **long-lived service and restarts it whenever it exits**, for any reason. C
 
 ### Live smoke test on Laravel Cloud
 
-[`probe-app/`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/probe-app/README.md) is a repository-only FastAPI probe that runs the real
-package on Laravel Cloud today: its App and worker clusters run
-`python -m laravel_cloud_queues.cli work main:app` as background processes in `redis` mode
-against the environment's Laravel Valkey, and its routes dispatch one job per case (success,
-delay, retry, terminal failure, timeout, bursts) and report what the workers recorded. Use
-it as the template for a live check of your own deployment. It is not shipped in the
-package, and its `/verify` route dumps the container environment, so deploy it only to a
-throwaway environment.
+Two canary applications run the released package from PyPI on Laravel Cloud, one branch
+per Python version (3.10–3.14), in `redis` mode against a Laravel Valkey:
+[`fastapi-cloud-queues`](https://github.com/DGarbs51/fastapi-cloud-queues) (FastAPI) and
+[`python-cloud-queues`](https://github.com/DGarbs51/python-cloud-queues) (plain Python).
+Each has a dashboard whose **Run check** dispatches one job per case (quick, async, slow,
+retry, terminal failure, timeout) and gives a pass/fail verdict for each. Use either as the
+template for a live check of your own deployment.
 
-Results of the 2026-09-28 run are recorded at the end of
+Results of the 2026-09-28 run of the earlier in-repository probe are recorded at the end of
 [`docs/audits/2026-09-27/platform-findings.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/audits/2026-09-27/platform-findings.md):
 sync and async jobs processed, a 5 s delay honored, a flaky job released and processed on
 attempt 2, a terminal failure logged as one `failed_job` line, and a timed-out job that
@@ -870,7 +869,7 @@ present.
 
 **Managed mode locally.** Set `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` to a document like
 the one under [Configuration](#managed-mode) with `agent.enabled: false` to exercise direct
-SQS receive, or run the repository's agent emulator (`harness/`) for the agent path.
+SQS receive, or run the repository's agent emulator (`tests/harness/`) for the agent path.
 
 The repository's own tests run SQS against moto locally and LocalStack in CI
 (`LARAVEL_CLOUD_QUEUES_TEST_SQS=moto|localstack`), and Redis against
@@ -922,20 +921,20 @@ What eager mode does **not** prove: retry and backoff behavior, timeouts, visibi
 FIFO ordering, queue existence, payload limits against a real broker, or anything about
 the worker process. Those belong to the transport tests and the conformance suite below.
 
-## Demo and conformance suite
+## Conformance suite
 
-`demo/` is an executable FastAPI conformance application (`demo.app:app`, with sync/async
+`tests/conformance/` holds a FastAPI fixture application (`tests.conformance.app:app`, with sync/async
 jobs, lifespan state, `yield` dependencies, named queues, retries, explicit release/fail,
-timeouts and large payloads), and `demo/conformance` runs every feature in the conformance
+timeouts and large payloads) and a runner that checks every feature in the conformance
 catalog ([`docs/contract/catalog.json`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/contract/catalog.json)) against local
 emulators (moto or LocalStack for SQS, a Redis/Valkey server, the Laravel Cloud agent
-emulator and observability collector in `harness/`), spawning real worker subprocesses, and
+emulator and observability collector in `tests/harness/`), spawning real worker subprocesses, and
 reports what matches the pinned Laravel baseline (`laravel/framework` v13.33.0) and what
 deliberately deviates. From a repository checkout:
 
 ```sh
 uv sync
-uv run python -m demo.conformance --sqs moto --report compatibility-report.json
+uv run python -m tests.conformance --sqs moto --report compatibility-report.json
 # The console script delegates to the same runner (exit 2 outside a checkout):
 uv run laravel-cloud-queues conformance --sqs moto --report compatibility-report.json
 ```
@@ -967,16 +966,14 @@ development dependencies.
 CI runs the same command with `--sqs localstack` against pinned LocalStack and Valkey
 service containers plus a verified-TLS Valkey, uploads the report and
 `conformance-artifacts/`, and requires it for the aggregate gate; LocalStack is the
-authoritative SQS gate, moto is local convenience. See [`demo/README.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/demo/README.md)
-for the producer/worker demo (`laravel-cloud-queues work demo.app:app` plus
-`python -m demo.produce`) and probe-authoring rules.
+authoritative SQS gate, moto is local convenience. See [`tests/conformance/README.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/tests/conformance/README.md)
+for the fixture app, its manual producer/worker run and probe-authoring rules.
 
-**`demo/`, `probe-app/`, `harness/`, `tests/` and `docs/` are repository-only development
+**`tests/` and `docs/` are repository-only development
 tooling. They are not shipped in the PyPI wheel or sdist**, and a packaging test proves it.
 `laravel-cloud-queues conformance` from an installed package explains how to run the suite
-from a checkout instead of failing obscurely. `probe-app/` is a throwaway FastAPI app
-deployed to Laravel Cloud to inspect what the platform injects and to run the
-[live smoke test](#live-smoke-test-on-laravel-cloud).
+from a checkout instead of failing obscurely. The
+[live smoke test](#live-smoke-test-on-laravel-cloud) runs from separate canary repositories.
 
 ## Support matrix and public API
 
@@ -1057,27 +1054,3 @@ Roadmap, in rough priority order:
 ## License
 
 MIT. See [`LICENSE`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/LICENSE).
-
-<!--
-§25 checklist -> README sections
- 1 install core + FastAPI extra ......... Quick start / 1. Install
- 2 create/configure integration ......... Quick start / 2, 4; Configuration
- 3 declare a job ........................ Quick start / 2
- 4 dispatch sync + async ................ Quick start / 3
- 5 FastAPI dependencies in a job ........ Jobs / FastAPI dependencies in jobs
- 6 run the worker ....................... Quick start / 5; The worker
- 7 named queues ......................... Jobs / Named queues
- 8 delays ............................... Jobs / Delays
- 9 retry policy ......................... Jobs / Retry policy (+ Timeouts)
-10 FIFO + fair queues ................... Jobs / FIFO queues; Fair queues
-11 JobContext release/fail .............. Jobs / JobContext
-12 local dev, direct SQS / LocalStack ... Local development
-13 eager testing ........................ Testing your application
-14 demo/conformance ..................... Demo and conformance suite
-15 zero/low-config + platform status .... Platform status callout; Managed queues; Configuration
-16 worker clusters, sqs/redis, AWS_* .... Running on Laravel Cloud today
-17 support matrix ....................... Support matrix and public API
-18 limitations + roadmap ................ Known limitations and roadmap (compression/S3 offload,
-                                           native-code timeout, best-effort records, at-least-once)
-19 demo/ + probe-app/ not shipped ....... Demo and conformance suite (last paragraph)
--->

@@ -1,4 +1,4 @@
-"""Startup configuration errors exit 2 with one clear line on every start (D8, §13)."""
+"""Startup configuration errors exit 2 with one clear line on every start (D8)."""
 
 from __future__ import annotations
 

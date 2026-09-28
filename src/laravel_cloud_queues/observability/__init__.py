@@ -1,4 +1,4 @@
-"""Laravel Cloud observability (PROJECT_SCOPE.md §15, D1, D12) and tracing (§16).
+"""Laravel Cloud observability (D1, D12) and tracing.
 
 Events go to the log socket only in managed mode (D12). In ``sqs`` and ``redis`` modes
 the worker writes structured JSON lines to its own stdout instead (D6b terminal

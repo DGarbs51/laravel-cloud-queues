@@ -1,4 +1,4 @@
-"""Public exception hierarchy (PROJECT_SCOPE.md §24).
+"""Public exception hierarchy.
 
 Every error has exactly one classification. The worker, CLI, eager mode and
 transports all branch on :attr:`LaravelCloudQueuesError.classification`, never on
@@ -195,7 +195,7 @@ class FatalWorkerError(LaravelCloudQueuesError):
 
 
 class AgentUnavailableError(FatalWorkerError):
-    """Agent unreachable, 5xx, or invalid ``/next`` response. Exit 0 (Laravel parity, §11)."""
+    """Agent unreachable, 5xx, or invalid ``/next`` response. Exit 0 (Laravel parity)."""
 
     exit_code = 0
 

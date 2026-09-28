@@ -5,7 +5,7 @@ Managed mode refuses ``_SQS_ENDPOINT``, so messages go straight into the emulato
 is a real envelope from the dispatch pipeline (``prepare_dispatch``). Event order follows
 D13.1 (complete, then ``failed_job``, then ``failed``; ``Foundation/Cloud/FailedJobProvider.php``)
 and D2 (timeout: ``released`` or ``failed_job`` + ``failed``, then exit 124). Agent 5xx on
-``/result`` stops the worker with exit 0 (``Queue/Worker.php:419-432``, §11).
+``/result`` stops the worker with exit 0 (``Queue/Worker.php:419-432``).
 """
 
 from __future__ import annotations
@@ -19,11 +19,11 @@ from typing import Any
 
 import pytest
 
-from harness.agent_emulator import AgentEmulator, status
-from harness.log_collector import LogCollector, validate_failed_job_event, validate_sequence
 from laravel_cloud_queues.config import load_config
 from laravel_cloud_queues.jobs.dispatch import prepare_dispatch
 from laravel_cloud_queues.registry import Registry
+from tests.harness.agent_emulator import AgentEmulator, status
+from tests.harness.log_collector import LogCollector, validate_failed_job_event, validate_sequence
 from tests.integration.worker.apps.basic import build
 from tests.integration.worker.support import Workers, clean_env
 

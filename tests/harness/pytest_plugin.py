@@ -1,4 +1,4 @@
-"""Load with ``pytest -p harness.pytest_plugin`` (fixtures are function-scoped)."""
+"""Load with ``pytest -p tests.harness.pytest_plugin`` (fixtures are function-scoped)."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ from typing import NoReturn, Protocol
 
 import pytest
 
-from harness.agent_emulator import AgentEmulator
-from harness.log_collector import LogCollector
-from harness.process import Process
-from harness.redis import connect, redis_service
-from harness.redis import redis_url as configured_redis_url
-from harness.sqs import ServiceUnavailable, SQSEndpoint
-from harness.sqs import sqs_endpoint as start_sqs
+from tests.harness.agent_emulator import AgentEmulator
+from tests.harness.log_collector import LogCollector
+from tests.harness.process import Process
+from tests.harness.redis import connect, redis_service
+from tests.harness.redis import redis_url as configured_redis_url
+from tests.harness.sqs import ServiceUnavailable, SQSEndpoint
+from tests.harness.sqs import sqs_endpoint as start_sqs
 
 
 def pytest_configure(config: pytest.Config) -> None:

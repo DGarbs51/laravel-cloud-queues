@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from demo.conformance import ROOT, build_report, catalog_errors, endpoint
-from demo.conformance.plugin import ConformancePlugin, Evidence, NodeResult, safe
+from tests.conformance import ROOT, build_report, catalog_errors, endpoint
+from tests.conformance.plugin import ConformancePlugin, Evidence, NodeResult, safe
 
 
 def catalog():
@@ -51,14 +51,6 @@ def test_missing_record_fails():
     assert catalog_errors({"features": []})
 
 
-def test_removed_catalog_record_fails_scope_coverage():
-    data = json.loads((ROOT / "docs/contract/catalog.json").read_text())
-    scope = (ROOT / "PROJECT_SCOPE.md").read_text()
-    assert not catalog_errors(data, scope)
-    data["features"] = [f for f in data["features"] if f["id"] != "dispatch.standard"]
-    assert catalog_errors(data, scope)
-
-
 @pytest.mark.parametrize("status", ["skipped", "partial", "unsupported", "fail"])
 def test_unapproved_nonpass_fails(status):
     assert not build_report(catalog(), plugin(status))["gate"]["passed"]
@@ -71,12 +63,12 @@ def test_approved_skip_passes():
             "id": "demo.feature",
             "allowed_statuses": ["skipped"],
             "reason": "Platform unavailable",
-            "approval": "Scope §1",
+            "approval": "D3",
         }
     ]
     report = build_report(data, plugin("skipped"))
     assert report["gate"]["passed"]
-    assert report["features"][0]["exception_approval"]["approval"] == "Scope §1"
+    assert report["features"][0]["exception_approval"]["approval"] == "D3"
     assert not build_report(data, plugin("fail"))["gate"]["passed"]
 
 
@@ -132,7 +124,7 @@ def test_unknown_selection_and_collection_failure_fail():
 @pytest.mark.parametrize(
     ("entrypoint", "selection", "passes"),
     [
-        ([sys.executable, "-m", "demo.conformance"], [], True),
+        ([sys.executable, "-m", "tests.conformance"], [], True),
         ([str(Path(sys.executable).with_name("laravel-cloud-queues")), "conformance"], [], True),
         (
             [str(Path(sys.executable).with_name("laravel-cloud-queues")), "conformance"],
@@ -188,8 +180,8 @@ def test_value(value, evidence):
     script = """
 import json
 import pytest
-from demo.conformance.plugin import ConformancePlugin
-from demo.conformance import build_report
+from tests.conformance.plugin import ConformancePlugin
+from tests.conformance import build_report
 plugin = ConformancePlugin(["test_cases.py::test_value"])
 pytest.main(["test_cases.py", "-q", *SELECTION], plugins=[plugin])
 report = build_report(CATALOG, plugin)
@@ -231,7 +223,15 @@ def test_explicit_nonpass_is_not_overwritten_by_passing_call():
 def test_all_catalog_nodes_resolve(tmp_path):
     report = tmp_path / "collection.json"
     result = subprocess.run(
-        [sys.executable, "-m", "demo.conformance", "--collect-only", "-q", "--report", str(report)],
+        [
+            sys.executable,
+            "-m",
+            "tests.conformance",
+            "--collect-only",
+            "-q",
+            "--report",
+            str(report),
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
