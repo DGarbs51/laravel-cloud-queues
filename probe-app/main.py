@@ -144,8 +144,7 @@ E2E_CASES: dict[str, dict[str, Any]] = {
 
 
 @app.post("/queue/e2e")
-def queue_e2e(token: str = Query("")) -> dict[str, str]:
-    require_token(token)
+def queue_e2e() -> dict[str, str]:
     import rqueue
 
     r = rqueue.client()
@@ -153,24 +152,21 @@ def queue_e2e(token: str = Query("")) -> dict[str, str]:
 
 
 @app.get("/queue/jobs/{job_id}")
-def queue_job(job_id: str, token: str = Query("")) -> list[dict[str, Any]]:
-    require_token(token)
+def queue_job(job_id: str) -> list[dict[str, Any]]:
     import rqueue
 
     return rqueue.events(rqueue.client(), job_id)
 
 
 @app.get("/queue/stats")
-def queue_stats(token: str = Query("")) -> dict[str, int]:
-    require_token(token)
+def queue_stats() -> dict[str, int]:
     import rqueue
 
     return rqueue.stats(rqueue.client())
 
 
 @app.post("/queue/burst")
-def queue_burst(n: int = Query(50, ge=1, le=500), token: str = Query("")) -> list[str]:
-    require_token(token)
+def queue_burst(n: int = Query(50, ge=1, le=500)) -> list[str]:
     import rqueue
 
     r = rqueue.client()
