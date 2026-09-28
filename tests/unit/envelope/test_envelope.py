@@ -289,3 +289,33 @@ def test_policy_constructor_failure_is_a_job_defect(monkeypatch):
     monkeypatch.setattr(RetryPolicy, "__post_init__", reject)
     with pytest.raises(MalformedEnvelopeError):
         decode_envelope(json.dumps(wire()))
+
+
+@pytest.mark.parametrize("timeout", [604800.1, 604801, 2**31, 1e308])
+def test_timeout_above_seven_days_is_malformed(timeout):
+    data = wire()
+    data["laravel_cloud_queues"]["policy"] = {"timeout": timeout}
+    with pytest.raises(MalformedEnvelopeError):
+        decode_envelope(json.dumps(data))
+
+
+@pytest.mark.parametrize("timeout", [0, 604800])
+def test_timeout_boundaries_are_valid(timeout):
+    data = wire()
+    data["laravel_cloud_queues"]["policy"] = {"timeout": timeout}
+    assert decode_envelope(json.dumps(data)).policy.timeout == timeout
+
+
+@pytest.mark.parametrize("surrogate", [chr(0xD800), chr(0xDFFF)])
+def test_encode_rejects_lone_surrogates(surrogate):
+    with pytest.raises(SerializationError):
+        encode_envelope(Envelope(uuid="u", display_name="j", job="j", args=(surrogate,)))
+
+
+def test_any_policy_constructor_exception_is_a_job_defect(monkeypatch):
+    def reject(self):
+        raise RuntimeError("Policy construction failed")
+
+    monkeypatch.setattr(RetryPolicy, "__post_init__", reject)
+    with pytest.raises(MalformedEnvelopeError):
+        decode_envelope(json.dumps(wire()))

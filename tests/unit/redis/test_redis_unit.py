@@ -105,7 +105,7 @@ def test_safe_connection_retry_and_backoff(monkeypatch):
 def test_connection_failures_are_bounded_classified_and_secret_safe(monkeypatch, operation, stage):
     transport = RedisProducer(CONFIG) if operation == "send" else RedisConsumer(CONFIG)
     connection = Mock()
-    transport._pool = Mock()
+    transport._pool = transport._reporting_pool = Mock()
     transport._pool.get_connection.return_value = connection
     failure = redis.ConnectionError("secret URL and private receipt")
     if stage == "connect":
@@ -167,3 +167,59 @@ def test_invalid_lease():
         RedisConsumer(CONFIG, lease_seconds=0)
     with pytest.raises(ValueError):
         RedisConsumer(CONFIG).renew(DELIVERY, 0)
+
+
+@pytest.mark.parametrize("reporting", [False, True])
+@pytest.mark.parametrize("stage", ["connect", "send", "read"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        redis.AuthenticationError("private credentials"),
+        redis.exceptions.AuthenticationWrongNumberOfArgsError("private credentials"),
+        redis.ResponseError("NOAUTH private credentials"),
+        redis.ResponseError("WRONGPASS private credentials"),
+    ],
+)
+def test_authentication_errors_are_configuration_errors(monkeypatch, reporting, stage, failure):
+    transport = RedisConsumer(CONFIG)
+    connection = Mock()
+    pool = Mock()
+    transport._pool = transport._reporting_pool = pool
+    pool.get_connection.return_value = connection
+    target = {
+        "connect": pool.get_connection,
+        "send": connection.send_command,
+        "read": connection.read_response,
+    }[stage]
+    target.side_effect = failure
+    sleep = Mock()
+    monkeypatch.setattr("laravel_cloud_queues.transports.redis.time.sleep", sleep)
+    with pytest.raises(ConfigurationError) as caught:
+        transport._command("PING", reporting=reporting)
+    assert "private credentials" not in "".join(traceback.format_exception(caught.value))
+    pool.get_connection.assert_called_once()
+    sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["complete", "release", "renew"])
+def test_reporting_timeout_is_separate_from_polling(monkeypatch, operation):
+    consumer = RedisConsumer(CONFIG)
+    try:
+        assert consumer._pool.connection_kwargs["socket_timeout"] == 2
+        assert consumer._reporting_pool.connection_kwargs["socket_timeout"] == 10
+        for pool in (consumer._pool, consumer._reporting_pool):
+            connection = pool.make_connection()
+            assert connection.socket_timeout == pool.connection_kwargs["socket_timeout"]
+        connection = Mock()
+        connection.read_response.return_value = 1
+        acquire = Mock(return_value=connection)
+        release = Mock()
+        monkeypatch.setattr(consumer._reporting_pool, "get_connection", acquire)
+        monkeypatch.setattr(consumer._reporting_pool, "release", release)
+        monkeypatch.setattr(consumer._pool, "get_connection", Mock(side_effect=AssertionError))
+        args = (DELIVERY,) if operation == "complete" else (DELIVERY, 60)
+        getattr(consumer, operation)(*args)
+        acquire.assert_called_once()
+        release.assert_called_once_with(connection)
+    finally:
+        consumer.close()

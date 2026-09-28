@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from typing import cast
 
 from harness._socket import SocketService, UnixServer
@@ -19,13 +20,21 @@ _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}")
 
 
 def _timestamp(value: object) -> bool:
-    return isinstance(value, str) and _TIMESTAMP.fullmatch(value) is not None
+    if not isinstance(value, str) or _TIMESTAMP.fullmatch(value) is None:
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        return False
+    return True
 
 
 def validate_lifecycle_event(obj: object) -> list[str]:
     if not isinstance(obj, dict):
         return ["event must be an object"]
     errors: list[str] = []
+    if obj.keys() - {"_cloud_event", "type", "queue", "timestamp", "duration_ms"}:
+        errors.append("unknown lifecycle keys")
     if obj.get("_cloud_event") != "queue":
         errors.append("_cloud_event must be queue")
     kind = obj.get("type")
@@ -48,6 +57,19 @@ def validate_failed_job_event(obj: object) -> list[str]:
     if not isinstance(obj, dict):
         return ["event must be an object"]
     errors: list[str] = []
+    if obj.keys() - {
+        "_cloud_event",
+        "id",
+        "queue",
+        "started_at",
+        "attempts",
+        "payload",
+        "exception_preview",
+        "job_name",
+        "exception",
+        "replayable",
+    }:
+        errors.append("unknown failed_job keys")
     if obj.get("_cloud_event") != "failed_job":
         errors.append("_cloud_event must be failed_job")
     for name in ("id", "queue", "payload", "exception_preview", "job_name", "exception"):
@@ -158,6 +180,8 @@ class LogCollector(SocketService):
         with self._condition:
             index = len(self._raw_lines)
             self._raw_lines.append(line)
+            if len(line) > 16384:
+                self._errors.append(f"line {index}: exceeds 16384-byte limit including newline")
             if partial:
                 self._errors.append(f"line {index}: partial line at EOF")
             else:
