@@ -869,7 +869,13 @@ Direct-mode receive errors sleep 1 second and retry unless they indicate a lost 
 
 Memory-limit worker recycling (Laravel `--memory`, exit 12) is deferred from v1; Laravel Cloud restarts a worker that exceeds its memory allocation and redelivers the job.
 
-Laravel Cloud restarts custom worker processes when they exit, so exit codes 124 (timeout) and 1 (agent loss) lead to a fresh worker.
+Process lifecycle differs by mode:
+
+- **Worker clusters and App-cluster background processes (`sqs`, `redis`):** the worker runs as a long-lived service that Laravel Cloud supervises and restarts whenever it exits, for any reason. Exit codes (124 timeout, 1 fatal transport, 2 configuration) are diagnostic; every exit leads to a restart, including the app lifespan. Consequences:
+  - `--stop-when-empty` and `--stop-when-empty-for` default to off and the docs warn against them here: a supervised worker that exits on an empty queue is restarted immediately, in a loop.
+  - `--max-jobs` and `--max-time` remain useful for recycling the process.
+  - A configuration error (exit 2) restart-loops; log it clearly on every start.
+- **Managed queues:** the platform owns worker lifetime and scaling (including scale to zero). The worker follows the agent protocol and does not assume it is supervised as a long-lived service.
 
 On Laravel Cloud, queue assignment remains authoritative. Worker clusters scale on CPU, memory or a fixed count, not on queue depth; document this for `sqs` and `redis` modes.
 

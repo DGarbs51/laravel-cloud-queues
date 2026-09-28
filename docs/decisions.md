@@ -103,3 +103,7 @@ Smaller choices made when applying D1–D6 and the audit fixes to `PROJECT_SCOPE
 - Packaging: `hatchling`; extras `fastapi`, `redis`, `otel`; Pydantic support activates when installed (§4).
 - CI: CPython 3.10–3.14 on Linux; macOS not required (§5).
 - Worker targets may be a FastAPI app or a core registry object (§23).
+
+## D8 — Worker lifecycle on worker clusters (2026-09-28)
+
+Per the Laravel Cloud team: worker clusters and App-cluster background processes run the worker as a long-lived, supervised service that is restarted on exit. It is not a run-once process. Stop-when-empty flags default to off and are discouraged there (they would restart-loop). Exit codes are diagnostic. Managed queues keep a platform-controlled lifecycle. See `PROJECT_SCOPE.md` §13.
