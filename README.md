@@ -24,6 +24,7 @@ observability events), not Laravel's PHP API.
 ## Contents
 
 - [Quick start (FastAPI)](#quick-start-fastapi)
+- [Coming from Celery](#coming-from-celery)
 - [Running on Laravel Cloud today](#running-on-laravel-cloud-today)
 - [Configuration](#configuration)
 - [Jobs](#jobs): queues, delays, retries, timeouts, FIFO, fair queues, `JobContext`,
@@ -132,6 +133,42 @@ running more worker processes, not with in-process concurrency.
 
 `laravel-cloud-queues inspect myapp.main:app` prints the resolved mode, queues and
 registered jobs without touching the broker or printing secrets.
+
+## Coming from Celery
+
+Async is native on both sides of the queue, so the usual FastAPI workarounds are not needed:
+
+| With Celery | With this package |
+|---|---|
+| Tasks are sync; `async def` code gets wrapped in `asyncio.run()` per task, which creates a new event loop each time and breaks async clients and pools created at startup | `async def` jobs run natively on one event loop that lives for the whole worker process |
+| Startup resources come from worker signals, separate from your FastAPI app | The worker enters your app's lifespan once, so `app.state` resources and `Depends()` work in jobs as they do in routes |
+| `.delay()` blocks the event loop while it talks to the broker | `await job.dispatch_async(...)` never blocks the loop |
+| Plain `def` tasks | Plain `def` jobs work too, and `job.dispatch(...)` is the blocking form for scripts and sync code |
+
+```python
+@queues.job(name="users.sync_profile", tries=3, backoff=[5, 30])
+async def sync_profile(
+    user_id: int, http: Annotated[httpx.AsyncClient, Depends(get_http_client)]
+) -> None:
+    await http.post("/profiles/sync", json={"user_id": user_id})
+
+
+@app.post("/users/{user_id}/sync")
+async def request_sync(user_id: int) -> dict[str, str]:
+    receipt = await sync_profile.dispatch_async(user_id=user_id)
+    return {"message_id": receipt.message_id}
+```
+
+Differences to plan for:
+
+- **One job in flight per worker process.** Celery's prefork or gevent pools run several
+  tasks per worker; here you scale by running more worker processes. Async jobs do not run
+  concurrently inside one worker.
+- **Fire-and-forget.** There is no result backend, `AsyncResult`, chains, groups or chords.
+- **Retries are declared on the job** (`tries`, `backoff`), or requested from inside it with
+  `current_job().release(delay=...)`, instead of `self.retry()`.
+- **Delivery is at least once** with SQS or Redis semantics, like Celery with
+  `acks_late=True`. Keep handlers idempotent.
 
 ## Running on Laravel Cloud today
 
