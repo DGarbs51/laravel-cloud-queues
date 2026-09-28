@@ -533,7 +533,7 @@
         "§30.3"
       ],
       "conflict_rows": [],
-      "expected": "job.dispatch(...) / await job.dispatch_async(...) encode one envelope and call SendMessage with QueueUrl from the queue-URL rules and MessageBody = the envelope; a DispatchReceipt(message_id, queue) is returned. Both paths share one pipeline (validation, serialization, routing, tracing, transport). dispatch_async never blocks the event loop; dispatch called inside a running loop raises instead of nesting a loop.",
+      "expected": "job.dispatch(...) / await job.dispatch_async(...) encode one envelope and call SendMessage with QueueUrl from the queue-URL rules and MessageBody = the envelope; a DispatchReceipt(message_id, queue) is returned. Both paths share one pipeline (validation, serialization, routing, tracing, transport). dispatch_async never blocks the event loop; dispatch called inside a running loop never starts a nested loop (it blocks the calling thread; async code should use dispatch_async).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [

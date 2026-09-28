@@ -1,0 +1,7 @@
+[
+  {"name": "processed", "delivery": {"message_id": "m-1", "receipt": "rh-1"}, "delay": null, "body": {"messageId": "m-1", "receiptHandle": "rh-1", "status": "processed"}},
+  {"name": "processed-no-receipt", "delivery": {"message_id": "m-1", "receipt": null}, "delay": null, "body": {"messageId": "m-1", "status": "processed"}},
+  {"name": "released-zero", "delivery": {"message_id": "m-1", "receipt": "rh-1"}, "delay": 0, "body": {"messageId": "m-1", "receiptHandle": "rh-1", "status": "released", "delay": 0}},
+  {"name": "released-delayed-no-receipt", "delivery": {"message_id": "m-1", "receipt": null}, "delay": 30, "body": {"messageId": "m-1", "status": "released", "delay": 30}},
+  {"name": "empty-receipt-kept", "delivery": {"message_id": "m-1", "receipt": ""}, "delay": null, "body": {"messageId": "m-1", "receiptHandle": "", "status": "processed"}}
+]
