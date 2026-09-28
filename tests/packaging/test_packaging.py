@@ -1,4 +1,4 @@
-"""Packaging verification (PROJECT_SCOPE.md §4 "Published distribution", §30.1/23/34).
+"""Packaging verification.
 
 Builds the wheel and sdist once per test session, inspects their contents, then
 installs each into a fresh virtualenv *outside* this repository checkout (never
@@ -24,8 +24,7 @@ pytestmark = pytest.mark.packaging
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYTHON_TAG = f"{sys.version_info.major}.{sys.version_info.minor}"
 
-# PROJECT_SCOPE.md §4 "Published distribution": these repository-only directories
-# must never reach the built artifacts.
+# These repository-only directories must never reach the built artifacts.
 FORBIDDEN_DIR_PREFIXES = (
     "demo/",
     "docs/",

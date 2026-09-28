@@ -1,4 +1,4 @@
-"""``laravel-cloud-queues`` console entry point (PROJECT_SCOPE.md §23). CONTRACT — lane L6.
+"""``laravel-cloud-queues`` console entry point.
 See docs/contract/cli.md."""
 
 from __future__ import annotations

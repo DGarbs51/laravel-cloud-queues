@@ -1055,27 +1055,3 @@ Roadmap, in rough priority order:
 ## License
 
 MIT. See [`LICENSE`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/LICENSE).
-
-<!--
-§25 checklist -> README sections
- 1 install core + FastAPI extra ......... Quick start / 1. Install
- 2 create/configure integration ......... Quick start / 2, 4; Configuration
- 3 declare a job ........................ Quick start / 2
- 4 dispatch sync + async ................ Quick start / 3
- 5 FastAPI dependencies in a job ........ Jobs / FastAPI dependencies in jobs
- 6 run the worker ....................... Quick start / 5; The worker
- 7 named queues ......................... Jobs / Named queues
- 8 delays ............................... Jobs / Delays
- 9 retry policy ......................... Jobs / Retry policy (+ Timeouts)
-10 FIFO + fair queues ................... Jobs / FIFO queues; Fair queues
-11 JobContext release/fail .............. Jobs / JobContext
-12 local dev, direct SQS / LocalStack ... Local development
-13 eager testing ........................ Testing your application
-14 demo/conformance ..................... Demo and conformance suite
-15 zero/low-config + platform status .... Platform status callout; Managed queues; Configuration
-16 worker clusters, sqs/redis, AWS_* .... Running on Laravel Cloud today
-17 support matrix ....................... Support matrix and public API
-18 limitations + roadmap ................ Known limitations and roadmap (compression/S3 offload,
-                                           native-code timeout, best-effort records, at-least-once)
-19 demo/ not shipped .................. Demo and conformance suite (last paragraph)
--->

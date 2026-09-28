@@ -1,5 +1,4 @@
-"""``Job`` — the typed, directly callable job object (PROJECT_SCOPE.md §7, §9, §10, D5).
-CONTRACT — implemented by lane L3c."""
+"""``Job`` — the typed, directly callable job object (D5)."""
 
 from __future__ import annotations
 

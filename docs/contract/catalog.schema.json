@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/laravel/laravel-cloud-queues/docs/contract/catalog.schema.json",
   "title": "laravel-cloud-queues conformance catalog",
-  "description": "Catalog of record for the conformance suite (PROJECT_SCOPE.md §22). Expectations only; results live in the compatibility report.",
+  "description": "Catalog of record for the conformance suite. Expectations only; results live in the compatibility report.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -111,10 +111,6 @@
       "description": "Dotted, stable, lowercase identifier, e.g. dispatch.standard",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
     },
-    "scopeRef": {
-      "type": "string",
-      "pattern": "^§\\d+[a-z]?(\\.\\d+)?$"
-    },
     "decision": {
       "type": "string",
       "pattern": "^D\\d+[a-z]?$"
@@ -186,9 +182,6 @@
       "required": [
         "id",
         "title",
-        "scope_refs",
-        "covers",
-        "conflict_rows",
         "expected",
         "tier",
         "required",
@@ -205,31 +198,6 @@
         "title": {
           "type": "string",
           "minLength": 1
-        },
-        "scope_refs": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/scopeRef"
-          }
-        },
-        "covers": {
-          "type": "array",
-          "uniqueItems": true,
-          "description": "Literal PROJECT_SCOPE §21 bullet texts and §30 criteria (\"§30.N\") this record is the owner of",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "conflict_rows": {
-          "type": "array",
-          "uniqueItems": true,
-          "description": "Literal Topic cells of the AGENT_BUILD_PROMPT resolved-conflicts table this record encodes",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
         },
         "expected": {
           "type": "string",
@@ -267,8 +235,8 @@
             "string",
             "null"
           ],
-          "pattern": "^(D\\d+[a-z]?|§\\d+[a-z]?)(, (D\\d+[a-z]?|§\\d+[a-z]?))*$",
-          "description": "Decision record(s) (D4) or, for Python-only behaviour, the scope section(s) defining it (§17). Required when laravel_source is empty and no deviation is recorded."
+          "pattern": "^(python-only|D\\d+[a-z]?(, D\\d+[a-z]?)*)$",
+          "description": "Decision record(s) (D4), or \"python-only\" for behaviour with no Laravel counterpart (FastAPI integration, tracing, packaging). Required when laravel_source is empty and no deviation is recorded."
         },
         "probe": {
           "description": "Pytest node IDs (demo probes or tests) that prove this feature; filled by the conformance lane.",

@@ -5,7 +5,7 @@ Managed mode refuses ``_SQS_ENDPOINT``, so messages go straight into the emulato
 is a real envelope from the dispatch pipeline (``prepare_dispatch``). Event order follows
 D13.1 (complete, then ``failed_job``, then ``failed``; ``Foundation/Cloud/FailedJobProvider.php``)
 and D2 (timeout: ``released`` or ``failed_job`` + ``failed``, then exit 124). Agent 5xx on
-``/result`` stops the worker with exit 0 (``Queue/Worker.php:419-432``, §11).
+``/result`` stops the worker with exit 0 (``Queue/Worker.php:419-432``).
 """
 
 from __future__ import annotations

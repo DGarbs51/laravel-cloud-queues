@@ -1,4 +1,4 @@
-"""FastAPI integration (PROJECT_SCOPE.md §13, §17).
+"""FastAPI integration.
 
 Requires FastAPI >= 0.121 (the ``[fastapi]`` extra). Importing this package is the only
 place ``laravel_cloud_queues`` imports FastAPI.

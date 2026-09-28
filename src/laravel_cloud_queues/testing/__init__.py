@@ -1,4 +1,4 @@
-"""Testing primitives for application code (PROJECT_SCOPE.md §20). CONTRACT — lane L3c.
+"""Testing primitives for application code.
 
 Eager mode exercises argument binding, payload validation, serialization/deserialization,
 registration and (with the FastAPI invoker) DI + cleanup through the worker's execution

@@ -200,7 +200,7 @@ def _marker_dependency(marker: Callable[..., Any]) -> Callable[..., Any]:
 def test_request_parameter_markers_in_dependencies_are_configuration_errors(
     marker: Callable[..., Any],
 ) -> None:
-    """PROJECT_SCOPE §13: Header()/Query()/... read an HTTP request a queue job does not
+    """Header()/Query()/... read an HTTP request a queue job does not
     have. Reject at registration instead of failing (and retrying) every delivery."""
     queues, _registry = _queues()
     dependency = _marker_dependency(marker)

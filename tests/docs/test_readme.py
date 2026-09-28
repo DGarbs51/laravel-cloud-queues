@@ -50,11 +50,7 @@ def test_runnable_blocks_execute(line: int, code: str, monkeypatch: pytest.Monke
     # A real module so dataclasses/type hints defined in the example resolve normally.
     module = types.ModuleType(f"readme_example_{line}")
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    try:
-        exec(compile(code, f"README.md:{line}", "exec"), module.__dict__)
-    except NotImplementedError:
-        # The FastAPI adapter is a contract stub until lane L8 lands on main.
-        pytest.skip("laravel_cloud_queues.fastapi is not implemented on this branch yet")
+    exec(compile(code, f"README.md:{line}", "exec"), module.__dict__)
 
 
 def test_runnable_examples_exist() -> None:

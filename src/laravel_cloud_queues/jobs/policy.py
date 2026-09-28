@@ -1,4 +1,4 @@
-"""Retry policy (PROJECT_SCOPE.md §12, D4). CONTRACT — math implemented by lane L3c.
+"""Retry policy (D4).
 
 The policy travels in the envelope. Worker defaults apply only to fields the message omits.
 """

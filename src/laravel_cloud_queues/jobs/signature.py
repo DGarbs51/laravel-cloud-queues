@@ -1,5 +1,4 @@
-"""Handler signature inspection and argument validation (§8 trust boundary).
-CONTRACT — implemented by lane L3b."""
+"""Handler signature inspection and argument validation."""
 
 from __future__ import annotations
 

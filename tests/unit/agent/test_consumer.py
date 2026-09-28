@@ -367,7 +367,7 @@ def test_interrupt_preserves_full_response_and_reporting(mock_agent, monkeypatch
 
 
 def test_interrupt_never_aborts_an_in_flight_poll(mock_agent):
-    """PROJECT_SCOPE §13 / Laravel parity: a message the agent hands over after the stop
+    """Laravel parity: a message the agent hands over after the stop
     signal is returned and run, never dropped by closing the socket under the agent."""
     consumer, requests, responses, _ = mock_agent
 

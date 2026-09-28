@@ -305,7 +305,7 @@ def test_server_time_sets_all_scores(broker, monkeypatch):
 
 @pytest.mark.parametrize("wrapper", ["invalid ✓", '{"id":"a","body":"b","attempts":-1}', "[]", ""])
 def test_invalid_transport_wrapper_can_be_completed_without_blocking_queue(broker, wrapper):
-    """§12: malformed entries reach the worker's terminal-failure path, then are deleted."""
+    """Malformed entries reach the worker's terminal-failure path, then are deleted."""
     config, client, producer, consumer = broker
     pending = f"{config.prefix}queues:broken"
     client.rpush(pending, wrapper)

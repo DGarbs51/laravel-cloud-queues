@@ -1,4 +1,4 @@
-"""Configuration and backend selection (PROJECT_SCOPE.md §6, D6a)."""
+"""Configuration and backend selection (D6a)."""
 
 from __future__ import annotations
 

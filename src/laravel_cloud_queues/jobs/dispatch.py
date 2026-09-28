@@ -1,4 +1,4 @@
-"""The single dispatch pipeline (PROJECT_SCOPE.md §9, §10). CONTRACT — lane L3c.
+"""The single dispatch pipeline.
 
 ``Job.dispatch`` and ``Job.dispatch_async`` both call :func:`prepare_dispatch` then
 :func:`send_prepared` (async: inside ``anyio.to_thread.run_sync``), so validation,

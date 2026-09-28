@@ -116,6 +116,6 @@ authoritative SQS gate; moto is local convenience. A local report validates CI w
 runs quality tools; only GitHub can attest to the full remote matrix result.
 
 Live Laravel Cloud managed queues and dashboard retry remain skipped with their explicit
-catalog approvals until Python managed queues are supported (§1). No live Cloud deployment
+catalog approvals until Python managed queues are supported. No live Cloud deployment
 or paid service is needed. During lane integration, unmerged contract implementations fail
 normally; they are not converted into temporary approvals or hidden skips.

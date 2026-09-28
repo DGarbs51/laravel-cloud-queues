@@ -1,4 +1,4 @@
-"""FastAPI-only contracts (§17, §20) have no PHP dependency-injection equivalent."""
+"""FastAPI-only contracts have no PHP dependency-injection equivalent."""
 
 from __future__ import annotations
 

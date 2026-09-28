@@ -1,4 +1,4 @@
-"""``JobContext`` (PROJECT_SCOPE.md §12). CONTRACT — implemented by lane L3c.
+"""``JobContext``.
 
 A runtime object: never serializable, never supplied from payload data. Core injects it into
 handler parameters annotated ``JobContext``; FastAPI exposes it via ``Depends(current_job)``.

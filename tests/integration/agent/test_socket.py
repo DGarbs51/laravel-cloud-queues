@@ -215,7 +215,7 @@ def test_apply_then_disconnect_never_sends_second_outcome(agent_emulator, consum
 
 
 def test_interrupt_waits_for_the_in_flight_poll_and_keeps_the_handover(agent_emulator, consumer):
-    """PROJECT_SCOPE §13 / Laravel parity: a stop signal during an idle GET /next never
+    """Laravel parity: a stop signal during an idle GET /next never
     aborts the poll. The message the agent hands over afterwards is returned, and only
     the next receive returns None promptly."""
     message_id = agent_emulator.enqueue("payload")
@@ -238,7 +238,7 @@ def test_interrupt_waits_for_the_in_flight_poll_and_keeps_the_handover(agent_emu
 
 
 def test_interrupt_does_not_cancel_result(agent_emulator, consumer):
-    """PROJECT_SCOPE §13: repeated shutdown signals must not skip reporting."""
+    """Repeated shutdown signals must not skip reporting."""
     message_id = agent_emulator.enqueue("payload")
     delivery = consumer.receive([], 0)
     agent_emulator.inject("result", "disconnect", times=2)

@@ -1,6 +1,6 @@
 # Architecture and contract
 
-Contract pack for the v0.1 build (AGENT_BUILD_PROMPT.md "Contract pack"). The typed
+Contract pack for the v0.1 build. The typed
 interfaces in `src/laravel_cloud_queues/` are the contract of record; this file explains
 how they fit together. Changing a contract signature needs the lead's approval.
 

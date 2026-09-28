@@ -83,7 +83,7 @@ Other platform variables observed: `NGINX_HTTP_TIMEOUT=20` (web requests are cut
 
 ## Redis/Valkey end-to-end test on Laravel Cloud (2026-09-28)
 
-`probe-app/` ran a throwaway prototype of the §11 Redis transport (Laravel `RedisQueue`-style Lua reserve/release/delete, D2 timeouts, D4 policy in the message, D6b log-only failures) against the environment's Laravel Valkey over TLS (`rediss://`). Workers ran as `python worker.py` background processes: one on the App cluster and four on a worker cluster.
+`probe-app/` ran a throwaway prototype of the Redis transport (Laravel `RedisQueue`-style Lua reserve/release/delete, D2 timeouts, D4 policy in the message, D6b log-only failures) against the environment's Laravel Valkey over TLS (`rediss://`). Workers ran as `python worker.py` background processes: one on the App cluster and four on a worker cluster.
 
 | Case | Observed |
 |---|---|

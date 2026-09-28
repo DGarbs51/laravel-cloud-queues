@@ -87,7 +87,7 @@ def test_send_arguments(client, options):
     ],
 )
 def test_send_error_mapping(client, code, reason, error):
-    """Foundation/Cloud/QueueConnector.php:79 not-found translation; §8 size errors."""
+    """Foundation/Cloud/QueueConnector.php:79 not-found translation; size errors."""
     producer = SqsProducer(CONNECTION)
     producer._client = client
     with Stubber(client) as stub:

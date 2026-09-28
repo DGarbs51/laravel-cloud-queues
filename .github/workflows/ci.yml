@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           # Code roots only (matches [tool.ruff] src in pyproject.toml), not
-          # docs/PROJECT_SCOPE.md/audits: ruff >=0.16 also formats fenced ```python
+          # docs: ruff >=0.16 also formats fenced ```python
           # blocks inside Markdown, and pre-existing prose in those files trips it.
           # harness/ and demo/ don't exist yet on every lane's branch; skip if absent.
           targets=()
@@ -83,7 +83,7 @@ jobs:
       # https://github.com/testcontainers/testcontainers-java/issues/11568. 4.14.0
       # (2026-02-26) is the last semver release before that cutover and is still
       # published on Docker Hub. Revisit via .github/workflows/drift.yml / the
-      # upstream-drift policy (PROJECT_SCOPE.md §2) if this stops working.
+      # upstream-drift policy if this stops working.
       localstack:
         image: localstack/localstack:4.14.0
         ports:
@@ -198,8 +198,7 @@ jobs:
           exit 1
 
       # LocalStack, Valkey and Redis above are `services:` containers, so GitHub
-      # Actions already blocks job startup until their healthchecks pass
-      # (PROJECT_SCOPE.md §5 "Required integration services ... must run in CI").
+      # Actions already blocks job startup until their healthchecks pass.
 
       - name: Run the test suite (Valkey on 6379)
         run: >-
@@ -286,7 +285,7 @@ jobs:
       # https://github.com/testcontainers/testcontainers-java/issues/11568. 4.14.0
       # (2026-02-26) is the last semver release before that cutover and is still
       # published on Docker Hub. Revisit via .github/workflows/drift.yml / the
-      # upstream-drift policy (PROJECT_SCOPE.md §2) if this stops working.
+      # upstream-drift policy if this stops working.
       localstack:
         image: localstack/localstack:4.14.0
         ports:

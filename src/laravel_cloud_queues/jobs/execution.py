@@ -1,5 +1,4 @@
-"""Shared execution path for the worker and eager mode (PROJECT_SCOPE.md §8, §12, §20).
-CONTRACT — lane L3c.
+"""Shared execution path for the worker and eager mode.
 
 ``prepare_execution`` performs every deterministic check (envelope decode, registry lookup,
 argument decoding/validation); any failure is a JobDefectError (terminal on first delivery).

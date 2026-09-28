@@ -51,14 +51,6 @@ def test_missing_record_fails():
     assert catalog_errors({"features": []})
 
 
-def test_removed_catalog_record_fails_scope_coverage():
-    data = json.loads((ROOT / "docs/contract/catalog.json").read_text())
-    scope = (ROOT / "PROJECT_SCOPE.md").read_text()
-    assert not catalog_errors(data, scope)
-    data["features"] = [f for f in data["features"] if f["id"] != "dispatch.standard"]
-    assert catalog_errors(data, scope)
-
-
 @pytest.mark.parametrize("status", ["skipped", "partial", "unsupported", "fail"])
 def test_unapproved_nonpass_fails(status):
     assert not build_report(catalog(), plugin(status))["gate"]["passed"]
@@ -71,12 +63,12 @@ def test_approved_skip_passes():
             "id": "demo.feature",
             "allowed_statuses": ["skipped"],
             "reason": "Platform unavailable",
-            "approval": "Scope §1",
+            "approval": "D3",
         }
     ]
     report = build_report(data, plugin("skipped"))
     assert report["gate"]["passed"]
-    assert report["features"][0]["exception_approval"]["approval"] == "Scope §1"
+    assert report["features"][0]["exception_approval"]["approval"] == "D3"
     assert not build_report(data, plugin("fail"))["gate"]["passed"]
 
 

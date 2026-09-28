@@ -1,5 +1,4 @@
-"""Dispatch pipeline: queue resolution, option validation, envelope, size, send, telemetry
-(PROJECT_SCOPE.md §9, §10, §16)."""
+"""Dispatch pipeline: queue resolution, option validation, envelope, size, send, telemetry."""
 
 from __future__ import annotations
 

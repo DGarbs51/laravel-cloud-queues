@@ -1,4 +1,4 @@
-"""Downstream typing samples checked with ``ty`` (PROJECT_SCOPE.md §5, D5).
+"""Downstream typing samples checked with ``ty`` (D5).
 
 ``samples/positive`` must type-check cleanly. In ``samples/negative`` every line carrying a
 ``# E: code[, code...]`` marker must produce exactly those error codes, and no other line

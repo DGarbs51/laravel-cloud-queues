@@ -1,4 +1,4 @@
-"""Optional OpenTelemetry / W3C trace-context propagation (PROJECT_SCOPE.md §16).
+"""Optional OpenTelemetry / W3C trace-context propagation.
 
 OpenTelemetry is imported inside the functions so core imports succeed without the
 package. Failures are swallowed: tracing must not break queue execution, and a job's

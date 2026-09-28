@@ -1,4 +1,4 @@
-"""Transport contract (PROJECT_SCOPE.md §11).
+"""Transport contract.
 
 Transports are synchronous and body-opaque: they move UTF-8 ``str`` bodies and know
 nothing about envelopes, jobs or events. Async callers offload them with
@@ -54,7 +54,7 @@ class Delivery:
     message_id: str
     """Stable across redeliveries (SQS MessageId, agent messageId, Redis job id)."""
     queue: str
-    """Normalized logical queue name (inverse of prefix/suffix rules, §6)."""
+    """Normalized logical queue name (inverse of prefix/suffix rules)."""
     body: str
     attempt: int
     """``ApproximateReceiveCount`` / reservation counter; missing counts as 1."""
@@ -77,7 +77,7 @@ class Producer(Protocol):
 
     @property
     def supports_fifo(self) -> bool:
-        """``False`` for Redis: FIFO and fair-queue options are rejected (§10)."""
+        """``False`` for Redis: FIFO and fair-queue options are rejected."""
         ...
 
     def send(self, message: OutgoingMessage) -> SentMessage:

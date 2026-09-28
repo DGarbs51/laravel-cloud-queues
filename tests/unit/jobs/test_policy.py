@@ -1,4 +1,4 @@
-"""Retry policy math and delay normalization (PROJECT_SCOPE.md §10, §12, D4)."""
+"""Retry policy math and delay normalization (D4)."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def resolved(tries: int = 1, backoff: tuple[float, ...] = (0,)) -> ResolvedPolic
 
 
 def test_worker_defaults_match_laravel() -> None:
-    """Default tries 1, backoff 0, timeout 60 (§12; Laravel WorkerOptions)."""
+    """Default tries 1, backoff 0, timeout 60 (Laravel WorkerOptions)."""
     policy = RetryPolicy().resolve(WorkerDefaults())
     assert policy == ResolvedPolicy(tries=1, backoff=(0,), timeout=60.0, fail_on_timeout=False)
 

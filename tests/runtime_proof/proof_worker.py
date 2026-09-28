@@ -1,6 +1,6 @@
 """One-job proof worker. Run as ``python proof_worker.py ...``.
 
-Proves PROJECT_SCOPE.md §13/§14 and decisions D2/D7 without importing the package.
+Proves decisions D2/D7 without importing the package.
 
 The orchestrator is ``asyncio.run``. Async handlers are awaited. Sync handlers
 run on this thread and block the loop so ``SIGALRM`` can interrupt them. A

@@ -1,7 +1,7 @@
 # Local integration harness
 
 Repository-only Python 3.10+ helpers, independent of `laravel_cloud_queues` and excluded from the
-published wheel. The emulator models the public protocol in scope §11, not undocumented agent
+published wheel. The emulator models the public agent protocol, not undocumented agent
 internals. Moto is local convenience; LocalStack remains the authoritative SQS CI gate (D9).
 
 Run from the repository root (change `3.10` to `3.14` for the other required interpreter):

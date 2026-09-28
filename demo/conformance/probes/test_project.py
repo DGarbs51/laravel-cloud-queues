@@ -14,12 +14,12 @@ from demo.conformance import ROOT
 
 @pytest.mark.conformance("cloud.live_managed", tier="live")
 def test_live_managed():
-    pytest.skip("PROJECT_SCOPE §1: Laravel Cloud has not enabled managed queues for Python")
+    pytest.skip("Laravel Cloud has not enabled managed queues for Python")
 
 
 @pytest.mark.conformance("cloud.dashboard_retry_live", tier="live")
 def test_dashboard_retry_live():
-    pytest.skip("PROJECT_SCOPE §1 / D3: live dashboard retry awaits Python managed queues")
+    pytest.skip("D3: live dashboard retry awaits Python managed queues")
 
 
 @pytest.mark.conformance("packaging.typing_strict", tier="emulated")
