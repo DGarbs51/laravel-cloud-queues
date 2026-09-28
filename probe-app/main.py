@@ -20,16 +20,15 @@ from fastapi import FastAPI, HTTPException, Query
 
 app = FastAPI()
 
-ENV_PREFIXES = ("LARAVEL_CLOUD", "CLOUD_", "AWS_", "QUEUE_", "MESSENGER_")
-SAFE_ENV = {"PORT", "AWS_REGION", "AWS_DEFAULT_REGION", "QUEUE_CONNECTION"}
 AGENT_SOCKET_DEFAULT = "/tmp/cloud-agent.sock"
 LOG_SOCKET_DEFAULT = "unix:///tmp/cloud-init.sock"
 
 
 def redact(value: str) -> str:
-    # Keep shape (length, URL host) so we can see what was injected without leaking it.
-    value = re.sub(r"\d{6,}", lambda m: "#" * len(m.group()), value)
-    return value if len(value) <= 120 else value[:120] + "…"
+    # Keep shape (host, port, length) so we can see what was injected without leaking it.
+    value = re.sub(r"(://[^:/@\s]*):[^@/\s]*@", r"\1:***@", value)  # password in URL userinfo
+    value = re.sub(r"\d{6,}", lambda m: "#" * len(m.group()), value)  # account IDs
+    return value if len(value) <= 200 else value[:200] + "…"
 
 
 def shape(value: Any) -> Any:
@@ -43,13 +42,9 @@ def shape(value: Any) -> Any:
     return value
 
 
-def env_report() -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for key in sorted(os.environ):
-        if key.startswith(ENV_PREFIXES) or key in SAFE_ENV:
-            val = os.environ[key]
-            out[key] = val if key in SAFE_ENV else {"set": True, "length": len(val)}
-    return out
+def env_report() -> dict[str, str]:
+    # Test-only: returns every variable unmasked, secrets included.
+    return dict(sorted(os.environ.items()))
 
 
 def managed_queues_config() -> dict[str, Any]:
