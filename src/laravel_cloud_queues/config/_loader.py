@@ -83,7 +83,10 @@ def load_config(
     if mode is None and document is not None:
         mode = "managed"
     if mode not in ("managed", "sqs", "redis"):
-        raise ConfigurationError("Select a backend: managed, sqs, or redis.")
+        raise ConfigurationError(
+            "No queue backend selected: set LARAVEL_CLOUD_QUEUES_BACKEND to managed, sqs or redis "
+            "(managed is selected automatically when LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG is set)."
+        )
     endpoint = setting(sqs_endpoint, "LARAVEL_CLOUD_QUEUES_SQS_ENDPOINT")
     if endpoint is not None and document is not None:
         raise ConfigurationError("SQS endpoint overrides are forbidden with managed configuration.")
