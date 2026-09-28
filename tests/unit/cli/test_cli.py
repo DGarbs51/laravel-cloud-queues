@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import click
 import pytest
 
 import laravel_cloud_queues.cli as cli
@@ -374,3 +375,18 @@ def test_redact(text: str, secrets: list[str]) -> None:
     assert all(secret not in redacted for secret in secrets)
     assert cli._redact(redacted) == redacted
     assert cli._redact("/tmp/agent.sock") == "/tmp/agent.sock"
+
+
+def test_group_mounts_in_a_host_cli(app: str) -> None:
+    # How Flask (``app.cli.add_command``) or any click CLI embeds the commands.
+    from click.testing import CliRunner
+
+    host = click.Group("host")
+    host.add_command(cli.cli, "queues")
+    runner = CliRunner()
+    ok = runner.invoke(host, ["queues", "inspect", f"{app}:redis", "--json"])
+    assert ok.exit_code == 0
+    assert json.loads(ok.output)["mode"] == "redis"
+    missing = runner.invoke(host, ["queues", "work", f"{app}:missing"])
+    assert missing.exit_code == 2
+    assert "error:" in missing.output
