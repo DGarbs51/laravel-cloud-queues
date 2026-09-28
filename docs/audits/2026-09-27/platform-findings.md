@@ -80,3 +80,29 @@ Other platform variables observed: `NGINX_HTTP_TIMEOUT=20` (web requests are cut
 2. **Object storage occupies the standard `AWS_*` names.** boto3 honors `AWS_ENDPOINT_URL` for every service, so an SQS client built from the default chain in the same container would send SQS requests to R2 with R2 credentials and region `auto`. Self-managed SQS must use package-specific configuration passed explicitly to the client, not the standard `AWS_*` variables or Laravel's `sqs` connection variable names.
 3. **Managed mode must select credentials explicitly.** When managed queues reach Python, `credentials: "ecs"` must use the ECS container credential provider, because the default chain would pick up the R2 keys first.
 4. **Synchronous dispatch and eager execution inside web requests must finish well under 20 seconds.**
+
+## Redis/Valkey end-to-end test on Laravel Cloud (2026-09-28)
+
+`probe-app/` ran a throwaway prototype of the §11 Redis transport (Laravel `RedisQueue`-style Lua reserve/release/delete, D2 timeouts, D4 policy in the message, D6b log-only failures) against the environment's Laravel Valkey over TLS (`rediss://`). Workers ran as `python worker.py` background processes: one on the App cluster and four on a worker cluster.
+
+| Case | Observed |
+|---|---|
+| `ok` | Processed on attempt 1 |
+| `delayed` (5 s) | Held in the delayed set, then processed on another host |
+| `flaky_retry` (`tries` 2, backoff 3 s) | Released on attempt 1; processed on attempt 2 on another host |
+| `terminal_fail` (`tries` 2) | Released, then failed on attempt 2: one JSON line logged, job deleted |
+| `timeout_then_terminal` (`tries` 2, timeout 3 s) | Attempt 1 timed out and the worker exited 124; the reservation expired and the job was redelivered to the worker cluster; attempt 2 timed out and was failed as the last attempt |
+| Bursts of 50 and 40 `ok` jobs | Spread across all five worker processes on two clusters; no job started twice; none lost |
+
+Confirmed:
+
+- Python containers can use Laravel Valkey over TLS with `redis-py`, including Lua `EVAL` with `cjson`.
+- Multiple workers across clusters share one Redis queue without double delivery.
+- Custom background processes run `python worker.py` on both App and worker clusters and receive `SIGTERM` on deploy, so graceful shutdown works.
+
+Not yet proven: that Cloud restarts a background process after it exits 124 (a deploy restarted all workers before this could be isolated).
+
+Other observations:
+
+- Laravel Cloud's edge (Cloudflare, browser integrity check enabled) rejects Python `urllib`'s default User-Agent with HTTP 403; `curl` succeeds. Relevant to any HTTP client calling a Cloud app.
+- Logs are retrievable with `cpx cloud environment:logs`, but only the most recent 100 lines.
