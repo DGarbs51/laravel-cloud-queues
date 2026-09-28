@@ -21,6 +21,7 @@ from .registry import Registry
 
 # Single source of truth is pyproject.toml; bump with `uv version --bump <part>`.
 __version__ = importlib.metadata.version("laravel-cloud-queues")
+"""The installed version of the package."""
 
 __all__ = [
     "ArgumentError",

@@ -1,9 +1,10 @@
-"""Shared execution path for the worker and eager mode.
+"""The execution path shared by the worker and eager mode.
 
-``prepare_execution`` performs every deterministic check (envelope decode, registry lookup,
-argument decoding/validation); any failure is a JobDefectError (terminal on first delivery).
-``run_prepared`` activates trace context, sets the current JobContext, calls the invoker and
-maps the result to exactly one :class:`HandlerResult`. It never touches the transport.
+:func:`prepare_execution` performs every deterministic check: decoding the envelope, looking
+up the job and decoding and validating its arguments. Any failure is a
+:class:`JobDefectError`, which is terminal on the first delivery. :func:`run_prepared`
+activates the trace context, sets the current job context, calls the invoker and maps the
+result to exactly one :class:`HandlerResult`. It never touches the transport.
 """
 
 from __future__ import annotations
@@ -23,26 +24,45 @@ from .signature import decode_arguments
 
 @dataclass(frozen=True)
 class PreparedExecution:
+    """A decoded and validated job that is ready to be run."""
+
     envelope: Envelope
+    """The decoded envelope of the message."""
     job: AnyJob
+    """The registered job the message targets."""
     args: tuple[object, ...]
+    """The decoded positional arguments."""
     kwargs: dict[str, object]
+    """The decoded keyword arguments."""
 
     def policy(self, defaults: WorkerDefaults) -> ResolvedPolicy:
-        """The message's policy (D4) with worker defaults for omitted fields."""
+        """Get the message's retry policy, with worker defaults for any omitted fields."""
         return self.envelope.policy.resolve(defaults)
 
 
 @dataclass(frozen=True)
 class HandlerResult:
+    """The result of running a job's handler."""
+
     kind: Literal["success", "release", "fail", "error"]
-    """``release``/``fail``: explicit JobContext outcome (wins over success/exception).
-    ``error``: handler or teardown exception (retry policy applies)."""
+    """The kind of result.
+
+    A ``release`` or ``fail`` is an outcome chosen explicitly through the job context, and
+    it wins over both success and an exception. An ``error`` is an exception from the
+    handler or its teardown, to which the retry policy applies.
+    """
     delay: int = 0
+    """The number of seconds to wait before a release."""
     exception: BaseException | None = None
+    """The exception that failed the job or was raised by the handler."""
 
 
 def prepare_execution(registry: Registry, body: str) -> PreparedExecution:
+    """Prepare the given message body for execution.
+
+    Raises a :class:`JobDefectError` if the body cannot be decoded, the job is unknown, or
+    the arguments do not match the handler.
+    """
     envelope = decode_envelope(body)
     job = registry.get(envelope.job)
     try:
@@ -60,8 +80,12 @@ def prepare_execution(registry: Registry, body: str) -> PreparedExecution:
 
 
 async def run_prepared(prepared: PreparedExecution, context: JobContext) -> HandlerResult:
-    """Never raises for handler exceptions (returns ``error``). ``BaseException`` that is
-    not an ``Exception`` (KeyboardInterrupt, SystemExit, cancellation) propagates."""
+    """Run the prepared job with the given context.
+
+    Handler exceptions are never raised and become an ``error`` result instead. A
+    ``BaseException`` that is not an ``Exception``, such as ``KeyboardInterrupt``,
+    ``SystemExit`` or cancellation, propagates.
+    """
     job = prepared.job
     error: Exception | None = None
     token = _current_job.set(context)

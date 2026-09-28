@@ -1,18 +1,24 @@
-"""The single dispatch pipeline.
+"""The single pipeline through which every job is dispatched.
 
-``Job.dispatch`` and ``Job.dispatch_async`` both call :func:`prepare_dispatch` then
-:func:`send_prepared` (async: inside ``anyio.to_thread.run_sync``), so validation,
-serialization, routing, tracing and transport semantics are identical.
+``Job.dispatch`` and ``Job.dispatch_async`` both call :func:`prepare_dispatch` and then
+:func:`send_prepared` (the async variant runs them in a worker thread), so validation,
+serialization, routing, tracing and transport behavior are identical.
 
-Steps: resolve queue (options > job > config default) -> validate options against queue
-kind and backend (``.fifo``: group default = queue name incl. ``.fifo``, dedup default = new
-unique ID chosen once here, ``""`` = omit; positive delay on FIFO rejected; FIFO options on
-standard queues and fair groups on FIFO queues rejected; any FIFO/fair option in redis mode
-rejected; group/dedup IDs 1-128 chars of SQS's allowed set) -> encode arguments -> build
-envelope (new uuid, policy, queue, dispatched_at, trace context) -> measure UTF-8 bytes vs
-``producer.max_payload_bytes``, else the ``MAX_BODY_BYTES`` decode ceiling
-(PayloadTooLargeError) -> ``producer.send`` -> emit ``queued`` (managed mode only,
-best-effort) -> DispatchReceipt.
+A dispatch runs through these steps in order:
+
+1. Resolve the queue from the options, then the job, then the configured default.
+2. Validate the options against the queue kind and backend. On ``.fifo`` queues the group
+   defaults to the full queue name and the deduplication ID defaults to a new unique ID
+   chosen once here, while ``""`` omits it. A positive delay on a FIFO queue, FIFO options on
+   a standard queue, a fair-queue group on a FIFO queue, and any FIFO or fair-queue option on
+   the redis backend are all rejected. Group and deduplication IDs must be 1-128 characters
+   of the set SQS allows.
+3. Encode the arguments and build the envelope with a new UUID, the policy, the queue, the
+   dispatch time and the trace context.
+4. Measure the UTF-8 body against ``producer.max_payload_bytes``, or the ``MAX_BODY_BYTES``
+   decode ceiling, raising a :class:`PayloadTooLargeError` when it is exceeded.
+5. Send the message, emit the ``queued`` event on a best-effort basis (managed mode only),
+   and return a :class:`DispatchReceipt`.
 """
 
 from __future__ import annotations
@@ -33,17 +39,26 @@ from .policy import normalize_delay
 from .signature import encode_arguments
 
 logger = logging.getLogger(__name__)
+"""The logger for the dispatch pipeline."""
 
 _SQS_ID = re.compile(r"[!-~]{1,128}")
-"""SQS ``MessageGroupId``/``MessageDeduplicationId``: 1-128 alphanumeric or punctuation
-characters (printable ASCII without space)."""
+"""The pattern for SQS group and deduplication IDs.
+
+SQS allows 1-128 alphanumeric or punctuation characters, which is printable ASCII without
+the space.
+"""
 
 
 @dataclass(frozen=True)
 class PreparedDispatch:
+    """A validated and encoded dispatch that is ready to be sent."""
+
     job_name: str
+    """The name of the job being dispatched."""
     uuid: str
+    """The UUID assigned to the envelope."""
     message: OutgoingMessage
+    """The message to hand to the producer."""
 
 
 def prepare_dispatch(
@@ -52,7 +67,11 @@ def prepare_dispatch(
     kwargs: Mapping[str, object],
     options: DispatchOptions,
 ) -> PreparedDispatch:
-    """Pure CPU work, no I/O. Raises DispatchError subclasses."""
+    """Prepare the given job and arguments for dispatch.
+
+    This performs no I/O. Invalid options, arguments or payloads raise a subclass of
+    :class:`DispatchError`.
+    """
     registry = job.registry
     queue = options.queue if options.queue is not None else job.queue
     if queue is None:
@@ -109,7 +128,11 @@ def prepare_dispatch(
 def _message_group_options(
     queue: str, options: DispatchOptions, *, supports_fifo: bool, fifo: bool
 ) -> tuple[str | None, str | None, str | None]:
-    """``(fifo_group, deduplication_id, message_group)`` after validation and defaults."""
+    """Resolve the FIFO group, deduplication ID and fair-queue group for the message.
+
+    The options are validated and defaulted, then returned as a
+    ``(fifo_group, deduplication_id, message_group)`` tuple.
+    """
     if not supports_fifo:
         if (options.group, options.deduplication_id, options.message_group) != (None, None, None):
             raise InvalidQueueOptionError(
@@ -145,6 +168,7 @@ def _message_group_options(
 
 
 def _check_sqs_id(option: str, value: object) -> None:
+    """Ensure the given value is a valid SQS group or deduplication ID."""
     if not isinstance(value, str) or not _SQS_ID.fullmatch(value):
         raise InvalidQueueOptionError(
             f"{option} must be 1-128 printable ASCII characters without spaces, got {value!r}."
@@ -152,8 +176,11 @@ def _check_sqs_id(option: str, value: object) -> None:
 
 
 def send_prepared(job: AnyJob, prepared: PreparedDispatch) -> DispatchReceipt:
-    """Blocking: producer send + ``queued`` telemetry. Raises DispatchError subclasses and
-    TransportError."""
+    """Send the prepared dispatch to the queue.
+
+    This blocks while the producer sends the message and the ``queued`` event is emitted.
+    It raises subclasses of :class:`DispatchError` and :class:`TransportError`.
+    """
     registry = job.registry
     sent = registry.backend.producer.send(prepared.message)
     try:

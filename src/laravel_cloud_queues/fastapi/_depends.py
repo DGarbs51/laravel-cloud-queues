@@ -1,4 +1,4 @@
-"""Which job parameters FastAPI injects, and which HTTP-only dependencies are refused.
+"""The rules for which job parameters FastAPI injects and which dependencies are refused.
 
 ``Depends()`` defaults are real objects even when annotations are postponed. Postponed
 ``Annotated[..., Depends(...)]`` forms are resolved while :class:`LaravelCloudQueues` is
@@ -27,11 +27,13 @@ from ..errors import ConfigurationError
 from ..jobs.context import JobContext
 
 QUEUE_JOB_PATH = "/__laravel_cloud_queues__/job"
+"""The synthetic request path used when solving queue job dependencies."""
 
 _inspecting_handler: ContextVar[Callable[..., Any] | None] = ContextVar(
     "laravel_cloud_queues_fastapi_handler",
     default=None,
 )
+"""The handler currently being registered, if any."""
 
 # More specific types before HTTPConnection, which Request and WebSocket subclass.
 _REQUEST_TYPES: tuple[tuple[type[Any], str], ...] = (
@@ -42,12 +44,14 @@ _REQUEST_TYPES: tuple[tuple[type[Any], str], ...] = (
     (BackgroundTasks, "BackgroundTasks"),
     (SecurityScopes, "SecurityScopes"),
 )
+"""The HTTP-only types a queue job cannot receive, with their display names."""
 _REQUEST_NAMES = {label for _, label in _REQUEST_TYPES}
+"""The display names of the HTTP-only types."""
 
 
 @contextmanager
 def inspecting(func: Callable[..., Any]) -> Iterator[None]:
-    """Expose ``func`` while registration asks the invoker which parameters are injected."""
+    """Expose the handler while registration asks which of its parameters are injected."""
 
     token: Token[Callable[..., Any] | None] = _inspecting_handler.set(func)
     try:
@@ -57,7 +61,7 @@ def inspecting(func: Callable[..., Any]) -> Iterator[None]:
 
 
 def parameter_is_injected(parameter: inspect.Parameter) -> bool:
-    """True when the worker must supply this parameter (never the payload)."""
+    """Determine if the worker must supply the parameter, rather than the payload."""
 
     parameter = _with_evaluated_annotation(parameter)
     return _injected(parameter)
@@ -67,12 +71,13 @@ def reject_request_dependencies(
     func: Callable[..., Any],
     overrides: Mapping[Callable[..., Any], Callable[..., Any]] | None = None,
 ) -> None:
-    """Raise :class:`ConfigurationError` when a job declares HTTP-only dependencies.
+    """Ensure the job declares no HTTP-only dependencies.
 
-    Serialized parameters are not part of the FastAPI walk, so ordinary payload annotations
-    are left to the codec. Nested ``Depends()`` callables are walked with FastAPI's own
-    ``get_dependant``. ``overrides`` is ``app.dependency_overrides`` (checked again at
-    invoke, because tests can replace a dependency after registration).
+    Raises a :class:`ConfigurationError` when it does, or when it declares ``*args`` or
+    ``**kwargs``. Serialized parameters are not part of the FastAPI walk, so ordinary payload
+    annotations are left to the codec. Nested ``Depends()`` callables are walked with FastAPI's
+    own ``get_dependant``. The ``overrides`` are ``app.dependency_overrides``, checked again at
+    invoke because tests can replace a dependency after registration.
     """
 
     parameters = evaluated_parameters(func)
@@ -112,7 +117,7 @@ def reject_request_dependencies(
 
 
 def dependency_parameters(func: Callable[..., Any]) -> tuple[inspect.Parameter, ...]:
-    """Injected parameters FastAPI should solve. Plain ``JobContext`` is not included."""
+    """Get the injected parameters FastAPI should solve, excluding plain ``JobContext``."""
 
     return tuple(
         parameter
@@ -122,12 +127,14 @@ def dependency_parameters(func: Callable[..., Any]) -> tuple[inspect.Parameter, 
 
 
 def plain_job_context_parameters(func: Callable[..., Any]) -> tuple[inspect.Parameter, ...]:
+    """Get the parameters annotated ``JobContext`` without a ``Depends()``."""
     return tuple(
         parameter for parameter in evaluated_parameters(func) if _plain_job_context(parameter)
     )
 
 
 def evaluated_parameters(func: Callable[..., Any]) -> tuple[inspect.Parameter, ...]:
+    """Get the handler parameters with their postponed annotations evaluated."""
     signature = inspect.signature(func)
     hints = _type_hints(func)
     parameters: list[inspect.Parameter] = []
@@ -139,15 +146,19 @@ def evaluated_parameters(func: Callable[..., Any]) -> tuple[inspect.Parameter, .
 
 
 def depends_of(parameter: inspect.Parameter) -> params.Depends | None:
+    """Get the ``Depends()`` declared by the parameter, if any."""
     if isinstance(parameter.default, params.Depends):
         return parameter.default
     return annotated_depends(parameter.annotation)
 
 
 def request_marker(parameter: inspect.Parameter) -> str | None:
-    """Name of a FastAPI request-parameter marker (``Header()``, ``Query()``, ``Cookie()``,
-    ``Body()``, ``Path()``, ``Form()``, ``File()``) declared as the default or in
-    ``Annotated`` metadata, else None. Queue jobs have no request to read them from."""
+    """Get the name of the request-parameter marker declared by the parameter, if any.
+
+    The markers are ``Header()``, ``Query()``, ``Cookie()``, ``Body()``, ``Path()``, ``Form()``
+    and ``File()``, as the default or in ``Annotated`` metadata. Queue jobs have no request to
+    read them from.
+    """
 
     candidates: list[object] = [parameter.default]
     if get_origin(parameter.annotation) is Annotated:
@@ -159,6 +170,7 @@ def request_marker(parameter: inspect.Parameter) -> str | None:
 
 
 def annotated_depends(annotation: object) -> params.Depends | None:
+    """Get the last ``Depends()`` in the ``Annotated`` metadata, if any."""
     if get_origin(annotation) is not Annotated:
         return None
     found: params.Depends | None = None
@@ -169,6 +181,7 @@ def annotated_depends(annotation: object) -> params.Depends | None:
 
 
 def is_job_context(annotation: object) -> bool:
+    """Determine if the annotation refers to ``JobContext``."""
     if annotation is JobContext:
         return True
     origin = get_origin(annotation)
@@ -186,6 +199,7 @@ def is_job_context(annotation: object) -> bool:
 
 
 def request_kind(annotation: object) -> str | None:
+    """Get the name of the HTTP-only type referenced by the annotation, if any."""
     origin = get_origin(annotation)
     if origin is Annotated:
         args = get_args(annotation)
@@ -214,6 +228,7 @@ def request_kind(annotation: object) -> str | None:
 
 
 def _injected(parameter: inspect.Parameter) -> bool:
+    """Determine if the parameter is injected rather than taken from the payload."""
     if request_kind(parameter.annotation) is not None:
         return True
     if isinstance(parameter.default, params.Depends):
@@ -224,10 +239,12 @@ def _injected(parameter: inspect.Parameter) -> bool:
 
 
 def _plain_job_context(parameter: inspect.Parameter) -> bool:
+    """Determine if the parameter is a ``JobContext`` without a ``Depends()``."""
     return is_job_context(parameter.annotation) and depends_of(parameter) is None
 
 
 def _type_hints(func: Callable[..., Any]) -> Mapping[str, Any]:
+    """Get the handler type hints, or an empty mapping when they cannot be evaluated."""
     try:
         return get_type_hints(func, include_extras=True)
     except Exception:
@@ -235,7 +252,7 @@ def _type_hints(func: Callable[..., Any]) -> Mapping[str, Any]:
 
 
 def _with_evaluated_annotation(parameter: inspect.Parameter) -> inspect.Parameter:
-    """Resolve postponed annotations of the handler currently being registered."""
+    """Resolve the postponed annotation of the handler being registered."""
 
     if not isinstance(parameter.annotation, str):
         return parameter
@@ -249,7 +266,10 @@ def _with_evaluated_annotation(parameter: inspect.Parameter) -> inspect.Paramete
 
 
 def _signature_call(signature: inspect.Signature) -> Callable[..., None]:
+    """Build a stand-in callable carrying the given signature for FastAPI to analyze."""
+
     def dependency_call(*_args: object, **_kwargs: object) -> None:
+        """Refuse to be called, since queue job dependencies are only solved."""
         raise RuntimeError("queue job dependencies are solved, not called")
 
     dependency_call.__signature__ = signature  # ty: ignore[unresolved-attribute]
@@ -257,7 +277,7 @@ def _signature_call(signature: inspect.Signature) -> Callable[..., None]:
 
 
 def _dependency_call(parameter: inspect.Parameter) -> Callable[..., Any] | None:
-    """The callable ``Depends()`` resolves for ``parameter`` (the annotation when omitted)."""
+    """Get the callable ``Depends()`` resolves, or the annotation when it is omitted."""
 
     depends = depends_of(parameter)
     if depends is None:
@@ -277,8 +297,11 @@ def _reject_markers(
     *,
     seen: set[int],
 ) -> None:
-    """Refuse ``Header()``/``Query()``/``Cookie()``/``Body()``/``Path()``/``Form()``/``File()``
-    anywhere in the dependency tree, following ``dependency_overrides``."""
+    """Ensure no request-parameter marker appears anywhere in the dependency tree.
+
+    The markers are ``Header()``, ``Query()``, ``Cookie()``, ``Body()``, ``Path()``, ``Form()``
+    and ``File()``. The walk follows ``dependency_overrides``.
+    """
 
     if call is None or id(call) in seen:
         return
@@ -306,6 +329,7 @@ def _walk(
     *,
     seen: set[int],
 ) -> None:
+    """Ensure the dependency tree has no HTTP-only dependencies or unresolved parameters."""
     kind = _dependant_request_kind(dependant)
     if kind is not None:
         name = dependant.name or getattr(dependant.call, "__qualname__", "dependency")
@@ -335,6 +359,7 @@ def _walk_override(
     *,
     seen: set[int],
 ) -> None:
+    """Ensure an overriding dependency has no HTTP-only dependencies or unresolved parameters."""
     marker = id(call)
     if marker in seen:
         return
@@ -367,6 +392,7 @@ def _walk_override(
 
 
 def _dependant_request_kind(dependant: Dependant) -> str | None:
+    """Get the name of the HTTP-only type the dependant asks for, if any."""
     checks = (
         ("request_param_name", "Request"),
         ("websocket_param_name", "WebSocket"),
@@ -382,6 +408,7 @@ def _dependant_request_kind(dependant: Dependant) -> str | None:
 
 
 def _scopes(dependant: Dependant) -> list[object]:
+    """Get the security scopes declared by the dependant."""
     own = getattr(dependant, "own_oauth_scopes", None)
     if not own:
         own = getattr(dependant, "security_scopes", None)
@@ -391,6 +418,7 @@ def _scopes(dependant: Dependant) -> list[object]:
 
 
 def _unresolved_parameter(call: Callable[..., Any] | None) -> str | None:
+    """Get the name of the first dependency parameter a queue job cannot supply."""
     if call is None:
         return None
     try:
@@ -415,6 +443,7 @@ def _unresolved_parameter(call: Callable[..., Any] | None) -> str | None:
 
 
 def _http_error(func: Callable[..., Any], detail: str) -> ConfigurationError:
+    """Create the error raised when a job uses an HTTP-only dependency."""
     return ConfigurationError(
         f"Job [{_qualname(func)}] cannot use {detail} because a queue job has no HTTP "
         "request. Use Depends() for application services, JobContext for the delivery, "
@@ -423,4 +452,5 @@ def _http_error(func: Callable[..., Any], detail: str) -> ConfigurationError:
 
 
 def _qualname(func: Callable[..., Any]) -> str:
+    """Get the qualified name of the given handler."""
     return str(getattr(func, "__qualname__", "<job>"))

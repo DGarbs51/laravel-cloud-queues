@@ -1,9 +1,8 @@
-"""Laravel Cloud observability (D1, D12) and tracing.
+"""The Laravel Cloud observability and tracing layer.
 
-Events go to the log socket only in managed mode (D12). In ``sqs`` and ``redis`` modes
-the worker writes structured JSON lines to its own stdout instead (D6b terminal
-failures). Telemetry never raises to the caller and never converts a successful job
-into a failure.
+Events are sent to the log socket only in managed mode. In ``sqs`` and ``redis`` modes
+the worker writes terminal failures to its own stdout as structured JSON lines instead.
+Telemetry never raises to the caller and never turns a successful job into a failure.
 """
 
 from __future__ import annotations

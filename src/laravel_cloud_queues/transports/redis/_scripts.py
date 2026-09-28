@@ -1,14 +1,16 @@
-"""Laravel-style queue operations, executed atomically by Redis/Valkey.
+"""The Lua scripts that perform Laravel-style queue operations atomically in Redis.
 
-All scores use Redis TIME, never a worker's wall clock. TIME followed by writes is
-supported by effects replication (the only script replication mode in Redis 7+
-and Valkey 8). The integration suite exercises these scripts on the real server.
+All scores use the Redis ``TIME`` command, never a worker's wall clock. Calling
+``TIME`` before writes is supported by effects replication, which is the only script
+replication mode in Redis 7+ and Valkey 8. The integration suite runs these scripts
+against a real server.
 """
 
 _TIME = """
 local clock = redis.call('TIME')
 local now = tonumber(clock[1]) + tonumber(clock[2]) / 1000000
 """
+"""The script prelude that reads the current Redis time into ``now``."""
 
 SEND = (
     _TIME
@@ -22,6 +24,7 @@ end
 return 1
 """
 )
+"""The script that pushes a job onto the queue, or onto the delayed set when delayed."""
 
 RESERVE = (
     _TIME
@@ -57,6 +60,10 @@ if malformed then return {reserved} end
 return reserved
 """
 )
+"""The script that migrates due jobs and reserves the next job on the queue.
+
+Malformed jobs are returned as a one-element array so core can fail them terminally.
+"""
 
 # A late owner must not revive an expired lease even before another worker migrates it.
 _OWNED = (
@@ -66,6 +73,7 @@ local expires = redis.call('zscore', KEYS[3], ARGV[1])
 if not expires or tonumber(expires) <= now then return 0 end
 """
 )
+"""The script prelude that returns 0 unless the caller still holds an unexpired reservation."""
 
 COMPLETE = (
     _OWNED
@@ -73,6 +81,7 @@ COMPLETE = (
 return redis.call('zrem', KEYS[3], ARGV[1])
 """
 )
+"""The script that deletes a reserved job."""
 
 RELEASE = (
     _OWNED
@@ -82,6 +91,7 @@ redis.call('zrem', KEYS[3], ARGV[1])
 return 1
 """
 )
+"""The script that moves a reserved job onto the delayed set."""
 
 RENEW = (
     _OWNED
@@ -90,3 +100,4 @@ redis.call('zadd', KEYS[3], 'XX', now + tonumber(ARGV[2]), ARGV[1])
 return 1
 """
 )
+"""The script that extends a job's reservation."""

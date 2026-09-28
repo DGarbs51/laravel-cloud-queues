@@ -1,4 +1,7 @@
-"""Body-opaque direct SQS transport for managed queues and explicit SQS backends."""
+"""The direct SQS transport, used by managed queues and explicit SQS backends.
+
+Message bodies are opaque to the transport.
+"""
 
 from __future__ import annotations
 
@@ -35,8 +38,12 @@ if TYPE_CHECKING:
 
 
 def queue_url(connection: SqsConnectionConfig, queue: str) -> str:
-    """Laravel ``SqsQueue::getQueue``/``suffixQueue``: full URLs pass through; prefix trailing
-    ``/`` trimmed; suffix appended once (``Str::finish``); FIFO ``{base}{suffix}.fifo``."""
+    """Get the full SQS URL for the given queue.
+
+    This mirrors Laravel's ``SqsQueue::getQueue`` and ``suffixQueue``. Full URLs pass
+    through untouched, a trailing ``/`` is trimmed from the prefix, the suffix is appended
+    once like ``Str::finish``, and FIFO queues become ``{base}{suffix}.fifo``.
+    """
     queue = queue or connection.queue
     parsed = urlsplit(queue)
     if parsed.scheme and parsed.netloc:
@@ -50,7 +57,11 @@ def queue_url(connection: SqsConnectionConfig, queue: str) -> str:
 
 
 def normalize_queue(connection: SqsConnectionConfig, queue_or_url: str) -> str:
-    """Inverse of :func:`queue_url` (Laravel Cloud ``Queue::normalizeQueue``): logical name."""
+    """Get the logical queue name for the given queue name or URL.
+
+    This is the inverse of :func:`queue_url`, mirroring Laravel Cloud's
+    ``Queue::normalizeQueue``.
+    """
     name = queue_or_url.removeprefix(connection.prefix.rstrip("/") + "/")
     fifo = ".fifo" if name.endswith(".fifo") else ""
     base = name.removesuffix(fifo) if fifo else name
@@ -58,10 +69,10 @@ def normalize_queue(connection: SqsConnectionConfig, queue_or_url: str) -> str:
 
 
 def receive_count(value: object) -> int:
-    """``ApproximateReceiveCount`` as an attempt number; missing or non-numeric is 1.
+    """Parse an ``ApproximateReceiveCount`` value into an attempt number.
 
-    Labeled deviation ``missing-receive-count-is-one`` (D13.5, Symfony parity), shared
-    with the agent path so both consumers count attempts identically.
+    A missing or non-numeric count is treated as 1, matching Symfony. The agent consumer
+    shares this helper so that both consumers count attempts identically.
     """
     try:
         return max(1, int(value)) if isinstance(value, (str, int, float)) else 1
@@ -70,17 +81,28 @@ def receive_count(value: object) -> int:
 
 
 class SqsProducer(SqsTransport):
-    """Send using explicit settings; client/credentials are resolved on first use."""
+    """A producer that sends messages to SQS using explicit settings.
+
+    The client and its credentials are resolved on first use.
+    """
 
     @property
     def max_payload_bytes(self) -> int | None:
+        """Get the UTF-8 byte limit for the encoded body."""
         return SQS_MAX_PAYLOAD_BYTES
 
     @property
     def supports_fifo(self) -> bool:
+        """Determine if the transport supports FIFO and fair-queue options."""
         return True
 
     def send(self, message: OutgoingMessage) -> SentMessage:
+        """Send the message to its SQS queue.
+
+        Raises a ``ManagedQueueNotFoundError`` if the queue does not exist, a
+        ``PayloadTooLargeError`` if the queue rejects the body's size, and a
+        ``TransportError`` for any other failure.
+        """
         url = queue_url(self._connection, message.queue)
         params: SendMessageRequestTypeDef = {"QueueUrl": url, "MessageBody": message.body}
         if message.delay_seconds:
@@ -112,13 +134,19 @@ class SqsProducer(SqsTransport):
 
 
 class SqsConsumer(SqsTransport):
-    """One message per poll; retries change visibility on the original delivery.
+    """A consumer that receives one SQS message per poll.
 
-    interrupt() prevents the next poll, but cannot cancel an in-flight SDK long
-    poll. A message returned by that poll is still handed to the worker.
+    Retries change the visibility of the original delivery rather than sending a new
+    message. Calling :meth:`interrupt` prevents the next poll but cannot cancel an
+    in-flight SDK long poll, and a message returned by that poll is still handed to
+    the worker.
     """
 
     def __init__(self, connection: SqsConnectionConfig, *, lease_seconds: int = 60) -> None:
+        """Create a new SQS consumer instance.
+
+        Raises a ``ConfigurationError`` unless ``lease_seconds`` is between 1 and 43,200.
+        """
         if not 0 < lease_seconds <= MAX_VISIBILITY_SECONDS:
             raise ConfigurationError("SQS lease_seconds must be between 1 and 43200.")
         super().__init__(connection)
@@ -127,9 +155,15 @@ class SqsConsumer(SqsTransport):
 
     @property
     def supports_renewal(self) -> bool:
+        """Determine if the watchdog should renew the lease on deliveries."""
         return True
 
     def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
+        """Receive the next message from the first queue with work.
+
+        Only a single queue is long polled, for at most 20 seconds; multiple queues are
+        each polled once without waiting.
+        """
         if not math.isfinite(wait_seconds) or wait_seconds < 0:
             raise ValueError("wait_seconds must be finite and nonnegative.")
         wait = min(20, int(wait_seconds)) if len(queues) == 1 else 0
@@ -167,9 +201,15 @@ class SqsConsumer(SqsTransport):
         return None
 
     def complete(self, delivery: Delivery) -> None:
+        """Delete the message from the queue."""
         self._report(delivery)
 
     def release(self, delivery: Delivery, delay_seconds: int) -> None:
+        """Make the message visible again after the given delay.
+
+        The delay is capped so the message stays within the 12-hour visibility limit
+        that SQS measures from the original receive.
+        """
         limit = MAX_VISIBILITY_SECONDS
         if delivery.received_at > 0:
             # SQS measures its 12-hour ceiling from the original receive, not this
@@ -179,6 +219,7 @@ class SqsConsumer(SqsTransport):
         self._report(delivery, visibility=max(0, min(limit, delay_seconds)))
 
     def renew(self, delivery: Delivery, lease_seconds: int) -> None:
+        """Extend the message's visibility to now plus ``lease_seconds``."""
         if not 0 < lease_seconds <= MAX_VISIBILITY_SECONDS:
             raise ValueError("SQS lease_seconds must be between 1 and 43200.")
         self._report(delivery, visibility=lease_seconds, renewing=True)
@@ -186,6 +227,11 @@ class SqsConsumer(SqsTransport):
     def _report(
         self, delivery: Delivery, *, visibility: int | None = None, renewing: bool = False
     ) -> None:
+        """Delete the message, or change its visibility when ``visibility`` is given.
+
+        Raises a ``LeaseLostError`` when the receipt is no longer valid or a renewal
+        fails, and an ``AmbiguousAcknowledgementError`` when the outcome is unknown.
+        """
         if not delivery.receipt:
             raise LeaseLostError("SQS delivery has no receipt handle.")
         url = delivery.meta.get("queue_url") or queue_url(self._connection, delivery.queue)
@@ -214,8 +260,10 @@ class SqsConsumer(SqsTransport):
             raise AmbiguousAcknowledgementError("SQS outcome could not be confirmed.") from None
 
     def interrupt(self) -> None:
+        """Prevent any further polls."""
         self._interrupted.set()
 
     def close(self) -> None:
+        """Stop polling and close the SQS client."""
         self.interrupt()
         super().close()

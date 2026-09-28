@@ -1,4 +1,4 @@
-"""Job definition, envelope, policy, context, dispatch and execution."""
+"""The job definition, envelope, retry policy, context, dispatch and execution."""
 
 from __future__ import annotations
 

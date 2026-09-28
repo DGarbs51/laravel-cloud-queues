@@ -1,4 +1,4 @@
-"""Lazy, isolated SQS clients shared safely by dispatch and watchdog threads."""
+"""The lazily built, isolated SQS clients shared by dispatch and watchdog threads."""
 
 from __future__ import annotations
 
@@ -21,6 +21,12 @@ if TYPE_CHECKING:
 
 
 def _build_client(connection: SqsConnectionConfig) -> SQSClient:
+    """Build an SQS client for the given connection.
+
+    Unless the default credential chain was requested, the client uses a private session
+    that ignores ambient profiles, credential files and endpoint settings. Raises a
+    ``ConfigurationError`` if the selected provider returns no credentials.
+    """
     credentials = connection.credentials
     if credentials == "default":
         session = boto3.session.Session(region_name=connection.region)
@@ -80,13 +86,21 @@ def _build_client(connection: SqsConnectionConfig) -> SQSClient:
 
 
 class SqsTransport:
+    """The client handling shared by the SQS producer and consumer."""
+
     def __init__(self, connection: SqsConnectionConfig) -> None:
+        """Create a new SQS transport instance."""
         self._connection = connection
         self._client: SQSClient | None = None
         self._client_lock = Lock()
         self._closed = False
 
     def _get_client(self) -> SQSClient:
+        """Get the SQS client, building it on first use.
+
+        This is thread-safe. Raises a ``TransportError`` if the transport is closed or the
+        client cannot be initialized.
+        """
         # Boto3 sessions are not thread-safe; construct once in the caller's thread.
         # The constructed client and its refreshable credentials support threads.
         with self._client_lock:
@@ -100,6 +114,7 @@ class SqsTransport:
             return self._client
 
     def close(self) -> None:
+        """Close the SQS client and prevent it from being built again."""
         with self._client_lock:
             self._closed = True
             if self._client is not None:

@@ -1,8 +1,8 @@
-"""Laravel Cloud queue event builders (D1, D6b).
+"""The builders for Laravel Cloud queue events and failure records.
 
-Wire shape follows ``Illuminate\\Foundation\\Cloud\\Queue`` and
-``FailedJobProvider::log``. The D1 size policy is measured on the encoded NDJSON
-line, not on the raw PHP/Python string lengths. Symfony's payload projection is
+The wire shape follows ``Illuminate\\Foundation\\Cloud\\Queue`` and
+``FailedJobProvider::log``. The failed job size limit is measured on the encoded NDJSON
+line, not on the raw PHP or Python string lengths. Symfony's payload projection is
 intentionally not applied.
 """
 
@@ -16,16 +16,27 @@ from datetime import datetime, timezone
 from typing import Final, Literal
 
 LifecycleType = Literal["queued", "started", "processed", "released", "failed"]
+"""The lifecycle stages a queue event may report."""
 FAILED_JOB_LINE_LIMIT: Final = 16_384
-"""Collector line limit documented by symfony-on-cloud (unverified; D1)."""
+"""The maximum size in bytes of an encoded failed job line.
+
+This is the collector limit documented by symfony-on-cloud and has not been verified.
+"""
 EXCEPTION_PREVIEW_LIMIT: Final = 1001
+"""The maximum number of characters in an exception preview."""
 
 _DURATION_TYPES: Final = frozenset({"processed", "released", "failed"})
+"""The lifecycle stages that carry a duration."""
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
+"""The Unix epoch as an aware UTC datetime."""
 
 
 def format_timestamp(moment: datetime) -> str:
-    """UTC ``Y-m-d H:i:s.u`` (six-digit microseconds, no ``T``, no zone)."""
+    """Format the given moment as a Laravel timestamp.
+
+    The result is UTC ``Y-m-d H:i:s.u`` with six-digit microseconds, no ``T`` and no zone.
+    Naive datetimes are assumed to already be in UTC.
+    """
 
     if moment.tzinfo is not None and moment.tzinfo.utcoffset(moment) is not None:
         moment = moment.astimezone(timezone.utc)
@@ -33,7 +44,10 @@ def format_timestamp(moment: datetime) -> str:
 
 
 def _replace_lone_surrogates(text: str) -> str:
-    """Replace UTF-16 surrogates with U+FFFD (PHP ``JSON_INVALID_UTF8_SUBSTITUTE``)."""
+    """Replace lone UTF-16 surrogates with U+FFFD.
+
+    This mirrors PHP's ``JSON_INVALID_UTF8_SUBSTITUTE`` flag.
+    """
 
     try:
         text.encode("utf-8")
@@ -43,6 +57,10 @@ def _replace_lone_surrogates(text: str) -> str:
 
 
 def _sanitize(value: object) -> object:
+    """Replace lone surrogates throughout the given value, recursively.
+
+    Tuples become lists. Raises a :class:`TypeError` if a mapping has a non-string key.
+    """
     if isinstance(value, str):
         return _replace_lone_surrogates(value)
     if isinstance(value, Mapping):
@@ -58,8 +76,11 @@ def _sanitize(value: object) -> object:
 
 
 def encode_event_line(event: Mapping[str, object]) -> bytes:
-    """Compact JSON, slashes and Unicode unescaped, zero fractions kept, invalid UTF-8 /
-    lone surrogates replaced with U+FFFD, trailing newline."""
+    """Encode the given event as a single NDJSON line.
+
+    The JSON is compact, leaves slashes and Unicode unescaped, keeps zero fractions,
+    replaces invalid UTF-8 and lone surrogates with U+FFFD, and ends with a newline.
+    """
 
     payload = json.dumps(
         _sanitize(event),
@@ -77,7 +98,11 @@ def lifecycle_event(
     timestamp: datetime,
     duration_ms: int | None = None,
 ) -> dict[str, object]:
-    """``duration_ms`` (truncated, >= 0) only for processed/released/failed."""
+    """Build a Cloud queue lifecycle event.
+
+    Only processed, released and failed events carry ``duration_ms``, which is
+    truncated to a whole number and never negative.
+    """
 
     event: dict[str, object] = {
         "_cloud_event": "queue",
@@ -92,7 +117,11 @@ def lifecycle_event(
 
 
 def uuid7(timestamp: datetime) -> str:
-    """RFC 9562 UUIDv7 bound to ``timestamp`` (millisecond precision)."""
+    """Generate an RFC 9562 UUIDv7 for the given timestamp.
+
+    The timestamp is embedded with millisecond precision; naive datetimes are treated
+    as UTC.
+    """
 
     moment = timestamp
     if moment.tzinfo is None or moment.tzinfo.utcoffset(moment) is None:
@@ -110,6 +139,7 @@ def uuid7(timestamp: datetime) -> str:
 
 
 def _qualified_exception_name(exc: BaseException) -> str:
+    """Get the qualified class name of the exception, omitting ``builtins``."""
     cls = type(exc)
     if cls.__module__ == "builtins":
         return cls.__qualname__
@@ -117,6 +147,7 @@ def _qualified_exception_name(exc: BaseException) -> str:
 
 
 def _exception_message(exc: BaseException) -> str:
+    """Get the message of the exception, or an empty string if it has none."""
     if exc.args and isinstance(exc.args[0], str):
         return exc.args[0]
     if not exc.args:
@@ -128,6 +159,7 @@ def _exception_message(exc: BaseException) -> str:
 
 
 def _exception_origin(exc: BaseException) -> tuple[str, int]:
+    """Get the file and line where the exception was raised."""
     frame = exc.__traceback__
     if frame is None:
         return "unknown", 0
@@ -137,6 +169,7 @@ def _exception_origin(exc: BaseException) -> tuple[str, int]:
 
 
 def _exception_preview(exc: BaseException) -> str:
+    """Build the one-line exception preview, in Laravel's ``Name: message in file:line`` form."""
     filename, lineno = _exception_origin(exc)
     name = _qualified_exception_name(exc)
     message = _exception_message(exc)
@@ -148,6 +181,7 @@ def _exception_preview(exc: BaseException) -> str:
 
 
 def _format_exception(exc: BaseException) -> str:
+    """Format the full traceback of the exception, falling back to its name and message."""
     try:
         lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
     except Exception:
@@ -156,6 +190,7 @@ def _format_exception(exc: BaseException) -> str:
 
 
 def _job_name(payload: str) -> str:
+    """Get the ``displayName`` from the payload, or an empty string if it is unavailable."""
     try:
         decoded = json.loads(payload)
     except ValueError:
@@ -169,6 +204,7 @@ def _job_name(payload: str) -> str:
 
 
 def _with_truncation_marker(original: str, head: str) -> str:
+    """Append a marker to the head noting how many bytes of the original were removed."""
     removed = len(original.encode("utf-8")) - len(head.encode("utf-8"))
     if removed <= 0:
         return head
@@ -176,6 +212,7 @@ def _with_truncation_marker(original: str, head: str) -> str:
 
 
 def _encoded_length(event: Mapping[str, object]) -> int:
+    """Get the size in bytes of the event's encoded line."""
     return len(encode_event_line(event))
 
 
@@ -184,13 +221,15 @@ def _largest_fitting_prefix(
     limit: int,
     render: Callable[[str], Mapping[str, object]],
 ) -> int | None:
-    """Most code points of ``text`` whose rendered event encodes within ``limit``.
+    """Find the longest prefix of the text whose rendered event fits within the limit.
 
-    Returns None when even an empty head does not fit. The search is measured on
-    encoded bytes, so JSON escaping and multibyte characters count toward the limit.
+    The result is a number of code points, or None when even an empty head does not fit.
+    The search is measured on encoded bytes, so JSON escaping and multibyte characters
+    count toward the limit.
     """
 
     def fits(head: str) -> bool:
+        """Determine if the event rendered with the given head fits within the limit."""
         return _encoded_length(render(head)) <= limit
 
     if not fits(""):
@@ -220,10 +259,13 @@ def failed_job_event(
     timestamp: datetime,
     limit_bytes: int = FAILED_JOB_LINE_LIMIT,
 ) -> dict[str, object]:
-    """Laravel ``FailedJobProvider::log`` field set; ``id`` = UUIDv7 from ``timestamp``;
-    ``job_name`` from the payload's ``displayName`` (``""`` if unavailable). D1 size policy:
-    whole line fits -> as is; else trim ``exception`` (head + marker); else also trim
-    ``payload`` and add ``"replayable": false``. Measured on the encoded line in bytes."""
+    """Build a Cloud failed job event with Laravel's ``FailedJobProvider::log`` fields.
+
+    The ``id`` is a UUIDv7 derived from ``timestamp`` and ``job_name`` is the payload's
+    ``displayName``, or ``""`` if unavailable. If the encoded line exceeds ``limit_bytes``,
+    the exception is trimmed to a head plus a truncation marker; if that is not enough, the
+    payload is trimmed as well and the event is marked with ``"replayable": false``.
+    """
 
     limit = limit_bytes if limit_bytes > 0 else 0
     job_id = uuid7(timestamp)
@@ -233,6 +275,7 @@ def failed_job_event(
     exception_text = _format_exception(exception)
 
     def assemble(body: str, exc_text: str, *, not_replayable: bool) -> dict[str, object]:
+        """Build the event with the given payload and exception text."""
         event: dict[str, object] = {
             "_cloud_event": "failed_job",
             "id": job_id,
@@ -253,6 +296,7 @@ def failed_job_event(
         return full
 
     def trimmed_exception(head: str) -> str:
+        """Get the exception head with its truncation marker."""
         return _with_truncation_marker(exception_text, head)
 
     # Phase 1: keep the payload and shorten the exception until the line fits.
@@ -277,6 +321,7 @@ def failed_job_event(
     marker = trimmed_exception("")
 
     def fit_payload(exc_text: str) -> int | None:
+        """Find the longest payload prefix that fits beside the given exception text."""
         return _largest_fitting_prefix(
             payload,
             limit,
@@ -306,12 +351,12 @@ def failure_log_record(
     started_at: datetime,
     timestamp: datetime,
 ) -> dict[str, object]:
-    """D6b log-only failure record for ``sqs``/``redis`` modes (one JSON line on stdout).
+    """Build the failure record logged to stdout in ``sqs`` and ``redis`` modes.
 
-    The payload is included in full. D1's 16 KiB trim is not applied: these lines go to
-    the worker's own stdout, not the Cloud failed-job collector. There is no receipt
-    handle field; pass the broker message id as ``message_id``. Job arguments should
-    not contain secrets.
+    The payload is included in full and the 16 KiB failed job limit is not applied, since
+    these lines go to the worker's own stdout rather than the Cloud failed job collector.
+    There is no receipt handle field; pass the broker message id as ``message_id``. Job
+    arguments should not contain secrets.
     """
 
     return {

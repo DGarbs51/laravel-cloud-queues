@@ -1,5 +1,8 @@
-"""Lease renewal thread (D7): keeps a delivery hidden while a job runs, even when a sync
-handler or native code blocks the event loop."""
+"""The lease watchdog that keeps a delivery hidden while its job runs.
+
+Renewals happen on a separate thread, so the lease is kept even when a synchronous
+handler or native code blocks the event loop.
+"""
 
 from __future__ import annotations
 
@@ -11,37 +14,55 @@ from ..errors import LeaseLostError
 from ..transports import Consumer, Delivery
 
 logger = logging.getLogger("laravel_cloud_queues.worker")
+"""The logger used by the worker."""
 
 JOIN_TIMEOUT = 30.0
-"""Minimum bound on waiting for an in-flight renewal; at least one lease window."""
+"""The minimum number of seconds to wait for an in-flight renewal when stopping.
+
+The watchdog always waits for at least one full lease window.
+"""
 
 
 class Watchdog:
-    """Renews ``lease_seconds`` every third of the lease. ``lost`` is set when the consumer
-    reports a lost lease, or when renewals keep failing for a whole lease window."""
+    """A background thread that renews a delivery's lease while its job runs.
+
+    The lease is renewed for ``lease_seconds`` every third of the lease. The ``lost`` flag
+    is set when the consumer reports a lost lease, or when renewals keep failing for a
+    whole lease window.
+    """
 
     def __init__(self, consumer: Consumer, delivery: Delivery, lease_seconds: int) -> None:
+        """Create a new watchdog instance."""
         self._consumer = consumer
         self._delivery = delivery
         self._lease = lease_seconds
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="lcq-lease-watchdog", daemon=True)
         self.lost = False
+        """Indicates if the worker may no longer own the delivery."""
         self.renewals = 0
+        """The number of successful lease renewals."""
         self._renewed_at = time.monotonic()
 
     def start(self) -> None:
+        """Start renewing the lease in the background."""
         self._renewed_at = time.monotonic()
         self._thread.start()
 
     def signal_stop(self) -> None:
-        """Stop without waiting (used from the SIGALRM handler)."""
+        """Signal the watchdog to stop without waiting for it.
+
+        This is safe to call from the ``SIGALRM`` handler.
+        """
         self._stop.set()
 
     def stop(self) -> None:
-        """Stop and join. If no renewal landed within the last lease window (native code
-        holding the GIL starves this thread), confirm ownership once before the worker
-        reports: another worker may have received the message meanwhile."""
+        """Stop the watchdog and wait for its thread to finish.
+
+        If no renewal landed within the last lease window, such as when native code holding
+        the GIL starved the thread, ownership is confirmed once more before the worker
+        reports, since another worker may have received the message in the meantime.
+        """
         self._stop.set()
         self._thread.join(max(self._lease, JOIN_TIMEOUT))
         if self._thread.is_alive():
@@ -55,6 +76,7 @@ class Watchdog:
             self._lose(f"the lease lapsed while the job ran ({type(exc).__name__})")
 
     def _run(self) -> None:
+        """Renew the lease on an interval until the watchdog is stopped or the lease is lost."""
         interval = self._lease / 3
         failures = 0
         while not self._stop.wait(interval):
@@ -83,5 +105,6 @@ class Watchdog:
                 self._renewed_at = time.monotonic()
 
     def _lose(self, reason: str) -> None:
+        """Mark the lease as lost and log the given reason."""
         self.lost = True
         logger.error("Lost the lease on message %s: %s.", self._delivery.message_id, reason)

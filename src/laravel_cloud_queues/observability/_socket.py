@@ -1,9 +1,9 @@
-"""Persistent Unix-socket writer for Laravel Cloud log events.
+"""The persistent Unix socket writer for Laravel Cloud log events.
 
-Matches ``Illuminate\\Foundation\\Cloud\\Events``: 2 s connect timeout, 2 s write
-timeout, EOF check and reconnect before each write, a partial-write loop, and
-give-up after 5 consecutive zero-byte writes. Failures are logged locally and
-never raised.
+It matches ``Illuminate\\Foundation\\Cloud\\Events``: a 2 second connect timeout, a
+2 second write timeout, an EOF check and reconnect before each write, a partial write
+loop, and giving up after 5 consecutive zero-byte writes. Failures are logged locally
+and never raised.
 """
 
 from __future__ import annotations
@@ -17,15 +17,19 @@ from ._events import encode_event_line
 from ._guard import begin_call, end_call, log_failure
 
 _CONNECT_TIMEOUT_SECONDS = 2.0
+"""The number of seconds to wait while connecting to the socket."""
 _WRITE_TIMEOUT_SECONDS = 2.0
+"""The number of seconds to wait for each write to the socket."""
 _ZERO_WRITE_LIMIT = 5
+"""The number of consecutive zero-byte writes before giving up."""
 _PEEK_FLAGS = socket.MSG_PEEK
+"""The flags used to peek at the socket without blocking."""
 if hasattr(socket, "MSG_DONTWAIT"):
     _PEEK_FLAGS |= socket.MSG_DONTWAIT
 
 
 def _unix_path(address: str) -> str:
-    """Accept ``unix:///path`` or a bare filesystem path."""
+    """Get the filesystem path from a ``unix:///path`` address or a bare path."""
 
     prefix = "unix://"
     if address.startswith(prefix):
@@ -34,7 +38,10 @@ def _unix_path(address: str) -> str:
 
 
 def _peer_closed(sock: socket.socket) -> bool:
-    """Non-blocking peek. True when the peer has closed or the socket is unusable."""
+    """Determine if the peer has closed the socket or the socket is unusable.
+
+    This performs a non-blocking peek and restores the write timeout afterwards.
+    """
 
     try:
         sock.setblocking(False)
@@ -55,19 +62,28 @@ def _peer_closed(sock: socket.socket) -> bool:
 
 
 class SocketEventSink:
-    """Persistent Unix stream socket writer (Laravel ``Cloud\\Events``): 2 s connect and write
-    timeouts, EOF check + reconnect before each write, partial-write loop, give up after 5
-    zero-byte writes, one line per event, thread-safe (lines never interleave)."""
+    """A persistent Unix stream socket writer for Cloud events.
+
+    It mirrors Laravel's ``Cloud\\Events`` writer and writes one line per event. It is
+    thread-safe, so lines from concurrent emits never interleave.
+    """
 
     def __init__(self, address: str) -> None:
-        """``address``: ``unix:///path`` or a bare path."""
+        """Create a new socket event sink instance.
+
+        The address may be a ``unix:///path`` URL or a bare filesystem path.
+        """
 
         self._path = _unix_path(address)
         self._sock: socket.socket | None = None
         self._lock = threading.Lock()
 
     def emit(self, event: Mapping[str, object], *, lock_timeout: float | None = None) -> bool:
-        """Write one NDJSON line. Returns False on failure; never raises."""
+        """Write the event to the socket as a single NDJSON line.
+
+        Returns False on failure and never raises. ``lock_timeout`` bounds the wait for
+        the write lock.
+        """
 
         if not begin_call():
             return False
@@ -87,6 +103,7 @@ class SocketEventSink:
             end_call()
 
     def close(self) -> None:
+        """Close the socket connection, if one is open."""
         if not begin_call():
             return
         acquired = False
@@ -102,11 +119,13 @@ class SocketEventSink:
             end_call()
 
     def _acquire(self, lock_timeout: float | None) -> bool:
+        """Acquire the write lock, waiting at most the given number of seconds."""
         if lock_timeout is None:
             return self._lock.acquire()
         return self._lock.acquire(timeout=lock_timeout)
 
     def _emit_locked(self, event: Mapping[str, object]) -> bool:
+        """Encode and write the event while holding the write lock."""
         try:
             line = encode_event_line(event)
         except Exception:
@@ -122,6 +141,7 @@ class SocketEventSink:
         return True
 
     def _usable_socket(self) -> socket.socket | None:
+        """Get a connected socket, reconnecting if the peer has closed it."""
         current = self._sock
         if current is not None:
             if not _peer_closed(current):
@@ -136,6 +156,7 @@ class SocketEventSink:
         return connected
 
     def _connect(self) -> socket.socket:
+        """Open a new connection to the socket path."""
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             sock.settimeout(_CONNECT_TIMEOUT_SECONDS)
@@ -148,6 +169,10 @@ class SocketEventSink:
         return sock
 
     def _send_all(self, sock: socket.socket, payload: bytes) -> bool:
+        """Write the entire payload to the socket.
+
+        The connection is dropped on error or after too many consecutive zero-byte writes.
+        """
         view = memoryview(payload)
         offset = 0
         zeros = 0
@@ -171,6 +196,7 @@ class SocketEventSink:
         return True
 
     def _disconnect(self) -> None:
+        """Close and forget the current socket."""
         sock = self._sock
         self._sock = None
         if sock is None:

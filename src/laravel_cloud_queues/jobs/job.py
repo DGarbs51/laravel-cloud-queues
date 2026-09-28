@@ -1,4 +1,4 @@
-"""``Job`` — the typed, directly callable job object (D5)."""
+"""The typed job object that wraps a handler function."""
 
 from __future__ import annotations
 
@@ -19,38 +19,53 @@ if TYPE_CHECKING:
     from ..registry import Registry
 
 P = ParamSpec("P")
+"""The parameters of the wrapped handler."""
 R = TypeVar("R", covariant=True)
+"""The return type of the wrapped handler."""
 
 
 @dataclass(frozen=True)
 class DispatchReceipt:
+    """The receipt returned after a job has been dispatched."""
+
     message_id: str
+    """The identifier assigned to the message by the transport."""
     queue: str
-    """Logical queue name the message was sent to."""
+    """The logical name of the queue the message was sent to."""
     uuid: str
-    """The envelope ``uuid`` (Laravel payload key)."""
+    """The ``uuid`` of the envelope, matching Laravel's payload key."""
 
 
 @dataclass(frozen=True)
 class DispatchOptions:
+    """The options that control how a job is dispatched."""
+
     queue: str | None = None
+    """The name of the queue to dispatch the job to."""
     delay: float | timedelta | None = None
+    """The time to wait before the job becomes available, in seconds or as a timedelta."""
     group: str | None = None
-    """FIFO ``MessageGroupId`` (``.fifo`` queues only)."""
+    """The FIFO ``MessageGroupId``, for ``.fifo`` queues only."""
     deduplication_id: str | None = None
-    """FIFO dedup ID; ``""`` = omit the attribute (content-based dedup)."""
+    """The FIFO deduplication ID.
+
+    An empty string omits the attribute so the queue uses content-based deduplication.
+    """
     message_group: str | None = None
-    """Fair-queue tenant key (standard queues only)."""
+    """The fair-queue tenant key, for standard queues only."""
 
 
 class Job(Generic[P, R]):
-    """Wraps a handler. Calling it calls the handler directly; ``dispatch``/``dispatch_async``
-    take exactly the handler's parameters, so options never collide with handler parameters
-    named ``queue``/``delay``/``timeout``.
+    """A queued job that wraps a handler function.
 
-    Static limitation: a ``JobContext`` handler parameter is injected at run time but still
-    appears in the typed ``dispatch``/``dispatch_async`` signature. Typed code should call
-    :func:`~laravel_cloud_queues.current_job` inside the handler instead."""
+    Calling the job invokes the handler directly, while ``dispatch`` and ``dispatch_async``
+    take exactly the handler's parameters, so dispatch options never collide with handler
+    parameters named ``queue``, ``delay`` or ``timeout``.
+
+    A ``JobContext`` handler parameter is injected at run time but still appears in the typed
+    ``dispatch`` and ``dispatch_async`` signatures. Typed code should call
+    :func:`~laravel_cloud_queues.current_job` inside the handler instead.
+    """
 
     def __init__(
         self,
@@ -62,6 +77,7 @@ class Job(Generic[P, R]):
         policy: RetryPolicy,
         options: DispatchOptions | None = None,
     ) -> None:
+        """Create a new job instance."""
         self._func = func
         self._registry = registry
         self._name = name
@@ -75,33 +91,41 @@ class Job(Generic[P, R]):
         functools.update_wrapper(self, func)
 
     def __repr__(self) -> str:
+        """Get the string representation of the job."""
         return f"<Job {self._name!r}>"
 
     @property
     def name(self) -> str:
+        """Get the name of the job."""
         return self._name
 
     @property
     def func(self) -> Callable[P, R]:
+        """Get the handler function wrapped by the job."""
         return self._func
 
     @property
     def queue(self) -> str | None:
+        """Get the default queue of the job, if one was declared."""
         return self._queue
 
     @property
     def policy(self) -> RetryPolicy:
+        """Get the retry policy of the job."""
         return self._policy
 
     @property
     def registry(self) -> Registry:
+        """Get the registry the job belongs to."""
         return self._registry
 
     @property
     def dispatch_options(self) -> DispatchOptions:
+        """Get the options used when the job is dispatched."""
         return self._options
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        """Call the job's handler directly."""
         return self._func(*args, **kwargs)
 
     def options(
@@ -113,7 +137,10 @@ class Job(Generic[P, R]):
         deduplication_id: str | None = None,
         message_group: str | None = None,
     ) -> Job[P, R]:
-        """Typed copy carrying dispatch options (merged over earlier ``.options()`` calls)."""
+        """Get a copy of the job with the given dispatch options.
+
+        Options are merged over any given to earlier ``options`` calls.
+        """
         current = self._options
         clone = copy.copy(self)
         clone._options = DispatchOptions(
@@ -128,9 +155,11 @@ class Job(Generic[P, R]):
         return clone
 
     def dispatch(self, *args: P.args, **kwargs: P.kwargs) -> DispatchReceipt:
-        """Blocking dispatch. Inside a running event loop in this thread it still works (it
-        never starts a nested loop) but blocks the loop; async code should use
-        :meth:`dispatch_async`."""
+        """Dispatch the job to the queue, blocking until it is sent.
+
+        This still works inside a running event loop on this thread, since it never starts a
+        nested loop, but it blocks that loop. Async code should use :meth:`dispatch_async`.
+        """
         from .dispatch import prepare_dispatch, send_prepared
 
         prepared = prepare_dispatch(self, args, kwargs, self._options)
@@ -140,7 +169,10 @@ class Job(Generic[P, R]):
         return send_prepared(self, prepared)
 
     async def dispatch_async(self, *args: P.args, **kwargs: P.kwargs) -> DispatchReceipt:
-        """Non-blocking dispatch: every blocking call runs in a worker thread."""
+        """Dispatch the job to the queue without blocking the event loop.
+
+        Every blocking call runs in a worker thread.
+        """
         from .dispatch import prepare_dispatch, send_prepared
 
         session = self._registry._testing_session
@@ -154,3 +186,4 @@ class Job(Generic[P, R]):
 
 
 AnyJob = Job[..., Any]
+"""A job with any handler signature."""

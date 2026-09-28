@@ -1,8 +1,9 @@
-"""Body-opaque Redis/Valkey queues; install the optional ``[redis]`` extra.
+"""The Redis and Valkey queue transport, available with the optional ``[redis]`` extra.
 
-Connection setup is retried three times with bounded backoff. Commands are sent
-once: retrying after an uncertain reply could duplicate a push or reserve another
-job. Receive errors are transient; uncertain outcome reports stop the worker.
+Message bodies are opaque to the transport. Connection setup is retried three times
+with a bounded backoff, but commands are sent only once, since retrying after an
+uncertain reply could duplicate a push or reserve another job. Receive errors are
+transient, while uncertain outcome reports stop the worker.
 """
 
 from __future__ import annotations
@@ -31,7 +32,14 @@ from . import _scripts
 
 
 class _RedisTransport:
+    """The connection handling shared by the Redis producer and consumer."""
+
     def __init__(self, config: RedisConfig) -> None:
+        """Create a new Redis transport instance.
+
+        Raises a ``ConfigurationError`` if the ``[redis]`` extra is missing, or if the URL
+        is invalid or attempts to weaken TLS verification.
+        """
         try:
             import redis
             from redis.backoff import NoBackoff
@@ -75,10 +83,17 @@ class _RedisTransport:
             raise ConfigurationError("Invalid Redis URL or TLS verification settings.") from None
 
     def _keys(self, queue: str) -> tuple[str, str, str, str]:
+        """Get the pending, delayed, reserved and notify keys for the given queue."""
         pending = f"{self._prefix}queues:{queue}"
         return pending, f"{pending}:delayed", f"{pending}:reserved", f"{pending}:notify"
 
     def _command(self, *args: str | float, reporting: bool = False) -> object:
+        """Send a single command to Redis and return its reply.
+
+        Only acquiring a connection is retried; the command itself is sent once. Failures
+        raise a ``TransportError``, or a ``BrokerConnectionError`` or
+        ``AmbiguousAcknowledgementError`` when ``reporting`` a delivery outcome.
+        """
         # Reporting gets its own pool so watchdog I/O cannot alter polling timeouts.
         pool = self._reporting_pool if reporting else self._pool
         # Acquire/connect before sending so only definitely-unsent commands are retried.
@@ -123,20 +138,26 @@ class _RedisTransport:
             pool.release(connection)
 
     def close(self) -> None:
+        """Disconnect every pooled connection."""
         self._pool.disconnect()
         self._reporting_pool.disconnect()
 
 
 class RedisProducer(_RedisTransport):
+    """A producer that pushes messages onto Redis queues."""
+
     @property
     def max_payload_bytes(self) -> int | None:
+        """Get the byte limit for the encoded body, which Redis does not impose."""
         return None
 
     @property
     def supports_fifo(self) -> bool:
+        """Determine if the transport supports FIFO and fair-queue options."""
         return False
 
     def send(self, message: OutgoingMessage) -> SentMessage:
+        """Push the message onto the queue, or onto the delayed set when it has a delay."""
         message_id = str(uuid4())
         wrapper = json.dumps(
             {"id": message_id, "attempts": 0, "body": message.body}, separators=(",", ":")
@@ -148,13 +169,19 @@ class RedisProducer(_RedisTransport):
 
 
 class RedisConsumer(_RedisTransport):
-    """Priority queues with one reservation per receive and pooled watchdog renewal.
+    """A consumer that reserves jobs from prioritized Redis queues.
 
-    BLPOP waits in at most one-second slices for interruption and migration of due
-    jobs. No client wall clock participates in reservation/delay calculations.
+    Each receive reserves at most one job, and the watchdog renews reservations over
+    a separate pool. ``BLPOP`` waits in slices of at most one second so that interrupts
+    and due jobs are noticed promptly. Reservation and delay times use the Redis clock,
+    never the client's wall clock.
     """
 
     def __init__(self, config: RedisConfig, *, lease_seconds: int = 60) -> None:
+        """Create a new Redis consumer instance.
+
+        Raises a ``ConfigurationError`` if ``lease_seconds`` is not positive.
+        """
         if lease_seconds <= 0:
             raise ConfigurationError("Redis lease_seconds must be positive.")
         super().__init__(config)
@@ -163,9 +190,15 @@ class RedisConsumer(_RedisTransport):
 
     @property
     def supports_renewal(self) -> bool:
+        """Determine if the watchdog should renew the lease on deliveries."""
         return True
 
     def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
+        """Reserve the next job from the first queue with work, waiting up to ``wait_seconds``.
+
+        Malformed jobs are still returned, with their raw member as the receipt, so that
+        core can fail and delete them.
+        """
         if not math.isfinite(wait_seconds) or wait_seconds < 0:
             raise ValueError("wait_seconds must be finite and nonnegative.")
         if not queues:
@@ -215,6 +248,10 @@ class RedisConsumer(_RedisTransport):
         return None
 
     def _report(self, script: str, delivery: Delivery, seconds: int = 0) -> None:
+        """Run an outcome script against the delivery's reservation.
+
+        Raises a ``LeaseLostError`` if the reservation is missing or has expired.
+        """
         if delivery.receipt is None:
             raise LeaseLostError("Redis delivery has no reservation.")
         owned = self._command(
@@ -230,19 +267,24 @@ class RedisConsumer(_RedisTransport):
             raise LeaseLostError("Redis reservation is missing or expired.")
 
     def complete(self, delivery: Delivery) -> None:
+        """Delete the reserved job from the queue."""
         self._report(_scripts.COMPLETE, delivery)
 
     def release(self, delivery: Delivery, delay_seconds: int) -> None:
+        """Release the reserved job back onto the queue after the given delay."""
         self._report(_scripts.RELEASE, delivery, delay_seconds)
 
     def renew(self, delivery: Delivery, lease_seconds: int) -> None:
+        """Extend the job's reservation to now plus ``lease_seconds``."""
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive.")
         self._report(_scripts.RENEW, delivery, lease_seconds)
 
     def interrupt(self) -> None:
+        """Make a waiting :meth:`receive` return early."""
         self._interrupted.set()
 
     def close(self) -> None:
+        """Interrupt any waiting receive and disconnect from Redis."""
         self.interrupt()
         super().close()
