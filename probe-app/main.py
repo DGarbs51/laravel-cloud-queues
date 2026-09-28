@@ -94,13 +94,17 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/verify")
-def verify(token: str = Query("")) -> dict[str, Any]:
+def require_token(token: str) -> None:
     expected = os.environ.get("PROBE_TOKEN")
     if not expected:
-        raise HTTPException(503, "Set PROBE_TOKEN in the environment to enable /verify.")
+        raise HTTPException(503, "Set PROBE_TOKEN in the environment to enable this route.")
     if not hmac.compare_digest(token, expected):
         raise HTTPException(403, "Invalid token.")
+
+
+@app.get("/verify")
+def verify(token: str = Query("")) -> dict[str, Any]:
+    require_token(token)
 
     log_socket = os.environ.get("LARAVEL_CLOUD_LOG_SOCKET", LOG_SOCKET_DEFAULT)
     return {
@@ -126,3 +130,39 @@ def verify(token: str = Query("")) -> dict[str, Any]:
             "token_file_set": "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE" in os.environ,
         },
     }
+
+
+# --- Redis/Valkey queue end-to-end probe (see rqueue.py, worker.py) ---
+
+E2E_CASES: dict[str, dict[str, Any]] = {
+    "ok": {"kind": "ok"},
+    "delayed": {"kind": "ok", "delay": 5},
+    "flaky_retry": {"kind": "flaky", "tries": 2, "backoff": [3]},
+    "terminal_fail": {"kind": "fail", "tries": 2, "backoff": [1]},
+    "timeout_then_terminal": {"kind": "slow", "tries": 2, "timeout": 3, "args": {"seconds": 10}},
+}
+
+
+@app.post("/queue/e2e")
+def queue_e2e(token: str = Query("")) -> dict[str, str]:
+    require_token(token)
+    import rqueue
+
+    r = rqueue.client()
+    return {name: rqueue.dispatch(r, **case) for name, case in E2E_CASES.items()}
+
+
+@app.get("/queue/jobs/{job_id}")
+def queue_job(job_id: str, token: str = Query("")) -> list[dict[str, Any]]:
+    require_token(token)
+    import rqueue
+
+    return rqueue.events(rqueue.client(), job_id)
+
+
+@app.get("/queue/stats")
+def queue_stats(token: str = Query("")) -> dict[str, int]:
+    require_token(token)
+    import rqueue
+
+    return rqueue.stats(rqueue.client())
