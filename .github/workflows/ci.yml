@@ -51,12 +51,16 @@ jobs:
       - run: uv run ty check
 
   test:
-    runs-on: ubuntu-latest
+    # Laravel Cloud runs Python on Debian 12 (bookworm) arm64 with CPython under
+    # /usr/local, i.e. the python:<version>-slim-bookworm lineage. Test steps run in
+    # that public image on an arm64 runner (.github/scripts/cloud-python.sh).
+    runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     env:
+      CLOUD_PYTHON_IMAGE: python:${{ matrix.python-version }}-slim-bookworm
       LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES: "1"
       LARAVEL_CLOUD_QUEUES_TEST_SQS: localstack
       LARAVEL_CLOUD_QUEUES_TEST_SQS_ENDPOINT: http://localhost:4566
@@ -110,9 +114,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: uv sync --locked
+      - name: Show the runtime fingerprint
+        run: >-
+          .github/scripts/cloud-python.sh sh -c
+          'uname -m; cat /etc/debian_version; command -v python3; python3 -VV'
+      - run: .github/scripts/cloud-python.sh uv sync --locked
 
       - name: Generate self-signed TLS certs for the TLS Valkey container
         run: |
@@ -180,14 +186,14 @@ jobs:
 
       - name: Run the test suite (Valkey on 6379)
         run: >-
-          uv run pytest -m "not packaging"
+          .github/scripts/cloud-python.sh uv run pytest -m "not packaging"
           --junitxml=test-results/junit-${{ matrix.python-version }}.xml
 
       - name: Re-run redis-marked tests against real Redis (6390)
         env:
           LARAVEL_CLOUD_QUEUES_TEST_REDIS_URL: redis://localhost:6390/15
         run: >-
-          uv run pytest -m redis
+          .github/scripts/cloud-python.sh uv run pytest -m redis
           --junitxml=test-results/junit-${{ matrix.python-version }}-redis.xml
 
       - name: Upload failure artifacts
@@ -203,19 +209,23 @@ jobs:
             **/*.log
 
   packaging:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    env:
+      CLOUD_PYTHON_IMAGE: python:${{ matrix.python-version }}-slim-bookworm
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: uv sync --locked
+      - name: Show the runtime fingerprint
+        run: >-
+          .github/scripts/cloud-python.sh sh -c
+          'uname -m; cat /etc/debian_version; command -v python3; python3 -VV'
+      - run: .github/scripts/cloud-python.sh uv sync --locked
       - run: >-
-          uv run pytest -m packaging
+          .github/scripts/cloud-python.sh uv run pytest -m packaging
           --junitxml=test-results/junit-packaging-${{ matrix.python-version }}.xml
       - name: Upload failure artifacts
         if: failure()
@@ -226,8 +236,10 @@ jobs:
           path: test-results/**
 
   conformance:
-    runs-on: ubuntu-latest
+    # Cloud's default Python version.
+    runs-on: ubuntu-24.04-arm
     env:
+      CLOUD_PYTHON_IMAGE: python:3.12-slim-bookworm
       LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES: "1"
       LARAVEL_CLOUD_QUEUES_TEST_SQS: localstack
       LARAVEL_CLOUD_QUEUES_TEST_SQS_ENDPOINT: http://localhost:4566
@@ -281,9 +293,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          python-version: "3.13"
-      - run: uv sync --locked
+      - name: Show the runtime fingerprint
+        run: >-
+          .github/scripts/cloud-python.sh sh -c
+          'uname -m; cat /etc/debian_version; command -v python3; python3 -VV'
+      - run: .github/scripts/cloud-python.sh uv sync --locked
       - name: Generate self-signed TLS certs for the TLS Valkey container
         run: |
           set -euo pipefail
@@ -345,7 +359,9 @@ jobs:
           exit 1
 
       - name: Run catalog conformance gate
-        run: uv run python -m demo.conformance --sqs localstack --report compatibility-report.json
+        run: >-
+          .github/scripts/cloud-python.sh uv run python -m demo.conformance
+          --sqs localstack --report compatibility-report.json
       - name: Upload compatibility report and evidence
         if: always()
         uses: actions/upload-artifact@v7
