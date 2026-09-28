@@ -1,0 +1,13 @@
+[
+  {"name": "delivery", "status": 200, "body": {"messageId": "m-1", "receiptHandle": "rh-1", "body": "opaque payload", "attributes": {"ApproximateReceiveCount": "3"}, "queueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/emails-prod"}, "expected": {"message_id": "m-1", "receipt": "rh-1", "body": "opaque payload", "attempt": 3, "queue": "emails"}},
+  {"name": "empty-204", "status": 204, "raw": "", "expected": null},
+  {"name": "array", "status": 200, "body": [{"messageId": "ignored"}], "expected": null},
+  {"name": "empty-array", "status": 200, "body": [], "expected": null},
+  {"name": "missing-id", "status": 200, "body": {}, "expected": null},
+  {"name": "empty-id", "status": 200, "body": {"messageId": ""}, "expected": null},
+  {"name": "non-string-id", "status": 200, "body": {"messageId": 42}, "expected": null},
+  {"name": "null-id", "status": 200, "body": {"messageId": null}, "expected": null},
+  {"name": "zero-id", "status": 200, "body": {"messageId": "0"}, "expected": {"message_id": "0", "receipt": null, "body": "", "attempt": 1, "queue": "assigned"}},
+  {"name": "non-string-fields", "status": 200, "body": {"messageId": "m-1", "receiptHandle": 42, "body": [], "queueUrl": 17}, "expected": {"message_id": "m-1", "receipt": null, "body": "", "attempt": 1, "queue": "assigned"}},
+  {"name": "empty-queue-url", "status": 200, "body": {"messageId": "m-1", "queueUrl": ""}, "expected": {"message_id": "m-1", "receipt": null, "body": "", "attempt": 1, "queue": "assigned"}}
+]

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from harness.agent_emulator import AgentEmulator
 from harness.process import Process
 from harness.pytest_plugin import ProcessFactory

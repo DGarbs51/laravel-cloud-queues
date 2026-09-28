@@ -5,6 +5,7 @@ import socket
 from pathlib import Path
 
 import pytest
+
 from harness.log_collector import (
     LogCollector,
     validate_failed_job_event,
