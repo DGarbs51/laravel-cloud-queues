@@ -56,10 +56,16 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
 | Mode | Selected when | Broker | Receive |
 |---|---|---|---|
 | Managed | `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` is present | Laravel Cloud SQS | Agent when `agent.enabled`, else direct SQS |
-| Self-managed SQS | Package SQS settings are present | Customer's own SQS | Direct SQS |
-| Redis/Valkey | Package Redis settings are present (defaulting to `REDIS_URL`) | Laravel Valkey or any Redis | Redis transport |
+| Self-managed SQS | `LARAVEL_CLOUD_QUEUES_BACKEND=sqs` | Customer's own SQS | Direct SQS |
+| Redis/Valkey | `LARAVEL_CLOUD_QUEUES_BACKEND=redis` | Laravel Valkey or any Redis | Redis transport |
 
-- Mode selection is explicit and deterministic. When the settings are ambiguous or missing, fail with a configuration error.
+- **Backend selection (D6a):** `LARAVEL_CLOUD_QUEUES_BACKEND=managed|sqs|redis`.
+  - When unset: managed if `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` is present, otherwise a configuration error.
+  - The presence of `REDIS_URL` or `AWS_*` variables never selects a backend: apps commonly attach Valkey for caching and object storage for files.
+  - The same settings may be passed in code; code wins over the environment.
+- **Settings (D6a):**
+  - SQS: `LARAVEL_CLOUD_QUEUES_SQS_PREFIX`, `_SQS_SUFFIX`, `_SQS_QUEUE` (default queue), `_SQS_REGION`, `_SQS_KEY`, `_SQS_SECRET`, `_SQS_ENDPOINT` (LocalStack).
+  - Redis: `LARAVEL_CLOUD_QUEUES_REDIS_URL`, falling back to `REDIS_URL` only when the backend is `redis`.
 - **Self-managed SQS** uses package-specific settings passed explicitly to the boto3 client. It must not read the standard `AWS_*` variables or boto3's default endpoint settings, because Cloud object storage occupies `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL` and `AWS_REGION`.
 - **The worker must extend visibility itself** on self-managed SQS, or require a queue visibility timeout longer than the maximum job timeout. No agent heartbeat exists outside managed mode.
 - **Redis/Valkey** follows Laravel's `RedisQueue` semantics:
@@ -72,6 +78,5 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
 - Laravel Cloud's Queues dashboard covers managed queues only. Whether lifecycle events from worker clusters appear anywhere is unverified.
 
 Open follow-ups:
-- package environment variable names;
 - terminal-failure handling outside managed mode (no Cloud failed-job store);
 - a Redis conformance suite and a live worker-cluster smoke test.
