@@ -1,0 +1,1 @@
+{"_cloud_event":"failed_job","id":"0199f3a0-7c00-7000-8000-000000000003","queue":"emails","started_at":"2026-09-27 11:59:59.000000","attempts":2,"payload":"{\"displayName\":\"SendEmail\"","exception_preview":"RuntimeError: smtp down in app.py:10","job_name":"SendEmail","exception":"\n... [truncated 4096 bytes]","replayable":false}
