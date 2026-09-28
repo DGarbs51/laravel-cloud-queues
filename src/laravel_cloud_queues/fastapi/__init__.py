@@ -1,14 +1,41 @@
-"""FastAPI integration (PROJECT_SCOPE.md §13, §17). CONTRACT — implemented by lane L8.
+"""FastAPI integration (PROJECT_SCOPE.md §13, §17).
 
-Requires the ``[fastapi]`` extra. Importing this module is the only place the package
-imports FastAPI.
+Requires FastAPI >= 0.121 (the ``[fastapi]`` extra). Importing this package is the only
+place ``laravel_cloud_queues`` imports FastAPI.
+
+:class:`LaravelCloudQueues` binds a :class:`~laravel_cloud_queues.registry.Registry` to a
+FastAPI app (``app.state.laravel_cloud_queues``). Jobs may use ``Depends()`` and
+``JobContext``. Each delivery gets a fresh dependency scope: ``app.dependency_overrides``
+is honored, and sub-dependencies are cached only within that delivery. ``yield`` teardown
+runs inside the invoker, before the worker acknowledges the message.
+
+Direct calls do not run dependency injection. ``Job.__call__`` calls the raw function, so
+injected parameters must be passed explicitly (a ``Depends()`` default is not resolved)::
+
+    await send_email(1, mailer=mailer)
+
+``Depends(current_job)`` and a parameter annotated ``JobContext`` both receive the delivery
+context. Sync handlers run on the calling thread (the worker main thread). Sync
+dependencies run in FastAPI's threadpool; their teardown order is preserved.
+
+:meth:`LaravelCloudQueues.lifespan` enters ``app.router.lifespan_context`` once per enter.
+The worker enters it once per process and exits it on clean shutdown. Jobs can read
+resources from ``app.state``, including identifier keys yielded by the lifespan (copied
+onto ``app.state`` because a queue job has no ``Request``). ``on_startup`` / ``on_shutdown``
+run when FastAPI's default lifespan is in use (no ``lifespan=`` argument). A custom lifespan
+replaces them, matching FastAPI.
+
+HTTP-only dependencies (``Request``, ``WebSocket``, ``HTTPConnection``, ``Response``,
+``BackgroundTasks``, ``SecurityScopes``, ``Security()``) raise
+:class:`~laravel_cloud_queues.errors.ConfigurationError` at registration when they can be
+seen, and again at invoke for overrides added later.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
-from typing import TYPE_CHECKING, Any, TypeVar, overload
+from typing import Any, TypeVar, overload
 
 from typing_extensions import ParamSpec
 
@@ -18,8 +45,17 @@ from ..jobs.job import Job
 from ..jobs.policy import RetryPolicy
 from ..registry import Registry
 
-if TYPE_CHECKING:
+try:
     from fastapi import FastAPI
+except ImportError as exc:  # pragma: no cover
+    raise ImportError(
+        "FastAPI support requires the optional dependency: "
+        'pip install "laravel-cloud-queues[fastapi]"'
+    ) from exc
+
+from ._depends import inspecting, reject_request_dependencies
+from ._invoker import FastAPIInvoker
+from ._lifespan import enter_lifespan
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -30,8 +66,9 @@ class LaravelCloudQueues:
 
     Jobs may use ``Depends()`` (fresh scope per job, ``yield`` teardown before the outcome is
     acknowledged, ``app.dependency_overrides`` honored, sub-dependency cache per job) and
-    ``JobContext`` via ``Depends(current_job)``. Request-only dependencies raise a clear
-    error. :meth:`lifespan` enters the app's lifespan once per worker process.
+    ``JobContext`` via ``Depends(current_job)`` or a ``JobContext`` annotation. Request-only
+    dependencies raise :class:`~laravel_cloud_queues.errors.ConfigurationError`.
+    :meth:`lifespan` enters the app's lifespan once per worker process.
     """
 
     def __init__(
@@ -41,15 +78,19 @@ class LaravelCloudQueues:
         registry: Registry | None = None,
         config: QueueConfig | None = None,
     ) -> None:
-        raise NotImplementedError
+        self._app = app
+        if registry is None:
+            registry = Registry(config=config, invoker=FastAPIInvoker(app))
+        self._registry = registry
+        app.state.laravel_cloud_queues = self
 
     @property
     def app(self) -> FastAPI:
-        raise NotImplementedError
+        return self._app
 
     @property
     def registry(self) -> Registry:
-        raise NotImplementedError
+        return self._registry
 
     @overload
     def job(self, func: Callable[P, R], /) -> Job[P, R]: ...
@@ -69,11 +110,41 @@ class LaravelCloudQueues:
         policy: RetryPolicy | None = None,
     ) -> Callable[[Callable[P, R]], Job[P, R]]: ...
 
-    def job(self, func: Callable[..., Any] | None = None, /, **kwargs: Any) -> Any:
-        raise NotImplementedError
+    def job(
+        self,
+        func: Callable[..., Any] | None = None,
+        /,
+        *,
+        name: str | None = None,
+        queue: str | None = None,
+        tries: int | None = None,
+        backoff: float | Sequence[float] | None = None,
+        timeout: float | None = None,
+        fail_on_timeout: bool | None = None,
+        policy: RetryPolicy | None = None,
+    ) -> Any:
+        def register(fn: Callable[..., Any]) -> Any:
+            with inspecting(fn):
+                reject_request_dependencies(fn, self._app.dependency_overrides)
+                # Overloads only allow keywords when the function is omitted; the
+                # returned decorator then receives the handler.
+                decorate = self._registry.job(
+                    name=name,
+                    queue=queue,
+                    tries=tries,
+                    backoff=backoff,
+                    timeout=timeout,
+                    fail_on_timeout=fail_on_timeout,
+                    policy=policy,
+                )
+                return decorate(fn)
+
+        if func is not None:
+            return register(func)
+        return register
 
     def lifespan(self) -> AbstractAsyncContextManager[None]:
-        raise NotImplementedError
+        return enter_lifespan(self._app)
 
 
 __all__ = ["JobContext", "LaravelCloudQueues", "current_job"]
