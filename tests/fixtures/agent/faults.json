@@ -1,0 +1,14 @@
+[
+  {"name": "malformed-json", "endpoint": "next", "status": 200, "raw": "{invalid", "attempts": 1, "error": "AgentUnavailableError"},
+  {"name": "scalar-json", "endpoint": "next", "status": 200, "raw": "\"payload-secret\"", "attempts": 1, "error": "AgentUnavailableError"},
+  {"name": "null-json", "endpoint": "next", "status": 200, "raw": "null", "attempts": 1, "error": "AgentUnavailableError"},
+  {"name": "boolean-json", "endpoint": "next", "status": 200, "raw": "true", "attempts": 1, "error": "AgentUnavailableError"},
+  {"name": "number-json", "endpoint": "next", "status": 200, "raw": "42", "attempts": 1, "error": "AgentUnavailableError"},
+  {"name": "unexpected-success", "endpoint": "next", "status": 202, "raw": "", "attempts": 1, "error": "AgentUnavailableError"},
+  {"name": "redirect", "endpoint": "next", "status": 302, "raw": "", "attempts": 1, "error": "AgentUnavailableError"},
+  {"name": "poll-client-error", "endpoint": "next", "status": 422, "raw": "receipt-secret", "attempts": 3, "error": "AgentUnavailableError"},
+  {"name": "poll-server-error", "endpoint": "next", "status": 503, "raw": "payload-secret", "attempts": 3, "error": "AgentUnavailableError"},
+  {"name": "result-stale-receipt", "endpoint": "result", "status": 404, "raw": "receipt-secret", "attempts": 1, "error": "AgentProtocolError"},
+  {"name": "result-client-error", "endpoint": "result", "status": 422, "raw": "receipt-secret", "attempts": 1, "error": "AgentProtocolError"},
+  {"name": "result-server-error", "endpoint": "result", "status": 503, "raw": "payload-secret", "attempts": 1, "error": "AgentUnavailableError"}
+]
