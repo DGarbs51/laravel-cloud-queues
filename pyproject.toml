@@ -68,19 +68,21 @@ only-include = ["src/laravel_cloud_queues", "README.md", "LICENSE", "pyproject.t
 line-length = 100
 target-version = "py310"
 src = ["src", "tests", "harness", "demo"]
-extend-exclude = ["probe-app", ".worktrees"]
+extend-exclude = ["probe-app", ".worktrees", "*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT", "PGH"]
 ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B011", "PT011"]
+"tests/**" = ["B011", "PT011", "PT018"]
+# Proof worker deliberately blocks inside async code and polls; keep the scenarios literal.
+"tests/runtime_proof/**" = ["ASYNC", "RUF046", "SIM105"]
 
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["src"]
+files = ["src", "harness"]
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 

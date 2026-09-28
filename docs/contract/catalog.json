@@ -1,0 +1,2895 @@
+{
+  "schema_version": 1,
+  "baseline": {
+    "laravel/framework": {
+      "version": "v13.33.0",
+      "commit": "91188a17ceaa3dbace6e8a5f7abd0d042e466359"
+    },
+    "laravel/symfony-on-cloud": {
+      "commit": "50c945170b6cb5690370d15fd725c6f82495e9ba"
+    }
+  },
+  "exception_list": [
+    {
+      "id": "cloud.live_managed",
+      "allowed_statuses": [
+        "skipped"
+      ],
+      "reason": "Laravel Cloud does not yet enable managed queues for Python applications (docs/audits/2026-09-27/platform-findings.md).",
+      "approval": "PROJECT_SCOPE §1, §22, §30.25"
+    },
+    {
+      "id": "cloud.dashboard_retry_live",
+      "allowed_statuses": [
+        "skipped"
+      ],
+      "reason": "Requires a live managed queue for Python; the local replay probe (retry.dashboard_replay) covers the contract.",
+      "approval": "PROJECT_SCOPE §22 / D3"
+    }
+  ],
+  "features": [
+    {
+      "id": "config.backend_selection",
+      "title": "Backend mode selection",
+      "scope_refs": [
+        "§6",
+        "§30.26"
+      ],
+      "covers": [
+        "backend selection and configuration errors (D6a)",
+        "§30.26"
+      ],
+      "conflict_rows": [],
+      "expected": "LARAVEL_CLOUD_QUEUES_BACKEND=managed|sqs|redis selects the mode; when unset, the presence of LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG selects managed and its absence raises ConfigurationError. REDIS_URL and AWS_* never select a backend. Settings passed in code override the environment. LARAVEL_CLOUD_QUEUES_REDIS_URL falls back to REDIS_URL only in redis mode. LARAVEL_CLOUD_QUEUES_SQS_ENDPOINT is refused when LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG is present. Region is required in managed and sqs modes; an unknown mode value is a configuration error.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/CloudBootstrapper.php",
+          "lines": "217-241",
+          "symbol": "CloudBootstrapper::configureManagedQueues"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D6a",
+      "probe": null
+    },
+    {
+      "id": "config.managed_parse",
+      "title": "Managed configuration parsing",
+      "scope_refs": [
+        "§6"
+      ],
+      "covers": [],
+      "conflict_rows": [
+        "Malformed managed config"
+      ],
+      "expected": "LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG is parsed as JSON. Malformed JSON, driver != \"cloud\", or a missing connection object is a ConfigurationError (never treated as unconfigured). queues may be a list or an object (keys); it is an inventory, not a dispatch allowlist. Sender default queue = connection.queue; worker assignment = top-level queue, else \"default\". region is required. after_commit, overflow and credential_cache are preserved; overflow.enabled or credential_cache.enabled true logs a startup warning naming the consequence. Unknown fields are preserved. Credentials, receipt handles and payloads are never logged by default.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/CloudBootstrapper.php",
+          "lines": "217-241",
+          "symbol": "CloudBootstrapper::configureManagedQueues"
+        },
+        {
+          "path": "src/Illuminate/Foundation/CloudBootstrapper.php",
+          "lines": "264-280",
+          "symbol": "CloudBootstrapper::bootManagedQueues"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "577-582",
+          "symbol": "Queue::managedQueues"
+        },
+        {
+          "path": "src/Illuminate/Queue/Connectors/SqsConnector.php",
+          "lines": "22-38",
+          "symbol": "SqsConnector::connect"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/ManagedQueueConfig.php",
+          "lines": "48-92",
+          "symbol": "ManagedQueueConfig::fromEnvironment"
+        }
+      ],
+      "deviation": {
+        "label": "managed-config-strict-shape",
+        "follows": "project",
+        "summary": "Laravel throws only on malformed JSON (JSON_THROW_ON_ERROR); a non-\"cloud\" driver silently skips managed-queue boot and a missing connection is auto-created. Symfony treats malformed JSON as unconfigured. The project rejects all three shapes at startup.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "config.credentials_explicit",
+      "title": "Explicit credential providers",
+      "scope_refs": [
+        "§6",
+        "§26a",
+        "§30.27"
+      ],
+      "covers": [
+        "§30.27"
+      ],
+      "conflict_rows": [
+        "`credentials: \"ecs\"`"
+      ],
+      "expected": "In managed mode credentials: \"ecs\" selects botocore's container (ECS) credential provider explicitly with refreshable credentials; \"instance\" selects the instance-metadata provider; any other value, or an absent credentials key, is a ConfigurationError. boto3's default credential chain and AWS_ENDPOINT_URL* are never consulted in managed mode.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Connectors/SqsConnector.php",
+          "lines": "61-113",
+          "symbol": "SqsConnector::withCredentials, resolveCredentialProvider"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Sqs/SqsClientFactory.php",
+          "lines": "20-36",
+          "symbol": "SqsClientFactory::create"
+        }
+      ],
+      "deviation": {
+        "label": "credentials-explicit-only",
+        "follows": "project",
+        "summary": "Laravel throws for an unknown string provider but falls through to key/secret or the SDK default chain when the credentials key is absent; Symfony uses the default chain for anything but \"ecs\". The project never uses the default chain in managed mode because Laravel Cloud object storage occupies AWS_*.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "config.agent_socket_resolution",
+      "title": "Agent socket path resolution",
+      "scope_refs": [
+        "§6"
+      ],
+      "covers": [],
+      "conflict_rows": [
+        "Agent socket fallback"
+      ],
+      "expected": "The agent socket is agent.socket from the managed config when it is a non-empty string, else LARAVEL_CLOUD_AGENT_SOCKET, else /tmp/cloud-agent.sock. The environment variable never overrides an explicit config value. Agent use is decided by agent.enabled, never by probing the socket path.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "365-374",
+          "symbol": "Queue::agentRequest"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "392-408",
+          "symbol": "Queue::usesAgent, Queue::workerQueue"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/ManagedQueueConfig.php",
+          "lines": "48-92",
+          "symbol": "ManagedQueueConfig::fromEnvironment"
+        },
+        {
+          "path": "src/LaravelCloudBundle.php",
+          "lines": "101-104",
+          "symbol": "LaravelCloudBundle::registerPlatform (agent_socket)"
+        },
+        {
+          "path": "src/Queue/ManagedQueueConfig.php",
+          "lines": "196-199",
+          "symbol": "ManagedQueueConfig::agentAvailable"
+        }
+      ],
+      "deviation": {
+        "label": "agent-socket-env-fallback",
+        "follows": "symfony",
+        "summary": "Laravel reads only agent.socket with the /tmp/cloud-agent.sock default; Symfony adds the LARAVEL_CLOUD_AGENT_SOCKET fallback between them.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "config.sqs_isolated_aws",
+      "title": "Self-managed sqs mode ignores AWS_* variables",
+      "scope_refs": [
+        "§6",
+        "§26a",
+        "§30.27"
+      ],
+      "covers": [
+        "self-managed `sqs` mode ignoring `AWS_*` variables",
+        "§30.27"
+      ],
+      "conflict_rows": [],
+      "expected": "In sqs mode the boto3 client is built only from LARAVEL_CLOUD_QUEUES_SQS_* values (prefix, suffix, queue, region, key/secret or CREDENTIALS=default, endpoint). AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_ENDPOINT_URL and AWS_ENDPOINT_URL_SQS set in the environment are not used; the client's endpoint is the configured one (or AWS's) even when AWS_ENDPOINT_URL points elsewhere. Missing key/secret without CREDENTIALS=default is a ConfigurationError.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D6a",
+      "probe": null
+    },
+    {
+      "id": "queue.url_and_normalization",
+      "title": "Queue URL construction and normalization",
+      "scope_refs": [
+        "§6",
+        "§30.16"
+      ],
+      "covers": [
+        "§30.16"
+      ],
+      "conflict_rows": [
+        "Queue URL"
+      ],
+      "expected": "Queue URL: a value that is already a URL passes through unchanged; otherwise {prefix}/{queue}{suffix} for standard names and {prefix}/{base}{suffix}.fifo for names ending in .fifo, with trailing slashes trimmed from the prefix and the suffix appended only when the name does not already end with it (Str::finish). An empty or null queue means the configured default. Normalization inverts this to the logical name: strip {prefix}/ once, then strip the suffix once (before .fifo for FIFO names). Fixtures cover already-suffixed names, full URLs, empty suffix, trailing slashes and FIFO names.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "687-712",
+          "symbol": "SqsQueue::getQueue, suffixQueue"
+        },
+        {
+          "path": "src/Illuminate/Support/Str.php",
+          "lines": "496-501",
+          "symbol": "Str::finish"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "559-570",
+          "symbol": "Queue::normalizeQueue"
+        },
+        {
+          "path": "src/Illuminate/Support/Str.php",
+          "lines": "270-297",
+          "symbol": "Str::chopStart, chopEnd"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/ManagedQueueConfig.php",
+          "lines": "114-175",
+          "symbol": "ManagedQueueConfig::queueUrlFor, buildQueueUrl, normalizeQueue"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "sqs.queue_not_found",
+      "title": "Typed queue-not-found error",
+      "scope_refs": [
+        "§6",
+        "§24",
+        "§30.17"
+      ],
+      "covers": [
+        "queue-not-found typed error",
+        "§30.17"
+      ],
+      "conflict_rows": [],
+      "expected": "Dispatching to a queue that does not exist raises ManagedQueueNotFoundError (with the logical queue name), translated from SQS error code AWS.SimpleQueueService.NonExistentQueue and boto3's QueueDoesNotExist. No pre-validation against the queues inventory, no fallback to the default queue, no queue creation.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/QueueConnector.php",
+          "lines": "68-86",
+          "symbol": "QueueConnector::registerErrorHandling"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "468-475",
+          "symbol": "CloudQueueTransport::withSqs"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "envelope.v1_shape",
+      "title": "Versioned JSON envelope with Laravel-compatible top-level keys",
+      "scope_refs": [
+        "§8",
+        "§30.3"
+      ],
+      "covers": [
+        "§30.3"
+      ],
+      "conflict_rows": [],
+      "expected": "The message body is a JSON object with top-level \"uuid\" (a fresh UUID per dispatch) and \"displayName\" (the job's wire name) spelled exactly so, plus a versioned structure carrying the wire name, positional args, kwargs, retry policy and trace context. Unknown envelope versions are rejected. The body round-trips byte-for-byte through SQS, the agent and Redis, and the worker decodes it without importing anything named by the payload.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Queue.php",
+          "lines": "174-193",
+          "symbol": "Queue::createObjectPayload"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/FailedJobProvider.php",
+          "lines": "85",
+          "symbol": "FailedJobProvider::log (job_name from displayName)"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "393-413",
+          "symbol": "CloudQueueTransport::encode"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "envelope.retry_policy_in_message",
+      "title": "Retry policy travels in the message",
+      "scope_refs": [
+        "§8",
+        "§12",
+        "§30.29"
+      ],
+      "covers": [
+        "retry policy carried in the message across a simulated deploy (D4)",
+        "§30.29"
+      ],
+      "conflict_rows": [
+        "Retry policy location"
+      ],
+      "expected": "At dispatch the envelope stores the effective tries, backoff, timeout and fail_on_timeout, and reserves retry_until and max_exceptions (null). The worker follows the message; worker defaults (tries 1, backoff 0, timeout 60, fail_on_timeout false) apply only to fields the message omits. A message dispatched with one policy is executed with that policy by a worker whose code declares a different one (simulated deploy).",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Queue.php",
+          "lines": "174-193",
+          "symbol": "Queue::createObjectPayload"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "294-347",
+          "symbol": "Job::maxTries, maxExceptions, shouldFailOnTimeout, backoff, timeout, retryUntil"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "701-718",
+          "symbol": "Worker::markJobAsFailedIfAlreadyExceedsMaxAttempts"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "817-827",
+          "symbol": "Worker::calculateBackoff"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "319-378",
+          "symbol": "Worker::registerTimeoutHandler, resetTimeoutHandler, timeoutForJob"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "README.md",
+          "lines": "171-190",
+          "symbol": "README: Retries"
+        },
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "364-391",
+          "symbol": "CloudQueueTransport::decode"
+        }
+      ],
+      "deviation": null,
+      "project_decision": "D4",
+      "probe": null
+    },
+    {
+      "id": "envelope.codecs",
+      "title": "Supported value types round-trip",
+      "scope_refs": [
+        "§8"
+      ],
+      "covers": [],
+      "conflict_rows": [],
+      "expected": "JSON primitives, lists, dicts, tuples, dataclasses, enums, UUID, date/datetime and registered custom codecs round-trip through the envelope; Pydantic v2 models round-trip when Pydantic is installed and Pydantic is not a core dependency. Codec failures on the worker are deterministic job defects.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§8",
+      "probe": null
+    },
+    {
+      "id": "envelope.trust_boundary",
+      "title": "Untrusted message bodies",
+      "scope_refs": [
+        "§8",
+        "§26a"
+      ],
+      "covers": [],
+      "conflict_rows": [],
+      "expected": "Decoding resolves job names only through the registry and value types only through registered codecs; it never imports modules, looks up callables or instantiates classes named by payload data. Nesting depth and total decoded size are bounded; NaN/Infinity, duplicate keys and type-tag collisions are rejected deterministically. Decoded arguments are validated against the handler signature before execution. JobContext and injected dependencies cannot be supplied through the payload.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": {
+        "label": "registry-only-resolution",
+        "follows": "project",
+        "summary": "Laravel's payload names a PHP class (Illuminate\\Queue\\CallQueuedHandler@call) resolved through the container; Symfony delegates to Messenger's serializer. Registry-only resolution is a Python security rule, not upstream behaviour.",
+        "decision": null
+      },
+      "project_decision": "D4",
+      "probe": null
+    },
+    {
+      "id": "envelope.payload_size_limit",
+      "title": "Typed payload-too-large error before sending",
+      "scope_refs": [
+        "§8",
+        "§24",
+        "§30.17"
+      ],
+      "covers": [
+        "oversized payload typed error",
+        "§30.17"
+      ],
+      "conflict_rows": [],
+      "expected": "Before sending, the fully encoded body is measured in UTF-8 bytes; if it exceeds 1,048,576 bytes on SQS-backed modes, PayloadTooLargeError (size and limit exposed) is raised and nothing is sent. Redis mode imposes no package limit. Never truncate, compress or offload.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "20-25",
+          "symbol": "SqsQueue::MAX_SQS_PAYLOAD_SIZE"
+        },
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "537-568",
+          "symbol": "SqsQueue::willOverflow, overflow"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": {
+        "label": "local-size-rejection",
+        "follows": "project",
+        "summary": "Laravel uses the 1 MiB constant for batch chunking and for its cache-backed overflow threshold; it does not reject a single oversized send locally. The project rejects before sending and does not implement overflow.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "sqs.max_message_size_mapping",
+      "title": "Lower queue MaximumMessageSize maps to PayloadTooLargeError",
+      "scope_refs": [
+        "§8",
+        "§30.17"
+      ],
+      "covers": [
+        "§30.17"
+      ],
+      "conflict_rows": [],
+      "expected": "When SQS rejects a SendMessage because the body exceeds the queue's MaximumMessageSize, the error is raised as PayloadTooLargeError; unrelated InvalidParameterValue errors are not classified as size errors.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D7",
+      "probe": null
+    },
+    {
+      "id": "registry.job_declaration",
+      "title": "Job declaration, wire names and direct callability",
+      "scope_refs": [
+        "§7",
+        "§18",
+        "§30.4"
+      ],
+      "covers": [
+        "direct job callability",
+        "§30.4"
+      ],
+      "conflict_rows": [],
+      "expected": "Decorated jobs remain ordinary callables with their original signature (await send_email(123) runs the function directly). Default wire name is the import path; @job(name=...) overrides it. Duplicate wire names are a registration error. Registration is explicit (module/job inclusion) or opt-in configured package discovery; message content never triggers imports. Core registry works without FastAPI.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D5",
+      "probe": null
+    },
+    {
+      "id": "dispatch.standard",
+      "title": "Standard dispatch to SQS",
+      "scope_refs": [
+        "§9",
+        "§11",
+        "§30.3"
+      ],
+      "covers": [
+        "standard dispatch",
+        "§30.3"
+      ],
+      "conflict_rows": [],
+      "expected": "job.dispatch(...) / await job.dispatch_async(...) encode one envelope and call SendMessage with QueueUrl from the queue-URL rules and MessageBody = the envelope; a DispatchReceipt(message_id, queue) is returned. Both paths share one pipeline (validation, serialization, routing, tracing, transport). dispatch_async never blocks the event loop; dispatch called inside a running loop raises instead of nesting a loop.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "320-329",
+          "symbol": "SqsQueue::pushRaw"
+        },
+        {
+          "path": "src/Illuminate/Queue/Queue.php",
+          "lines": "368-390",
+          "symbol": "Queue::enqueueUsing"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "115-254",
+          "symbol": "CloudQueueTransport::send"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "dispatch.named_queue",
+      "title": "Job-level default queue",
+      "scope_refs": [
+        "§10"
+      ],
+      "covers": [
+        "named queue"
+      ],
+      "conflict_rows": [],
+      "expected": "@job(queue=\"emails\") sends to {prefix}/emails{suffix}; without a job queue the connection default queue is used.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "687-712",
+          "symbol": "SqsQueue::getQueue, suffixQueue"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D5",
+      "probe": null
+    },
+    {
+      "id": "dispatch.queue_override",
+      "title": "Per-dispatch queue override",
+      "scope_refs": [
+        "§10"
+      ],
+      "covers": [
+        "per-dispatch queue override"
+      ],
+      "conflict_rows": [],
+      "expected": "job.options(queue=\"priority\").dispatch(...) sends to the override queue and the receipt reports it; the job's own default queue is unchanged for later dispatches.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D5",
+      "probe": null
+    },
+    {
+      "id": "dispatch.options_builder",
+      "title": "Typed .options(...) builder",
+      "scope_refs": [
+        "§10",
+        "§30.33"
+      ],
+      "covers": [
+        "`.options(...)` builder with handler parameters named `queue`/`delay`/`timeout` (D5)",
+        "§30.33"
+      ],
+      "conflict_rows": [],
+      "expected": ".options(queue=, delay=, group=, deduplication_id=, message_group=) returns a typed copy of the job; dispatch and dispatch_async keep exactly the handler's parameter signature so a handler may take parameters named queue, delay or timeout without collision. mypy --strict accepts the positive typing samples and rejects the expected-error samples for both option types and job argument types.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D5",
+      "probe": null
+    },
+    {
+      "id": "dispatch.delay_standard",
+      "title": "Delayed dispatch on a standard queue",
+      "scope_refs": [
+        "§10",
+        "§30.10"
+      ],
+      "covers": [
+        "delayed standard job",
+        "§30.10"
+      ],
+      "conflict_rows": [],
+      "expected": "A delay of N seconds (int or timedelta) on a standard queue sends DelaySeconds=N and the message is not receivable before N seconds. A positive fractional delay rounds up to the next whole second. Zero delay omits DelaySeconds. Redis mode adds the job to the delayed set with the same cap.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "579-636",
+          "symbol": "SqsQueue::getQueueableOptions"
+        },
+        {
+          "path": "src/Illuminate/Support/InteractsWithTime.php",
+          "lines": "17-24",
+          "symbol": "InteractsWithTime::secondsUntil"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "115-254",
+          "symbol": "CloudQueueTransport::send"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "dispatch.delay_validation",
+      "title": "Fresh-delay validation",
+      "scope_refs": [
+        "§10",
+        "§30.10"
+      ],
+      "covers": [
+        "§30.10"
+      ],
+      "conflict_rows": [
+        "Fresh delay > 900 s"
+      ],
+      "expected": "Delays > 900 seconds, negative, or non-finite raise InvalidQueueOptionError before anything is sent, in every mode. Retry backoff is not subject to this cap.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "579-636",
+          "symbol": "SqsQueue::getQueueableOptions"
+        },
+        {
+          "path": "src/Illuminate/Support/InteractsWithTime.php",
+          "lines": "17-24",
+          "symbol": "InteractsWithTime::secondsUntil"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "233-248",
+          "symbol": "CloudQueueTransport::send (DelaySeconds > 900)"
+        }
+      ],
+      "deviation": {
+        "label": "fresh-delay-cap",
+        "follows": "symfony",
+        "summary": "Laravel forwards any DelaySeconds and lets SQS fail; Symfony rejects > 900 s (after flooring milliseconds). The project rejects > 900 s and additionally rounds fractional delays up.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "dispatch.fifo_defaults",
+      "title": "FIFO group and deduplication defaults",
+      "scope_refs": [
+        "§10",
+        "§30.10"
+      ],
+      "covers": [
+        "FIFO group/dedup",
+        "§30.10"
+      ],
+      "conflict_rows": [
+        "Default FIFO dedup"
+      ],
+      "expected": "On a .fifo queue MessageGroupId defaults to the logical queue name including .fifo and MessageDeduplicationId defaults to a new unique ID chosen once per logical dispatch and reused across internal network retries. An explicit empty deduplication ID omits the attribute (content-based dedup). Explicit group/dedup IDs are validated (1-128 characters, SQS character set) before sending.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "579-636",
+          "symbol": "SqsQueue::getQueueableOptions"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "193-207",
+          "symbol": "CloudQueueTransport::send (FIFO defaults)"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "dispatch.fifo_delay_rejected",
+      "title": "FIFO queues reject per-message delay",
+      "scope_refs": [
+        "§10",
+        "§30.10"
+      ],
+      "covers": [
+        "rejection of FIFO per-message delay",
+        "§30.10"
+      ],
+      "conflict_rows": [
+        "FIFO + delay"
+      ],
+      "expected": "A positive delay on a .fifo queue raises InvalidQueueOptionError before sending; zero delay is allowed.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "579-636",
+          "symbol": "SqsQueue::getQueueableOptions"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "209-216",
+          "symbol": "CloudQueueTransport::send (FIFO DelayStamp)"
+        }
+      ],
+      "deviation": {
+        "label": "fifo-delay-rejected",
+        "follows": "symfony",
+        "summary": "Laravel silently omits DelaySeconds on FIFO queues; Symfony throws. The project raises InvalidQueueOptionError.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "dispatch.fair_queue_group",
+      "title": "Fair-queue message group on a standard queue",
+      "scope_refs": [
+        "§10",
+        "§30.10"
+      ],
+      "covers": [
+        "fair-queue message group on standard queue",
+        "§30.10"
+      ],
+      "conflict_rows": [],
+      "expected": "options(message_group=\"tenant-a\") on a standard queue sends MessageGroupId=\"tenant-a\" and no MessageDeduplicationId; a delay may be combined with it.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "579-636",
+          "symbol": "SqsQueue::getQueueableOptions"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "224-231",
+          "symbol": "CloudQueueTransport::send (fair-queue group)"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "dispatch.cross_model_rejected",
+      "title": "Invalid FIFO/fair combinations are rejected",
+      "scope_refs": [
+        "§10",
+        "§30.10"
+      ],
+      "covers": [
+        "rejection of invalid FIFO/fair combinations",
+        "§30.10"
+      ],
+      "conflict_rows": [
+        "FIFO/fair cross-model options"
+      ],
+      "expected": "FIFO-only options (group, deduplication_id) on a standard queue and a fair-queue message_group on a .fifo queue raise InvalidQueueOptionError before sending. In redis mode every FIFO and fair-queue option raises InvalidQueueOptionError.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "579-636",
+          "symbol": "SqsQueue::getQueueableOptions"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "193-222",
+          "symbol": "CloudQueueTransport::send (stamp model checks)"
+        }
+      ],
+      "deviation": {
+        "label": "fifo-fair-cross-model-rejected",
+        "follows": "symfony",
+        "summary": "Laravel applies one messageGroup to both queue types and ignores dedup on standard queues without error; Symfony throws on the wrong stamp model. The project raises InvalidQueueOptionError.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "agent.receive_selection",
+      "title": "Agent-only receive when the agent is enabled",
+      "scope_refs": [
+        "§11",
+        "§30.6"
+      ],
+      "covers": [
+        "§30.6"
+      ],
+      "conflict_rows": [
+        "Agent receive selection"
+      ],
+      "expected": "In managed mode with agent.enabled true the worker receives only through GET /next on the agent socket for its assigned queue and never calls ReceiveMessage. Requested queue names are ignored on this path; a CLI queue selection that conflicts with the assignment is a startup ConfigurationError (exit 2), not a silent override. With agent.enabled false the worker uses direct SQS receive.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "242-253",
+          "symbol": "Queue::pop"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "392-408",
+          "symbol": "Queue::usesAgent, Queue::workerQueue"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "49-82",
+          "symbol": "CloudQueueTransport::get, getFromQueues"
+        },
+        {
+          "path": "src/Queue/ManagedQueueConfig.php",
+          "lines": "196-199",
+          "symbol": "ManagedQueueConfig::agentAvailable"
+        }
+      ],
+      "deviation": {
+        "label": "agent-receive-ignores-queues",
+        "follows": "symfony",
+        "summary": "Laravel uses the agent only when the requested queue equals the worker queue (and the command is queue:work), otherwise pops SQS directly; a multi-queue worker never uses the agent. Symfony always uses the agent when enabled. The project follows Symfony and fails fast on a conflicting CLI queue.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "agent.next_protocol",
+      "title": "GET /next request and response handling",
+      "scope_refs": [
+        "§11",
+        "§30.6"
+      ],
+      "covers": [
+        "§30.6"
+      ],
+      "conflict_rows": [
+        "200 without `messageId`"
+      ],
+      "expected": "GET /next over the Unix socket (httpx Unix transport, base URL http://localhost, redirects disabled, bounded response size) with a 65-second request timeout. 204: no work. 200: body must decode to a JSON object or array, else fatal; missing, empty or non-string messageId is an empty poll; non-string receiptHandle becomes null; non-string body becomes \"\"; attributes.ApproximateReceiveCount is the attempt count; queueUrl is used for telemetry queue normalization, falling back to the configured queue when missing. Any other status, or an unreachable socket after retries, is fatal (AgentUnreachableError).",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "294-324",
+          "symbol": "Queue::requestNextJobFromAgent"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "260-287",
+          "symbol": "Queue::popFromAgent"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "365-374",
+          "symbol": "Queue::agentRequest"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Agent/AgentClient.php",
+          "lines": "44-76",
+          "symbol": "AgentClient::next"
+        },
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "300-318",
+          "symbol": "CloudQueueTransport::getFromAgent"
+        }
+      ],
+      "deviation": {
+        "label": "telemetry-queue-from-queue-url",
+        "follows": "symfony",
+        "summary": "Laravel ignores the agent's queueUrl for telemetry and normalizes the pop() argument; Symfony normalizes the received queueUrl with a config fallback. Identical in practice for a single assigned queue.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "agent.next_retries",
+      "title": "GET /next retry schedule",
+      "scope_refs": [
+        "§11",
+        "§30.6"
+      ],
+      "covers": [
+        "§30.6"
+      ],
+      "conflict_rows": [
+        "`GET /next` retries"
+      ],
+      "expected": "GET /next is attempted up to 3 times per poll, sleeping 0 ms after the first failure and 500 ms after the second (Laravel retry([0, 500])). Connection errors and HTTP error statuses are retried (D13.3; Laravel's retry has no `when` filter); a 204 or 200 ends the poll; after the third failure the worker treats the agent as unreachable.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "294-324",
+          "symbol": "Queue::requestNextJobFromAgent"
+        },
+        {
+          "path": "src/Illuminate/Support/helpers.php",
+          "lines": "311-346",
+          "symbol": "retry()"
+        },
+        {
+          "path": "src/Illuminate/Http/Client/PendingRequest.php",
+          "lines": "1055-1128",
+          "symbol": "PendingRequest::send"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Agent/AgentClient.php",
+          "lines": "44-76",
+          "symbol": "AgentClient::next"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "agent.receive_count_default",
+      "title": "Missing ApproximateReceiveCount counts as 1",
+      "scope_refs": [
+        "§11"
+      ],
+      "covers": [],
+      "conflict_rows": [],
+      "expected": "When attributes.ApproximateReceiveCount is absent or not an integer (agent or direct SQS), the attempt is 1.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
+          "lines": "132-135",
+          "symbol": "SqsJob::attempts"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "323-362",
+          "symbol": "CloudQueueTransport::getFromSqs, receiveCountFrom"
+        }
+      ],
+      "deviation": {
+        "label": "missing-receive-count-is-one",
+        "follows": "symfony",
+        "summary": "Laravel casts the missing attribute with (int), yielding 0, so such a message never reaches maxTries; Symfony uses max(1, ...). The project follows Symfony.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "agent.result_protocol",
+      "title": "POST /result body and timing",
+      "scope_refs": [
+        "§11",
+        "§30.6"
+      ],
+      "covers": [
+        "§30.6"
+      ],
+      "conflict_rows": [],
+      "expected": "Outcomes are reported with POST /result and a JSON body {messageId, receiptHandle, status, delay}: receiptHandle is omitted when null, delay is omitted when null and kept when 0, status is \"processed\" or \"released\" (a terminal failure reports \"processed\"; there is no failed status and no queueUrl). Request timeout 10 seconds per attempt; up to 3 attempts 100 ms apart on connection errors only. Each delivery is reported exactly once; a repeated POST after a lost response is treated as possibly applied and never contradicts the first outcome.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "332-358",
+          "symbol": "Queue::reportJobStatusToAgent"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/CloudJob.php",
+          "lines": "38-47",
+          "symbol": "CloudJob::delete"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/CloudJob.php",
+          "lines": "55-61",
+          "symbol": "CloudJob::release"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Agent/AgentClient.php",
+          "lines": "94-137",
+          "symbol": "AgentClient::report"
+        },
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "84-113",
+          "symbol": "CloudQueueTransport::ack, reject"
+        },
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "264-283",
+          "symbol": "CloudQueueTransport::release"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "agent.result_4xx_nonfatal",
+      "title": "POST /result 4xx is logged and the worker continues",
+      "scope_refs": [
+        "§11",
+        "§24",
+        "§30.6"
+      ],
+      "covers": [
+        "§30.6"
+      ],
+      "conflict_rows": [
+        "`/result` 4xx"
+      ],
+      "expected": "A 4xx from POST /result is logged as AgentProtocolError; the worker does not assume acknowledgement, does not report a second outcome for that message, emits the lifecycle event for the outcome it chose, and continues with the next GET /next.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "332-358",
+          "symbol": "Queue::reportJobStatusToAgent"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/AgentAwareLostConnectionDetector.php",
+          "lines": "27-31",
+          "symbol": "AgentAwareLostConnectionDetector::causedByLostConnection"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "558-586",
+          "symbol": "Worker::runJob, stopWorkerIfLostConnection"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Agent/AgentClient.php",
+          "lines": "94-137",
+          "symbol": "AgentClient::report"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "agent.unhealthy_exit_zero",
+      "title": "Agent 5xx or unreachable stops the worker with exit 0",
+      "scope_refs": [
+        "§11",
+        "§23",
+        "§30.6",
+        "§30.13"
+      ],
+      "covers": [
+        "agent `/result` failure terminating worker",
+        "§30.6",
+        "§30.13"
+      ],
+      "conflict_rows": [
+        "Agent-loss exit status"
+      ],
+      "expected": "A 5xx from POST /result, or a connection failure after the bounded retries on GET /next or POST /result, is fatal: the worker logs the agent loss, does not fetch another job, does not assume acknowledgement, finishes its bookkeeping and exits with status 0 so the platform restarts it. Redelivery is left to agent/SQS visibility.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "332-358",
+          "symbol": "Queue::reportJobStatusToAgent"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "294-324",
+          "symbol": "Queue::requestNextJobFromAgent"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/AgentAwareLostConnectionDetector.php",
+          "lines": "27-31",
+          "symbol": "AgentAwareLostConnectionDetector::causedByLostConnection"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "419-432",
+          "symbol": "Worker::stopIfNecessary"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "558-586",
+          "symbol": "Worker::runJob, stopWorkerIfLostConnection"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "465-508",
+          "symbol": "Worker::getNextJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "37-39",
+          "symbol": "Worker::EXIT_SUCCESS, EXIT_ERROR, EXIT_MEMORY_LIMIT"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Agent/AgentClient.php",
+          "lines": "94-137",
+          "symbol": "AgentClient::report"
+        },
+        {
+          "path": "src/Queue/Agent/AgentClient.php",
+          "lines": "44-76",
+          "symbol": "AgentClient::next"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "worker.ambiguous_ack_stops",
+      "title": "Ambiguous acknowledgement stops the worker",
+      "scope_refs": [
+        "§12",
+        "§23"
+      ],
+      "covers": [],
+      "conflict_rows": [],
+      "expected": "When the outcome report's response is lost after the request may have been applied (timeout after send, connection reset mid-response), the delivery is marked ambiguous; the worker does not re-report a contradictory outcome and stops with exit 1 instead of fetching again. Acknowledgement failures are never treated as handler errors.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D7",
+      "probe": null
+    },
+    {
+      "id": "sqs.receive_direct",
+      "title": "Direct SQS receive parameters",
+      "scope_refs": [
+        "§11",
+        "§30.7"
+      ],
+      "covers": [
+        "§30.7"
+      ],
+      "conflict_rows": [],
+      "expected": "Direct receive (managed mode with the agent disabled, and sqs mode) calls ReceiveMessage with WaitTimeSeconds=20, MaxNumberOfMessages=1 and AttributeNames=[ApproximateReceiveCount]; an empty response sleeps --sleep seconds (default 3) before polling again; a receive error that is not a lost connection sleeps 1 second and retries.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "644-657",
+          "symbol": "SqsQueue::pop"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "465-508",
+          "symbol": "Worker::getNextJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "233-308",
+          "symbol": "Worker::daemon"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "323-362",
+          "symbol": "CloudQueueTransport::getFromSqs, receiveCountFrom"
+        }
+      ],
+      "deviation": {
+        "label": "receive-long-poll-params",
+        "follows": "symfony",
+        "summary": "Laravel's SqsQueue::pop passes only QueueUrl and AttributeNames (queue-level defaults decide waiting and batch size); Symfony passes WaitTimeSeconds=20 and MaxNumberOfMessages=1. The project follows Symfony.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "sqs.retry_visibility_release",
+      "title": "Retry releases the same message through visibility",
+      "scope_refs": [
+        "§11",
+        "§12",
+        "§30.8"
+      ],
+      "covers": [
+        "retry/backoff using same message ID",
+        "§30.8"
+      ],
+      "conflict_rows": [],
+      "expected": "A retryable handler failure calls ChangeMessageVisibility on the original message with the latest receipt handle and VisibilityTimeout = backoff (clamped to 43,200); the redelivered message has the same MessageId and ApproximateReceiveCount + 1. No new message is sent. In agent mode the same outcome is POST /result status released with delay.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
+          "lines": "66-86",
+          "symbol": "SqsJob::release, changeMessageVisibilityInSqs"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/CloudJob.php",
+          "lines": "55-61",
+          "symbol": "CloudJob::release"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "648-687",
+          "symbol": "Worker::handleJobException"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "264-283",
+          "symbol": "CloudQueueTransport::release"
+        },
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "115-254",
+          "symbol": "CloudQueueTransport::send"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "sqs.attempts_receive_count",
+      "title": "ApproximateReceiveCount is the attempt counter",
+      "scope_refs": [
+        "§12",
+        "§30.8",
+        "§30.9"
+      ],
+      "covers": [
+        "`ApproximateReceiveCount` attempts",
+        "§30.8",
+        "§30.9"
+      ],
+      "conflict_rows": [],
+      "expected": "JobContext.attempt equals the delivery's ApproximateReceiveCount (SQS/agent) or the reservation counter (Redis); the first delivery is attempt 1 and each redelivery increments it. Attempts are never counted locally.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
+          "lines": "132-135",
+          "symbol": "SqsJob::attempts"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "260-287",
+          "symbol": "Queue::popFromAgent"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "323-362",
+          "symbol": "CloudQueueTransport::getFromSqs, receiveCountFrom"
+        },
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "364-391",
+          "symbol": "CloudQueueTransport::decode"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "sqs.visibility_renewal",
+      "title": "Visibility renewal watchdog during a job",
+      "scope_refs": [
+        "§11",
+        "§13",
+        "§30.7"
+      ],
+      "covers": [
+        "§30.7"
+      ],
+      "conflict_rows": [],
+      "expected": "In direct SQS mode a watchdog thread extends the message's visibility (lease window 60 s by default, renewal every third of the window) while the handler runs, including while a sync handler blocks the event loop; it starts with the job and stops before the outcome is reported. A failed renewal is a lost lease: the worker never reports success for that job and exits 1. A long job is not redelivered while the worker still owns it.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
+          "lines": "66-86",
+          "symbol": "SqsJob::release, changeMessageVisibilityInSqs"
+        },
+        {
+          "path": "src/Illuminate/Queue/SqsQueue.php",
+          "lines": "644-657",
+          "symbol": "SqsQueue::pop"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": {
+        "label": "visibility-renewal-watchdog",
+        "follows": "project",
+        "summary": "Neither Laravel nor Symfony renews visibility during direct-mode execution (the Cloud agent does it in managed mode). The project adds a watchdog so worker-cluster jobs longer than the queue visibility timeout are not redelivered concurrently.",
+        "decision": null
+      },
+      "project_decision": "D6, D7",
+      "probe": null
+    },
+    {
+      "id": "redis.transport",
+      "title": "Redis/Valkey transport semantics",
+      "scope_refs": [
+        "§11",
+        "§12",
+        "§30.28"
+      ],
+      "covers": [
+        "`redis` mode dispatch, retry, delay, timeout and terminal failure",
+        "§30.28"
+      ],
+      "conflict_rows": [],
+      "expected": "redis mode uses keys {prefix}queues:<name> (pending list), :delayed and :reserved (sorted sets) and atomic Lua scripts: reserve migrates due delayed and expired reserved jobs, pops one job, increments its attempts and adds it to reserved with expiry now + timeout + margin; success removes it from reserved; retry moves the same job ID from reserved to delayed with the backoff (never a duplicate); terminal failure removes it from reserved after the failure record is logged; delay adds to the delayed set with the 900-second cap; blocking pop with a bounded wait. Attempts come from the reservation counter. No package payload size limit; FIFO/fair options raise InvalidQueueOptionError.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/RedisQueue.php",
+          "lines": "529-608",
+          "symbol": "RedisQueue::pop, migrate, migrateExpiredJobs, retrieveNextJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/RedisQueue.php",
+          "lines": "617-638",
+          "symbol": "RedisQueue::deleteReserved, deleteAndRelease"
+        },
+        {
+          "path": "src/Illuminate/Queue/RedisQueue.php",
+          "lines": "475-504",
+          "symbol": "RedisQueue::later, laterRaw"
+        },
+        {
+          "path": "src/Illuminate/Queue/LuaScripts.php",
+          "lines": "93-169",
+          "symbol": "LuaScripts::pop, release, migrateExpiredJobs"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/RedisJob.php",
+          "lines": "104-107",
+          "symbol": "RedisJob::attempts"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D6, D7",
+      "probe": null
+    },
+    {
+      "id": "redis.reservation_renewal_and_expiry",
+      "title": "Reservation renewal and expiry redelivery",
+      "scope_refs": [
+        "§11",
+        "§20",
+        "§30.28"
+      ],
+      "covers": [
+        "§30.28"
+      ],
+      "conflict_rows": [],
+      "expected": "The watchdog extends the reserved-set score while a job runs. When a worker is killed mid-job the reservation expires and the next reserve redelivers the same job ID with attempts + 1.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/RedisQueue.php",
+          "lines": "529-608",
+          "symbol": "RedisQueue::pop, migrate, migrateExpiredJobs, retrieveNextJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/LuaScripts.php",
+          "lines": "93-169",
+          "symbol": "LuaScripts::pop, release, migrateExpiredJobs"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D6, D7",
+      "probe": null
+    },
+    {
+      "id": "redis.atomicity_concurrent_workers",
+      "title": "No double delivery under concurrent workers",
+      "scope_refs": [
+        "§11",
+        "§20",
+        "§30.28"
+      ],
+      "covers": [
+        "§30.28"
+      ],
+      "conflict_rows": [],
+      "expected": "With several workers reserving from the same queue concurrently, no job is delivered to two workers while reserved; every job is delivered exactly once per reservation.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/LuaScripts.php",
+          "lines": "93-169",
+          "symbol": "LuaScripts::pop, release, migrateExpiredJobs"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D6",
+      "probe": null
+    },
+    {
+      "id": "redis.tls",
+      "title": "TLS via rediss://",
+      "scope_refs": [
+        "§6",
+        "§11",
+        "§26a",
+        "§30.28"
+      ],
+      "covers": [
+        "§30.28"
+      ],
+      "conflict_rows": [],
+      "expected": "A rediss:// URL connects with TLS and certificate verification on; the transport passes the same conformance operations over TLS.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D6",
+      "probe": null
+    },
+    {
+      "id": "retry.default_tries_one",
+      "title": "Default tries is 1",
+      "scope_refs": [
+        "§12",
+        "§30.9"
+      ],
+      "covers": [
+        "default `tries=1`",
+        "§30.9"
+      ],
+      "conflict_rows": [
+        "Default tries"
+      ],
+      "expected": "A job without an explicit policy whose handler raises is failed terminally on its first delivery (attempt 1 >= tries 1): no release, one failed_job (managed) or one failure log line (sqs/redis), and the message is completed.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/WorkerOptions.php",
+          "lines": "107-134",
+          "symbol": "WorkerOptions::__construct"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "729-740",
+          "symbol": "Worker::markJobAsFailedIfWillExceedMaxAttempts"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "README.md",
+          "lines": "171-190",
+          "symbol": "README: Retries"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "retry.attempt_checks",
+      "title": "Pre-run and post-exception attempt checks",
+      "scope_refs": [
+        "§12"
+      ],
+      "covers": [],
+      "conflict_rows": [],
+      "expected": "Before running: if tries > 0 and attempt > tries the job is failed without running (terminal). After an exception: if tries > 0 and attempt >= tries the failure is terminal, otherwise the message is released. tries = 0 means unlimited attempts. A message whose policy omits tries uses the worker default (1); an explicit 0 is not treated as omitted.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "701-718",
+          "symbol": "Worker::markJobAsFailedIfAlreadyExceedsMaxAttempts"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "729-740",
+          "symbol": "Worker::markJobAsFailedIfWillExceedMaxAttempts"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "598-635",
+          "symbol": "Worker::process"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "294-347",
+          "symbol": "Job::maxTries, maxExceptions, shouldFailOnTimeout, backoff, timeout, retryUntil"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "retry.exhaustion",
+      "title": "Retry exhaustion is terminal",
+      "scope_refs": [
+        "§12",
+        "§30.11"
+      ],
+      "covers": [
+        "retry exhaustion",
+        "§30.11"
+      ],
+      "conflict_rows": [],
+      "expected": "With tries=3 a job that always raises is released after attempts 1 and 2 (same message ID, receive counts 1, 2, 3) and failed terminally on attempt 3: failure record, then completion; no further delivery.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "648-687",
+          "symbol": "Worker::handleJobException"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "729-740",
+          "symbol": "Worker::markJobAsFailedIfWillExceedMaxAttempts"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "182-225",
+          "symbol": "Job::fail"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "retry.backoff_schedule",
+      "title": "Backoff indexing, rounding and clamp",
+      "scope_refs": [
+        "§12",
+        "§30.10"
+      ],
+      "covers": [
+        "§30.10"
+      ],
+      "conflict_rows": [
+        "Retry delay rounding"
+      ],
+      "expected": "backoff is an integer or list of seconds; the retry delay for attempt N is backoff[N-1], repeating the last value past the end; default 0. Positive sub-second delays round up to 1 second; explicit 0 stays 0. Visibility/delayed values are clamped to 43,200 seconds.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "817-827",
+          "symbol": "Worker::calculateBackoff"
+        },
+        {
+          "path": "src/Illuminate/Queue/WorkerOptions.php",
+          "lines": "107-134",
+          "symbol": "WorkerOptions::__construct"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "151-173",
+          "symbol": "CloudQueueTransport::send (release rounding and clamp)"
+        }
+      ],
+      "deviation": {
+        "label": "retry-delay-rounds-up",
+        "follows": "symfony",
+        "summary": "Laravel casts the backoff with (int), truncating toward zero and never clamping; Symfony ceils milliseconds to seconds and clamps to 43,200. The project rounds sub-second delays up and clamps.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "retry.explicit_release",
+      "title": "JobContext.release(delay=)",
+      "scope_refs": [
+        "§12",
+        "§30.8"
+      ],
+      "covers": [
+        "explicit `JobContext.release()`",
+        "§30.8"
+      ],
+      "conflict_rows": [],
+      "expected": "Calling release(delay=N) records the outcome and short-circuits success exactly once: the same message is released with N seconds (visibility, agent released with delay, or Redis delayed set) and redelivered with attempt + 1. It consumes an attempt like any delivery. Catching the control-flow signal in user code does not turn it into success.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
+          "lines": "66-86",
+          "symbol": "SqsJob::release, changeMessageVisibilityInSqs"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/CloudJob.php",
+          "lines": "55-61",
+          "symbol": "CloudJob::release"
+        },
+        {
+          "path": "src/Illuminate/Queue/CallQueuedHandler.php",
+          "lines": "69-102",
+          "symbol": "CallQueuedHandler::call"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "retry.explicit_fail",
+      "title": "JobContext.fail(...) is terminal",
+      "scope_refs": [
+        "§12",
+        "§30.11"
+      ],
+      "covers": [
+        "explicit terminal fail",
+        "§30.11"
+      ],
+      "conflict_rows": [],
+      "expected": "Calling fail(reason) records a terminal outcome regardless of remaining tries: the failure record is emitted/logged and the message is completed; no release, exactly one outcome report.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "182-225",
+          "symbol": "Job::fail"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/CloudJob.php",
+          "lines": "38-47",
+          "symbol": "CloudJob::delete"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "retry.dashboard_replay",
+      "title": "Captured failed payload replays as a fresh first attempt",
+      "scope_refs": [
+        "§8",
+        "§12",
+        "§30.30"
+      ],
+      "covers": [
+        "dashboard-retry replay of a captured failed payload (D3)",
+        "§30.30"
+      ],
+      "conflict_rows": [],
+      "expected": "Re-sending the exact payload string captured in a failed_job event as a new message produces a new delivery that the worker runs as attempt 1 with the policy carried in the payload; the envelope survives verbatim re-queueing.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "402-406",
+          "symbol": "CloudQueueTransport::encode (comment on verbatim re-queue)"
+        }
+      ],
+      "deviation": null,
+      "project_decision": "D3",
+      "probe": null
+    },
+    {
+      "id": "timeout.release_exit_124",
+      "title": "Retryable timeout: released event, exit 124, no release",
+      "scope_refs": [
+        "§14",
+        "§30.14",
+        "§30.32"
+      ],
+      "covers": [
+        "timeout/release behavior",
+        "§30.14",
+        "§30.32"
+      ],
+      "conflict_rows": [
+        "Timeout"
+      ],
+      "expected": "Before each job the worker arms signal.setitimer(ITIMER_REAL, timeout) on the main thread with the message timeout, else the worker default (60); 0 disables it; the timer is disarmed after the job. When it fires and the job is still retryable (tries == 0 or attempt < tries, and not fail_on_timeout), the worker emits the released lifecycle event and exits immediately with os._exit(124) without releasing the message or applying backoff; the message returns through agent/SQS visibility or Redis reservation expiry with attempt + 1. Proven in real subprocesses for async handlers, sync Python loops and a native blocking call.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "319-378",
+          "symbol": "Worker::registerTimeoutHandler, resetTimeoutHandler, timeoutForJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "1057-1073",
+          "symbol": "Worker::kill"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/QueueConnector.php",
+          "lines": "101-134",
+          "symbol": "QueueConnector::configureWorker"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "473-497",
+          "symbol": "Queue::finishProcessingJob"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D2",
+      "probe": null
+    },
+    {
+      "id": "timeout.fail_on_timeout",
+      "title": "fail_on_timeout makes a timeout terminal",
+      "scope_refs": [
+        "§14",
+        "§30.14",
+        "§30.32"
+      ],
+      "covers": [
+        "fail-on-timeout",
+        "§30.14",
+        "§30.32"
+      ],
+      "conflict_rows": [],
+      "expected": "With fail_on_timeout true, a timeout fails the job: failure record (failed_job in managed mode), message completed, failed lifecycle event (no released), then os._exit(124).",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "319-378",
+          "symbol": "Worker::registerTimeoutHandler, resetTimeoutHandler, timeoutForJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "791-796",
+          "symbol": "Worker::markJobAsFailedIfItShouldFailOnTimeout"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "182-225",
+          "symbol": "Job::fail"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "294-347",
+          "symbol": "Job::maxTries, maxExceptions, shouldFailOnTimeout, backoff, timeout, retryUntil"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D2",
+      "probe": null
+    },
+    {
+      "id": "timeout.last_attempt_terminal",
+      "title": "Timeout on the last allowed attempt is terminal",
+      "scope_refs": [
+        "§14",
+        "§30.32"
+      ],
+      "covers": [
+        "§30.32"
+      ],
+      "conflict_rows": [],
+      "expected": "When tries > 0 and attempt >= tries at the moment the alarm fires, the job is failed (failure record, completion, failed event) before exit 124; the message is not redelivered.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "319-378",
+          "symbol": "Worker::registerTimeoutHandler, resetTimeoutHandler, timeoutForJob"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "729-740",
+          "symbol": "Worker::markJobAsFailedIfWillExceedMaxAttempts"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "182-225",
+          "symbol": "Job::fail"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D2",
+      "probe": null
+    },
+    {
+      "id": "timeout.native_blocking_limitation",
+      "title": "Native blocking code can overrun the timeout",
+      "scope_refs": [
+        "§14",
+        "§30.14"
+      ],
+      "covers": [
+        "§30.14"
+      ],
+      "conflict_rows": [],
+      "expected": "A handler blocked in native code or a blocking call is interrupted only when control returns to the interpreter; the observed overrun is recorded as evidence and documented. No stronger guarantee is claimed.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D2",
+      "probe": null
+    },
+    {
+      "id": "worker.separate_process_single_job",
+      "title": "Dedicated worker process, one job in flight",
+      "scope_refs": [
+        "§13",
+        "§30.5"
+      ],
+      "covers": [
+        "producer and worker as separate processes",
+        "§30.5"
+      ],
+      "conflict_rows": [],
+      "expected": "The producer and the worker run in separate processes sharing no state; the worker (laravel-cloud-queues work module:app) processes exactly one job at a time and never fetches while a job runs.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "233-308",
+          "symbol": "Worker::daemon"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "worker.sync_handler",
+      "title": "Sync handler execution",
+      "scope_refs": [
+        "§13",
+        "§30.4"
+      ],
+      "covers": [
+        "sync handler",
+        "§30.4"
+      ],
+      "conflict_rows": [],
+      "expected": "A synchronous handler runs on the worker's main thread (not a thread pool) so SIGALRM can interrupt it; it receives decoded arguments and its outcome is reported like an async handler's.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§13",
+      "probe": null
+    },
+    {
+      "id": "worker.async_handler",
+      "title": "Async handler execution",
+      "scope_refs": [
+        "§13",
+        "§30.4"
+      ],
+      "covers": [
+        "async handler",
+        "§30.4"
+      ],
+      "conflict_rows": [],
+      "expected": "An async handler runs on the AnyIO/asyncio loop in the worker process; its outcome is reported after it completes.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§13",
+      "probe": null
+    },
+    {
+      "id": "worker.unknown_job_terminal",
+      "title": "Unknown job name is terminal on first delivery",
+      "scope_refs": [
+        "§7",
+        "§8",
+        "§12",
+        "§24",
+        "§30.11"
+      ],
+      "covers": [
+        "unknown job terminal behavior",
+        "§30.11"
+      ],
+      "conflict_rows": [],
+      "expected": "A message whose wire name is not registered is failed on its first delivery without importing anything: failure record with the transport identity captured before decoding (message ID, receipt handle, queue, receive count), then completion. No retry regardless of the policy in the message.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "96-103",
+          "symbol": "Job::fire"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "648-687",
+          "symbol": "Worker::handleJobException"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "364-391",
+          "symbol": "CloudQueueTransport::decode"
+        }
+      ],
+      "deviation": {
+        "label": "deterministic-defects-terminal",
+        "follows": "project",
+        "summary": "Laravel treats a malformed body or unknown class as an ordinary exception and retries it when tries > 1; Symfony deletes on decode failure without emitting events. The project fails deterministic defects on first delivery and emits failed and failed_job.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "worker.schema_mismatch_terminal",
+      "title": "Argument/schema mismatch is terminal",
+      "scope_refs": [
+        "§8",
+        "§12",
+        "§24",
+        "§30.11"
+      ],
+      "covers": [
+        "schema-incompatible payload terminal behavior",
+        "§30.11"
+      ],
+      "conflict_rows": [],
+      "expected": "Decoded arguments that do not bind to or validate against the handler signature (missing, extra, wrong type, unsupported annotation) fail the job before execution on the first delivery; failure record then completion; no retry.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": {
+        "label": "deterministic-defects-terminal",
+        "follows": "project",
+        "summary": "Laravel has no argument validation step; a PHP TypeError during the handler follows the retry policy. The project validates before execution and fails deterministically.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "worker.undecodable_message",
+      "title": "Undecodable bodies, including @pointer, are terminal",
+      "scope_refs": [
+        "§8",
+        "§12",
+        "§24",
+        "§30.11"
+      ],
+      "covers": [
+        "undecodable-message handling, including `@pointer` bodies",
+        "§30.11"
+      ],
+      "conflict_rows": [],
+      "expected": "A body that is not valid JSON, not an object, an unsupported envelope version, or a {\"@pointer\": ...} overflow pointer is failed on first delivery with the transport identity captured before decoding; failed_job carries the raw body as payload and job_name \"\" when displayName is unavailable; the message is completed. @pointer is reported as unsupported overflow.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "96-103",
+          "symbol": "Job::fire"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
+          "lines": "152-189",
+          "symbol": "SqsJob::getRawBody, overflowPointer"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/FailedJobProvider.php",
+          "lines": "57-92",
+          "symbol": "FailedJobProvider::log"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "364-391",
+          "symbol": "CloudQueueTransport::decode"
+        }
+      ],
+      "deviation": {
+        "label": "deterministic-defects-terminal",
+        "follows": "project",
+        "summary": "Laravel retries undecodable bodies when tries > 1 and hydrates @pointer bodies from the cache when overflow is enabled; the project fails both deterministically and does not implement overflow.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "worker.terminal_failure_order",
+      "title": "Terminal failure: complete, then failed_job, then failed",
+      "scope_refs": [
+        "§12",
+        "§15",
+        "§30.12"
+      ],
+      "covers": [
+        "§30.12"
+      ],
+      "conflict_rows": [],
+      "expected": "On a terminal failure in managed mode the worker first completes the message (POST /result processed, or DeleteMessage), then emits failed_job, then the failed lifecycle event with the same timestamp. Failure records are best-effort: a log-socket outage at that moment loses the record but never changes the queue outcome. In direct SQS mode the delete happens before the record for the same reason.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Jobs/Job.php",
+          "lines": "182-225",
+          "symbol": "Job::fail"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/CloudJob.php",
+          "lines": "38-47",
+          "symbol": "CloudJob::delete"
+        },
+        {
+          "path": "src/Illuminate/Queue/Jobs/SqsJob.php",
+          "lines": "93-112",
+          "symbol": "SqsJob::delete, deleteMessageFromSqs"
+        },
+        {
+          "path": "src/Illuminate/Queue/Console/WorkCommand.php",
+          "lines": "421-428",
+          "symbol": "WorkCommand::logFailedJob"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/FailedJobProvider.php",
+          "lines": "57-92",
+          "symbol": "FailedJobProvider::log"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "143-188",
+          "symbol": "QueueEventSubscriber::onFailed"
+        },
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "84-113",
+          "symbol": "CloudQueueTransport::ack, reject"
+        }
+      ],
+      "deviation": null,
+      "project_decision": "D1",
+      "probe": null
+    },
+    {
+      "id": "worker.log_only_failures",
+      "title": "Log-only terminal failures outside managed mode",
+      "scope_refs": [
+        "§12",
+        "§15",
+        "§30.11"
+      ],
+      "covers": [
+        "log-only terminal failures outside managed mode (D6b)",
+        "§30.11"
+      ],
+      "conflict_rows": [],
+      "expected": "In sqs and redis modes a terminal failure writes one structured JSON line with the full failure record to the worker's log output and then deletes the message / removes the reservation; no failed_job or lifecycle events are sent to the log socket in these modes.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D6b, D12",
+      "probe": null
+    },
+    {
+      "id": "worker.graceful_shutdown",
+      "title": "Graceful shutdown on SIGTERM/SIGINT",
+      "scope_refs": [
+        "§13",
+        "§30.15"
+      ],
+      "covers": [
+        "graceful shutdown",
+        "§30.15"
+      ],
+      "conflict_rows": [],
+      "expected": "On SIGTERM or SIGINT the worker stops fetching, lets the current job finish, reports its outcome (finishing bounded retries), runs dependency cleanup, exits the app lifespan and exits 0. A signal during an idle GET /next or blocking pop stops waiting; a message handed over anyway is run to completion. Repeated signals do not skip reporting.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "950-975",
+          "symbol": "Worker::listenForSignals"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "419-432",
+          "symbol": "Worker::stopIfNecessary"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "worker.lifecycle_options",
+      "title": "Worker lifecycle options",
+      "scope_refs": [
+        "§13",
+        "§23"
+      ],
+      "covers": [],
+      "conflict_rows": [],
+      "expected": "--max-jobs, --max-time, --stop-when-empty, --stop-when-empty-for, --timeout (default 60), --sleep (default 3), --rest (default 0) behave as Laravel's equivalents; stop conditions exit 0. stop-when-empty flags default off.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "419-432",
+          "symbol": "Worker::stopIfNecessary"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "233-308",
+          "symbol": "Worker::daemon"
+        },
+        {
+          "path": "src/Illuminate/Queue/WorkerOptions.php",
+          "lines": "107-134",
+          "symbol": "WorkerOptions::__construct"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D8",
+      "probe": null
+    },
+    {
+      "id": "worker.multi_queue_priority",
+      "title": "Comma-separated queue priority outside agent mode",
+      "scope_refs": [
+        "§13",
+        "§30.7"
+      ],
+      "covers": [
+        "§30.7"
+      ],
+      "conflict_rows": [],
+      "expected": "--queue=high,low polls each queue in order per iteration and runs the first message found; the queue name in telemetry and JobContext is the queue the message came from.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "465-508",
+          "symbol": "Worker::getNextJob"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/Messenger/CloudQueueTransport.php",
+          "lines": "49-82",
+          "symbol": "CloudQueueTransport::get, getFromQueues"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "worker.two_sequential_jobs_isolated",
+      "title": "Two sequential jobs on one worker are isolated",
+      "scope_refs": [
+        "§13",
+        "§16",
+        "§17",
+        "§30.4",
+        "§30.19"
+      ],
+      "covers": [
+        "two sequential jobs on one worker with isolated dependencies, trace context and `JobContext`",
+        "§30.4",
+        "§30.19"
+      ],
+      "conflict_rows": [],
+      "expected": "Two jobs processed back-to-back by one worker each get a fresh dependency scope (no cached sub-dependency leaks), a fresh JobContext (attempt, queue, message ID) and their own trace context; the second job observes no state from the first, and lifespan resources are shared.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§13, §17",
+      "probe": null
+    },
+    {
+      "id": "fastapi.lifespan",
+      "title": "App lifespan runs once per worker process",
+      "scope_refs": [
+        "§13",
+        "§17",
+        "§30.4"
+      ],
+      "covers": [
+        "FastAPI lifespan state available to jobs",
+        "§30.4"
+      ],
+      "conflict_rows": [],
+      "expected": "The worker enters the FastAPI app's lifespan once before processing and exits it on clean termination; state set in the lifespan is available to jobs through the app/state or dependencies.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§13, §17",
+      "probe": null
+    },
+    {
+      "id": "fastapi.depends",
+      "title": "Depends() inside jobs",
+      "scope_refs": [
+        "§13",
+        "§17",
+        "§30.4"
+      ],
+      "covers": [
+        "`Depends()` inside jobs",
+        "§30.4"
+      ],
+      "conflict_rows": [],
+      "expected": "Job parameters declared with Depends() are resolved per job with cached sub-dependencies within one job, honoring app.dependency_overrides; a JobContext dependency is available; a Request dependency produces a clear error.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§13, §17",
+      "probe": null
+    },
+    {
+      "id": "fastapi.yield_teardown_before_ack",
+      "title": "yield dependency teardown completes before acknowledgement",
+      "scope_refs": [
+        "§13",
+        "§17",
+        "§30.4"
+      ],
+      "covers": [
+        "`yield` dependency cleanup",
+        "§30.4"
+      ],
+      "conflict_rows": [],
+      "expected": "yield dependencies are torn down after the handler on success, failure and release paths; on success the teardown completes before the outcome is acknowledged, and a teardown exception turns success into a handler failure subject to the retry policy. Teardown after an explicit release or fail runs under a bounded deadline.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§13, §17",
+      "probe": null
+    },
+    {
+      "id": "observability.lifecycle_events",
+      "title": "Cloud queue lifecycle events",
+      "scope_refs": [
+        "§15",
+        "§30.12"
+      ],
+      "covers": [
+        "observability events",
+        "§30.12"
+      ],
+      "conflict_rows": [
+        "`duration_ms`"
+      ],
+      "expected": "Managed mode emits {\"_cloud_event\": \"queue\", \"timestamp\", \"type\", \"queue\"[, \"duration_ms\"]} lines: started when a delivery begins (before decoding), and exactly one of processed/released/failed per delivery. timestamp is UTC \"Y-m-d H:i:s.u\" (six-digit microseconds, no T, no zone). queue is the normalized logical name. duration_ms is present only on processed/released/failed, measured from the started timestamp, truncated to an integer and never negative. The failed event shares the failed_job timestamp.",
+      "tier": "socket",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "535-551",
+          "symbol": "Queue::startProcessingJob"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "473-497",
+          "symbol": "Queue::finishProcessingJob"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/QueueConnector.php",
+          "lines": "101-134",
+          "symbol": "QueueConnector::configureWorker"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "92-126",
+          "symbol": "QueueEventSubscriber::onSend, onReceived"
+        },
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "245-290",
+          "symbol": "QueueEventSubscriber::emitQueueEvent, queue, durationMs, now"
+        }
+      ],
+      "deviation": {
+        "label": "duration-non-negative",
+        "follows": "project",
+        "summary": "Laravel truncates a signed Carbon millisecond diff without clamping; Symfony rounds and clamps at 0. The project truncates like Laravel and clamps at 0 like Symfony; the difference is unreachable with a monotonic clock.",
+        "decision": null
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "observability.queued_event",
+      "title": "queued lifecycle event on the producer",
+      "scope_refs": [
+        "§15",
+        "§30.12"
+      ],
+      "covers": [
+        "§30.12"
+      ],
+      "conflict_rows": [],
+      "expected": "After SendMessage succeeds the producer emits type \"queued\" with the normalized logical queue name and no duration_ms; nothing is emitted for a failed send. Only in managed mode.",
+      "tier": "socket",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Queue.php",
+          "lines": "518-526",
+          "symbol": "Queue::finishQueueingJob"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/QueueConnector.php",
+          "lines": "91-96",
+          "symbol": "QueueConnector::configureQueue"
+        },
+        {
+          "path": "src/Illuminate/Queue/Queue.php",
+          "lines": "368-390",
+          "symbol": "Queue::enqueueUsing"
+        },
+        {
+          "path": "src/Illuminate/Queue/Queue.php",
+          "lines": "490-497",
+          "symbol": "Queue::raiseJobQueuedEvent"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "92-126",
+          "symbol": "QueueEventSubscriber::onSend, onReceived"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "observability.failed_job_event",
+      "title": "failed_job event fields and order",
+      "scope_refs": [
+        "§15",
+        "§30.12",
+        "§30.31"
+      ],
+      "covers": [
+        "failed-job event",
+        "§30.12",
+        "§30.31"
+      ],
+      "conflict_rows": [
+        "`failed_job` fields",
+        "`failed_job` / `failed` order"
+      ],
+      "expected": "Managed-mode terminal failures emit {\"_cloud_event\": \"failed_job\", \"id\", \"queue\", \"started_at\", \"attempts\", \"payload\", \"exception_preview\", \"job_name\", \"exception\"}: id is a new UUIDv7 derived from the failure timestamp; queue is the normalized name; started_at is the delivery start in the lifecycle timestamp format; attempts is the integer attempt; payload is the original body as a string; exception_preview is \"<ExceptionClass>: <message> in <file>:<line>\" (or without \": <message>\" when empty) cut to at most 1,001 characters; job_name is the payload displayName (\"\" when unavailable); exception is the full traceback string. failed_job is emitted before the failed lifecycle event, which carries the same timestamp. The retried_at variant is not emitted.",
+      "tier": "socket",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/FailedJobProvider.php",
+          "lines": "57-92",
+          "symbol": "FailedJobProvider::log"
+        },
+        {
+          "path": "src/Illuminate/Queue/Console/WorkCommand.php",
+          "lines": "421-428",
+          "symbol": "WorkCommand::logFailedJob"
+        },
+        {
+          "path": "src/Illuminate/Support/Str.php",
+          "lines": "2094-2099",
+          "symbol": "Str::uuid7"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "143-188",
+          "symbol": "QueueEventSubscriber::onFailed"
+        },
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "201-235",
+          "symbol": "QueueEventSubscriber::trimPayload, truncate"
+        }
+      ],
+      "deviation": null,
+      "project_decision": "D1",
+      "probe": null
+    },
+    {
+      "id": "observability.failed_job_size_policy",
+      "title": "failed_job size policy (D1)",
+      "scope_refs": [
+        "§15",
+        "§30.31"
+      ],
+      "covers": [
+        "`failed_job` size policy: fits, exception trimmed, not replayable (D1)",
+        "§30.31"
+      ],
+      "conflict_rows": [
+        "`failed_job` fields"
+      ],
+      "expected": "If the encoded failed_job line fits the collector limit (16 KiB) it is sent whole; otherwise exception is trimmed (head kept plus a truncation marker) until it fits; if it still does not fit, payload is trimmed as well and \"replayable\": false is added. The final line is measured in encoded bytes including JSON escaping and multibyte characters. Symfony's payload projection (uuid/displayName/truncated body) is never applied.",
+      "tier": "socket",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/FailedJobProvider.php",
+          "lines": "57-92",
+          "symbol": "FailedJobProvider::log"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "201-235",
+          "symbol": "QueueEventSubscriber::trimPayload, truncate"
+        },
+        {
+          "path": "src/Queue/QueueEventSubscriber.php",
+          "lines": "39-69",
+          "symbol": "QueueEventSubscriber MAX_* constants (collector rationale)"
+        }
+      ],
+      "deviation": {
+        "label": "failed-job-size-policy",
+        "follows": "project",
+        "summary": "Laravel sends the full payload and exception with no size handling; Symfony always projects the payload and caps exception at 4,000 bytes. The project sends whole when it fits, then trims exception, then payload with replayable=false.",
+        "decision": "D1"
+      },
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "observability.socket_writer",
+      "title": "NDJSON log-socket writer",
+      "scope_refs": [
+        "§15",
+        "§30.12"
+      ],
+      "covers": [
+        "§30.12"
+      ],
+      "conflict_rows": [],
+      "expected": "Events go to LARAVEL_CLOUD_LOG_SOCKET when set, else unix:///tmp/cloud-init.sock, over one persistent Unix stream connection: connect timeout 2 s, write timeout 2 s; EOF is detected before each write and the connection re-established; the whole line is written, looping over partial writes and giving up (disconnecting) after 5 zero-byte writes; one JSON object per line with a trailing newline, encoded with slashes and Unicode unescaped, zero fractions preserved and invalid UTF-8 replaced. Concurrent producers are serialized so lines never interleave. Failures are logged locally without recursion and never raised.",
+      "tier": "socket",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Events.php",
+          "lines": "37-207",
+          "symbol": "Events::emit, write, format, connect, connected"
+        },
+        {
+          "path": "src/Illuminate/Foundation/CloudBootstrapper.php",
+          "lines": "316-329",
+          "symbol": "CloudBootstrapper::registerEvents, socket"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Observability/Events.php",
+          "lines": "37-200",
+          "symbol": "Events::emit, write, format, connect, connected"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "observability.outage_nonfatal",
+      "title": "Log-socket outage never fails a job",
+      "scope_refs": [
+        "§15",
+        "§30.13"
+      ],
+      "covers": [
+        "observability socket outage not failing successful job",
+        "§30.13"
+      ],
+      "conflict_rows": [],
+      "expected": "With the log socket absent, closed mid-run or refusing connections, a successful job is still acknowledged as processed and the worker continues; telemetry degradation is logged locally and surfaced in the conformance report.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/Events.php",
+          "lines": "37-207",
+          "symbol": "Events::emit, write, format, connect, connected"
+        }
+      ],
+      "symfony_source": [
+        {
+          "path": "src/Observability/Events.php",
+          "lines": "37-200",
+          "symbol": "Events::emit, write, format, connect, connected"
+        }
+      ],
+      "deviation": null,
+      "project_decision": null,
+      "probe": null
+    },
+    {
+      "id": "tracing.propagation",
+      "title": "Optional W3C/OpenTelemetry propagation",
+      "scope_refs": [
+        "§16",
+        "§30.19"
+      ],
+      "covers": [
+        "trace-context propagation when optional tracing is installed, and absence of errors when it is not",
+        "§30.19"
+      ],
+      "conflict_rows": [],
+      "expected": "With the [otel] extra installed, dispatch injects the current trace context into the envelope's context section and the worker extracts and activates it for the handler, resetting it after each job. Without OpenTelemetry installed, dispatch and execution work with no errors and no context section requirement. Tracing never affects lifecycle events.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§16",
+      "probe": null
+    },
+    {
+      "id": "testing.eager_mode",
+      "title": "Eager/in-memory testing mode",
+      "scope_refs": [
+        "§20",
+        "§30.18"
+      ],
+      "covers": [
+        "eager testing behavior",
+        "§30.18"
+      ],
+      "conflict_rows": [],
+      "expected": "Eager mode runs dispatched jobs immediately through the same binding, validation, serialization and DI code paths as the worker, inside or outside a running event loop without nesting loops, surfaces handler exceptions to the test and records dispatched jobs for assertions. It does not touch a transport and is documented as distinct from conformance tests.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§20",
+      "probe": null
+    },
+    {
+      "id": "cli.commands_and_exit_codes",
+      "title": "CLI commands and worker exit codes",
+      "scope_refs": [
+        "§13",
+        "§23",
+        "§30.13"
+      ],
+      "covers": [
+        "§30.13"
+      ],
+      "conflict_rows": [],
+      "expected": "laravel-cloud-queues work <module:app|module:registry> runs the worker; inspect reports mode, queues and registered jobs without opening broker connections or printing secrets; conformance explains how to run from a checkout when demo tooling is absent. Exit codes: 0 clean stop or agent unhealthy, 1 other fatal transport error (lost lease, Redis loss, ambiguous acknowledgement), 2 configuration error at startup, 124 job timeout. Errors are package-level; --debug shows tracebacks.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "37-39",
+          "symbol": "Worker::EXIT_SUCCESS, EXIT_ERROR, EXIT_MEMORY_LIMIT"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/QueueConnector.php",
+          "lines": "101-134",
+          "symbol": "QueueConnector::configureWorker"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D7",
+      "probe": null
+    },
+    {
+      "id": "packaging.build_and_isolated_install",
+      "title": "Wheel and sdist build, install and exclusions",
+      "scope_refs": [
+        "§4",
+        "§5",
+        "§30.1",
+        "§30.23",
+        "§30.34"
+      ],
+      "covers": [
+        "§30.1",
+        "§30.23",
+        "§30.34"
+      ],
+      "conflict_rows": [],
+      "expected": "hatchling builds a wheel and an sdist on Python 3.10-3.14; each installs into a fresh environment outside the checkout (never editable) and provides: core import without extras, the [fastapi] extra, the console entry point, py.typed, the documented public exports; no shipped module imports demo/, probe-app/ or test tooling; demo/, probe-app/ and docs/ are absent from both artifacts.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§4, §5",
+      "probe": null
+    },
+    {
+      "id": "packaging.typing_strict",
+      "title": "mypy --strict and downstream typing samples",
+      "scope_refs": [
+        "§5",
+        "§30.2",
+        "§30.33"
+      ],
+      "covers": [
+        "§30.2",
+        "§30.33"
+      ],
+      "conflict_rows": [],
+      "expected": "mypy --strict passes on the shipped package and on the positive downstream typing samples (direct calls, dispatch/dispatch_async argument checking, .options(...) types, handler parameters named queue/delay/timeout, injected vs serialized parameters); the expected-error samples fail type checking.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§5, D5",
+      "probe": null
+    },
+    {
+      "id": "ci.full_gate",
+      "title": "CI runs every release gate",
+      "scope_refs": [
+        "§5",
+        "§30.24"
+      ],
+      "covers": [
+        "§30.24"
+      ],
+      "conflict_rows": [],
+      "expected": "GitHub Actions runs on every push to main and on pull requests: the 3.10-3.14 Linux matrix, mypy --strict, lint/format, unit, FastAPI, LocalStack SQS, Valkey and Redis, agent emulator, socket, conformance, typing samples and packaging jobs, with LocalStack and Valkey/Redis image versions pinned; a missing service fails the gate; conformance JSON and logs are uploaded on failure; the weekly upstream-drift job is advisory and never moves the pin.",
+      "tier": "emulated",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D9, D11",
+      "probe": null
+    },
+    {
+      "id": "docs.readme",
+      "title": "README requirements",
+      "scope_refs": [
+        "§25",
+        "§30.22",
+        "§30.25"
+      ],
+      "covers": [
+        "§30.22",
+        "§30.25"
+      ],
+      "conflict_rows": [],
+      "expected": "README.md contains every §25 item (installation, FastAPI integration, declaring and dispatching jobs, dependencies, running the worker, named queues, delays, retry policy, FIFO/fair queues, JobContext, local SQS/LocalStack, eager testing, demo/conformance, Cloud zero-config behavior and the current platform status, worker clusters with sqs/redis including the AWS_* collision, support matrix, limitations and roadmap, and the statement that demo/ and probe-app/ are not shipped), and documents live Laravel Cloud managed-queue verification as pending.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§25",
+      "probe": null
+    },
+    {
+      "id": "conformance.report_and_gate",
+      "title": "Conformance reports and exit status",
+      "scope_refs": [
+        "§21",
+        "§22",
+        "§30.20",
+        "§30.21",
+        "§30.35"
+      ],
+      "covers": [
+        "§30.20",
+        "§30.21",
+        "§30.35"
+      ],
+      "conflict_rows": [],
+      "expected": "demo/ runs every catalog probe and produces the human-readable table and compatibility-report.json with schema version, run metadata (revision, environment, timestamp, Python/package/framework versions) and, per feature: id, expected, observed, status, evidence, error, upstream baseline/source reference, evidence tier, deviation label. The command exits non-zero when any catalog record lacks a result or any required feature is not pass unless its id and status are on the exception list.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§22",
+      "probe": null
+    },
+    {
+      "id": "cloud.live_managed",
+      "title": "Live Laravel Cloud managed-queue run",
+      "scope_refs": [
+        "§1",
+        "§29",
+        "§30.25"
+      ],
+      "covers": [
+        "§30.25"
+      ],
+      "conflict_rows": [],
+      "expected": "A Python worker on Laravel Cloud receives through the real agent, and lifecycle and failed_job events appear in the Queues dashboard. Skipped until Laravel Cloud enables managed queues for Python; documented as pending.",
+      "tier": "live",
+      "required": false,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "§1",
+      "probe": null
+    },
+    {
+      "id": "cloud.dashboard_retry_live",
+      "title": "Live dashboard retry of a Python failed job",
+      "scope_refs": [
+        "§8",
+        "§29"
+      ],
+      "covers": [],
+      "conflict_rows": [],
+      "expected": "Retrying a failed Python job from the Laravel Cloud dashboard re-queues the captured payload and the worker runs it as a fresh first attempt. Skipped until managed queues are available for Python.",
+      "tier": "live",
+      "required": false,
+      "laravel_source": [],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D3",
+      "probe": null
+    }
+  ]
+}
