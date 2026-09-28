@@ -1,0 +1,20 @@
+name: Upstream drift check
+
+# Advisory only (decision D11, PROJECT_SCOPE.md §2 "Upstream drift policy"). This
+# workflow never fails the build and never edits the pinned baseline; it only
+# reports what changed upstream so a human can decide whether to update the pin.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check upstream drift (advisory, always exits 0)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/upstream_drift.py
