@@ -95,10 +95,11 @@ def health() -> dict[str, str]:
 
 
 def require_token(token: str) -> None:
-    expected = os.environ.get("PROBE_TOKEN")
+    # PROBE_TOKEN (owner) or PROBE_SMOKE_TOKEN (automation running the smoke test).
+    expected = [t for t in (os.environ.get("PROBE_TOKEN"), os.environ.get("PROBE_SMOKE_TOKEN")) if t]
     if not expected:
         raise HTTPException(503, "Set PROBE_TOKEN in the environment to enable this route.")
-    if not hmac.compare_digest(token, expected):
+    if not any(hmac.compare_digest(token.encode(), t.encode()) for t in expected):
         raise HTTPException(403, "Invalid token.")
 
 
@@ -132,42 +133,6 @@ def verify(token: str = Query("")) -> dict[str, Any]:
     }
 
 
-# --- Redis/Valkey queue end-to-end probe (see rqueue.py, worker.py) ---
-
-E2E_CASES: dict[str, dict[str, Any]] = {
-    "ok": {"kind": "ok"},
-    "delayed": {"kind": "ok", "delay": 5},
-    "flaky_retry": {"kind": "flaky", "tries": 2, "backoff": [3]},
-    "terminal_fail": {"kind": "fail", "tries": 2, "backoff": [1]},
-    "timeout_then_terminal": {"kind": "slow", "tries": 2, "timeout": 3, "args": {"seconds": 10}},
-}
-
-
-@app.post("/queue/e2e")
-def queue_e2e() -> dict[str, str]:
-    import rqueue
-
-    r = rqueue.client()
-    return {name: rqueue.dispatch(r, **case) for name, case in E2E_CASES.items()}
-
-
-@app.get("/queue/jobs/{job_id}")
-def queue_job(job_id: str) -> list[dict[str, Any]]:
-    import rqueue
-
-    return rqueue.events(rqueue.client(), job_id)
-
-
-@app.get("/queue/stats")
-def queue_stats() -> dict[str, int]:
-    import rqueue
-
-    return rqueue.stats(rqueue.client())
-
-
-@app.post("/queue/burst")
-def queue_burst(n: int = Query(50, ge=1, le=500)) -> list[str]:
-    import rqueue
-
-    r = rqueue.client()
-    return [rqueue.dispatch(r, "ok") for _ in range(n)]
+# Queue jobs and routes (real laravel-cloud-queues package). Imported last because it
+# imports `app` and `require_token` from this module.
+import probe_jobs  # noqa: E402, F401
