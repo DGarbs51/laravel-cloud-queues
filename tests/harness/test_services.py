@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from harness.agent_emulator import AgentEmulator
-from harness.process import Process
-from harness.pytest_plugin import ProcessFactory
-from harness.redis import cleanup, connect, redis_service, unique_prefix
-from harness.sqs import SQSEndpoint
+from tests.harness.agent_emulator import AgentEmulator
+from tests.harness.process import Process
+from tests.harness.pytest_plugin import ProcessFactory
+from tests.harness.redis import cleanup, connect, redis_service, unique_prefix
+from tests.harness.sqs import SQSEndpoint
 
 
 @pytest.mark.sqs
@@ -50,7 +50,7 @@ client.send_message(QueueUrl=sys.argv[2], MessageBody='child')
 
 @pytest.mark.sqs
 def test_sqs_ignores_ambient_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    from harness.sqs import sqs_endpoint
+    from tests.harness.sqs import sqs_endpoint
 
     for key, value in {
         "AWS_PROFILE": "nonexistent-lcq-profile",
@@ -115,7 +115,7 @@ def test_agent_module_cli(run_process: ProcessFactory) -> None:
     emu = AgentEmulator()
     try:
         child = run_process(
-            [sys.executable, "-m", "harness.agent_emulator", "--socket", emu.socket_path]
+            [sys.executable, "-m", "tests.harness.agent_emulator", "--socket", emu.socket_path]
         )
         import time
 
@@ -148,7 +148,7 @@ def test_unavailable_service_skip_or_fail(
         reserved.bind(("127.0.0.1", 0))
         port = reserved.getsockname()[1]  # Bound but not listening: guaranteed refusal.
         result = run_process(
-            [sys.executable, "-m", "pytest", "-p", "harness.pytest_plugin", "-q", str(test)],
+            [sys.executable, "-m", "pytest", "-p", "tests.harness.pytest_plugin", "-q", str(test)],
             env={
                 "LARAVEL_CLOUD_QUEUES_TEST_REDIS_URL": f"redis://127.0.0.1:{port}/15",
                 "LARAVEL_CLOUD_QUEUES_TEST_SQS": "localstack",
@@ -163,8 +163,8 @@ def test_unavailable_service_skip_or_fail(
 
 @pytest.mark.parametrize("required", ["1", "true", "TRUE", "yes", "YeS"])
 def test_required_service_gate_accepts_truthy_values(monkeypatch, required):
-    from harness.pytest_plugin import _unavailable
-    from harness.sqs import ServiceUnavailable
+    from tests.harness.pytest_plugin import _unavailable
+    from tests.harness.sqs import ServiceUnavailable
 
     monkeypatch.setenv("LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES", required)
     try:

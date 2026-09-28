@@ -869,7 +869,7 @@ present.
 
 **Managed mode locally.** Set `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` to a document like
 the one under [Configuration](#managed-mode) with `agent.enabled: false` to exercise direct
-SQS receive, or run the repository's agent emulator (`harness/`) for the agent path.
+SQS receive, or run the repository's agent emulator (`tests/harness/`) for the agent path.
 
 The repository's own tests run SQS against moto locally and LocalStack in CI
 (`LARAVEL_CLOUD_QUEUES_TEST_SQS=moto|localstack`), and Redis against
@@ -928,7 +928,7 @@ jobs, lifespan state, `yield` dependencies, named queues, retries, explicit rele
 timeouts and large payloads) and a runner that checks every feature in the conformance
 catalog ([`docs/contract/catalog.json`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/contract/catalog.json)) against local
 emulators (moto or LocalStack for SQS, a Redis/Valkey server, the Laravel Cloud agent
-emulator and observability collector in `harness/`), spawning real worker subprocesses, and
+emulator and observability collector in `tests/harness/`), spawning real worker subprocesses, and
 reports what matches the pinned Laravel baseline (`laravel/framework` v13.33.0) and what
 deliberately deviates. From a repository checkout:
 
@@ -969,7 +969,7 @@ service containers plus a verified-TLS Valkey, uploads the report and
 authoritative SQS gate, moto is local convenience. See [`tests/conformance/README.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/tests/conformance/README.md)
 for the fixture app, its manual producer/worker run and probe-authoring rules.
 
-**`harness/`, `tests/` and `docs/` are repository-only development
+**`tests/` and `docs/` are repository-only development
 tooling. They are not shipped in the PyPI wheel or sdist**, and a packaging test proves it.
 `laravel-cloud-queues conformance` from an installed package explains how to run the suite
 from a checkout instead of failing obscurely. The

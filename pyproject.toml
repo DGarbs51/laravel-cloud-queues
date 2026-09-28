@@ -85,8 +85,11 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT", "PGH", "AN
 ignore = ["RUF001", "RUF002", "RUF003", "ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
-# Only shipped code (src/) and harness/ require full annotations.
-"tests/**" = ["B011", "PT011", "PT018", "ANN"]
+# Only shipped code (src/) and the test harness (tests/harness/) require full annotations.
+"tests/**" = ["B011", "PT011", "PT018"]
+"tests/{conformance,contract,docs,fixtures,integration,packaging,runtime_proof,typing,unit}/**" = ["ANN"]
+"tests/harness/test_*.py" = ["ANN"]
+"conftest.py" = ["ANN"]
 ".github/scripts/**" = ["ANN"]
 # Proof worker deliberately blocks inside async code and polls; keep the scenarios literal.
 "tests/runtime_proof/**" = ["ASYNC", "RUF046", "SIM105"]
@@ -95,7 +98,7 @@ ignore = ["RUF001", "RUF002", "RUF003", "ANN401"]
 python-version = "3.10"
 
 [tool.ty.src]
-include = ["src", "harness"]
+include = ["src", "tests/harness"]
 
 [tool.ty.terminal]
 error-on-warning = true

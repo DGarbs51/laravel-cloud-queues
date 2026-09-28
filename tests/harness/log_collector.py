@@ -16,7 +16,7 @@ from typing import cast
 
 from typing_extensions import Self
 
-from harness._socket import SocketService, UnixServer
+from tests.harness._socket import SocketService, UnixServer
 
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}")
 

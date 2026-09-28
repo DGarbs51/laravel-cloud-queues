@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import pytest
 
-from harness.agent_emulator import AgentEmulator, delay, status
+from tests.harness.agent_emulator import AgentEmulator, delay, status
 
 pytestmark = [pytest.mark.agent, pytest.mark.socket]
 

@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from harness.agent_emulator import DEFAULT_QUEUE_URL, delay, status
 from laravel_cloud_queues.config import AgentConfig, ManagedQueuesConfig, SqsConnectionConfig
 from laravel_cloud_queues.errors import AgentProtocolError, AgentUnavailableError
 from laravel_cloud_queues.transports import agent
+from tests.harness.agent_emulator import DEFAULT_QUEUE_URL, delay, status
 
 pytestmark = pytest.mark.agent
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "agent"

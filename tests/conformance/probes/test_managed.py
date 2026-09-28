@@ -12,8 +12,8 @@ import time
 
 import pytest
 
-from harness.agent_emulator import status
-from harness.log_collector import (
+from tests.harness.agent_emulator import status
+from tests.harness.log_collector import (
     validate_failed_job_event,
     validate_lifecycle_event,
     validate_sequence,

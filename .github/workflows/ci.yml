@@ -31,9 +31,8 @@ jobs:
           # Code roots only (matches [tool.ruff] src in pyproject.toml), not
           # docs: ruff >=0.16 also formats fenced ```python
           # blocks inside Markdown, and pre-existing prose in those files trips it.
-          # harness/ doesn't exist yet on every lane's branch; skip if absent.
           targets=()
-          for dir in src tests harness .github/scripts; do
+          for dir in src tests .github/scripts; do
             [ -d "$dir" ] && targets+=("$dir")
           done
           uv run ruff check "${targets[@]}"
@@ -51,7 +50,7 @@ jobs:
         with:
           python-version: "3.10"
       - run: uv sync --locked
-      # ty on src and harness (pyproject.toml [tool.ty]); the downstream typing
+      # ty on src and tests/harness (pyproject.toml [tool.ty]); the downstream typing
       # samples (tests/typing/) are exercised inside the `test` job's pytest run.
       - run: uv run ty check
 

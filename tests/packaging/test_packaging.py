@@ -28,12 +28,11 @@ PYTHON_TAG = f"{sys.version_info.major}.{sys.version_info.minor}"
 FORBIDDEN_DIR_PREFIXES = (
     "docs/",
     "tests/",
-    "harness/",
     ".github/",
 )
 
 # Module names a shipped file must never import (repo-only tooling).
-FORBIDDEN_IMPORT_ROOTS = frozenset({"tests", "harness"})
+FORBIDDEN_IMPORT_ROOTS = frozenset({"tests"})
 
 # hatchling unconditionally adds .gitignore to every sdist and it cannot be excluded
 # (see https://github.com/pypa/hatch/issues/1203) — harmless, allow it explicitly.

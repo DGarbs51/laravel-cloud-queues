@@ -88,7 +88,7 @@ successful producer return and its absence after a failed send. Real producer di
 SQS attributes, retries, FIFO/fair options and ignored ambient `AWS_*` values are exercised
 against moto/LocalStack in self-managed SQS mode.
 
-The managed emulator and Unix log collector come from `harness/`. The worker runs via
+The managed emulator and Unix log collector come from `tests/harness/`. The worker runs via
 `laravel-cloud-queues work tests.conformance.app:app` (the equivalent Python module entry point inside
 probes). Short-lease tests use public `WorkerOptions`; `tests.conformance.fault_worker` deliberately
 loses a response after an actual SQS delete to prove the worker stops on ambiguous ack.

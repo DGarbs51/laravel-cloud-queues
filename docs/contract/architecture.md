@@ -84,7 +84,7 @@ lease expiry, explicit release).
 | L7 observability | `observability/`, `tests/fixtures/events/` |
 | L6 worker + CLI | `worker/`, `cli/` |
 | L8 FastAPI | `fastapi/` |
-| L9 local platform | `harness/` |
+| L9 local platform | `harness/` (now `tests/harness/`) |
 | L10 demo + conformance | `demo/` (now `tests/conformance/`) |
 
 Each lane also owns its tests under `tests/unit/<area>/` and `tests/integration/<area>/`.
@@ -93,7 +93,7 @@ are lead-owned: request changes on the todo.
 
 ## Test conventions
 
-- `uv run pytest` from the repository root. `harness` is importable (pytest `pythonpath`).
+- `uv run pytest` from the repository root. `tests.harness` is importable (pytest `pythonpath`).
 - Markers: `agent`, `sqs`, `redis`, `socket`, `subprocess`, `runtime_proof`, `packaging`,
   `conformance`. Services are skipped when absent, and fail when
   `LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES=1` (CI).

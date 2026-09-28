@@ -70,7 +70,7 @@ def test_ci_gate(evidence):
         assert required in workflow, required
     assert "needs: [lint, typecheck, test, packaging, conformance]" in workflow
     result = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", "src", "harness", "tests"],
+        [sys.executable, "-m", "ruff", "check", "src", "tests"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -79,7 +79,7 @@ def test_ci_gate(evidence):
     evidence.record("lint", result.stdout + result.stderr)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(
-        [sys.executable, "-m", "ruff", "format", "--check", "src", "harness", "tests"],
+        [sys.executable, "-m", "ruff", "format", "--check", "src", "tests"],
         cwd=ROOT,
         capture_output=True,
         text=True,

@@ -16,10 +16,10 @@ from typing import Any
 
 import pytest
 
-from harness.log_collector import LogCollector
-from harness.sqs import SQSEndpoint
 from laravel_cloud_queues.config import load_config
 from laravel_cloud_queues.registry import Registry
+from tests.harness.log_collector import LogCollector
+from tests.harness.sqs import SQSEndpoint
 from tests.integration.worker.apps.basic import build
 from tests.integration.worker.support import Workers, clean_env, native_iterations
 

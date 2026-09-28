@@ -8,10 +8,10 @@ Run from the repository root (change `3.10` to `3.14` for the other required int
 
 ```sh
 uv run --no-project --python 3.10 --with pytest --with httpx --with 'moto[server]>=5' \
-  --with boto3 --with redis python -m pytest -p harness.pytest_plugin tests/harness
+  --with boto3 --with redis python -m pytest -p tests.harness.pytest_plugin tests/harness
 ```
 
-Load fixtures with `-p harness.pytest_plugin` or register `harness.pytest_plugin` in the root
+Load fixtures with `-p tests.harness.pytest_plugin` or register `tests.harness.pytest_plugin` in the root
 `conftest.py`. The plugin registers `agent`, `sqs`, `redis`, `socket`, and `subprocess` markers.
 Dev dependencies: `pytest`, `httpx`, `moto[server]>=5`, `boto3`, and `redis`. Type/lint checks also
 use `ty`, `boto3-stubs[sqs]`, `types-redis`, and `ruff`. No product-package dependency is needed.
@@ -20,7 +20,7 @@ use `ty`, `boto3-stubs[sqs]`, `types-redis`, and `ruff`. No product-package depe
 
 ```python
 import httpx
-from harness.agent_emulator import AgentEmulator, delay, status
+from tests.harness.agent_emulator import AgentEmulator, delay, status
 
 with AgentEmulator.start(poll_wait=0.1, visibility_timeout=30) as emu:
     message_id = emu.enqueue('{"example": true}', delay=0)
@@ -54,7 +54,7 @@ Fault queues are independent for `next` and `result`. Inject a name (`disconnect
 leave message state unchanged; `delay` continues normally; `hang` waits until shutdown.
 `faults_fired` records `(endpoint, Fault)` in firing order. JSON-shape faults return synthetic bodies.
 
-Manual listener: `python -m harness.agent_emulator --socket /path/in/private/directory/agent.sock`.
+Manual listener: `python -m tests.harness.agent_emulator --socket /path/in/private/directory/agent.sock`.
 SIGINT/SIGTERM cleanly stop it. A fresh manual listener has no queued messages.
 
 ## Collector
@@ -75,7 +75,7 @@ Both Unix services refuse pre-existing paths and only unlink their own socket in
 
 ## SQS, Redis, and processes
 
-`sqs_endpoint` is both a fixture and a context manager from `harness.sqs`. It yields an `SQSEndpoint`
+`sqs_endpoint` is both a fixture and a context manager from `tests.harness.sqs`. It yields an `SQSEndpoint`
 with `url`, `client`, `region`, `access_key`, `secret_key`, and unique `prefix`.
 `create_queue(fifo=False)` returns a queue URL and tracks it for deletion at teardown; FIFO queues
 use content-based deduplication. All AWS credentials/config are explicit and isolated from ambient

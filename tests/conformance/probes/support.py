@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from harness.agent_emulator import AgentEmulator
-from harness.log_collector import LogCollector
-from harness.process import Process
-from harness.pytest_plugin import ProcessFactory
-from harness.sqs import SQSEndpoint
 from tests.conformance import ROOT
 from tests.conformance.plugin import Evidence, safe
+from tests.harness.agent_emulator import AgentEmulator
+from tests.harness.log_collector import LogCollector
+from tests.harness.process import Process
+from tests.harness.pytest_plugin import ProcessFactory
+from tests.harness.sqs import SQSEndpoint
 
 
 def environment(artifacts: Path) -> dict[str, str | None]:

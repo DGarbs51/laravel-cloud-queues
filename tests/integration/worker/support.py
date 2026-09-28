@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from harness.process import Process, ProcessResult
+from tests.harness.process import Process, ProcessResult
 
 ROOT = Path(__file__).resolve().parents[3]
 TARGET = "tests.integration.worker.apps.basic:registry"
