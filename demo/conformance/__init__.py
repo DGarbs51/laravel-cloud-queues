@@ -162,12 +162,13 @@ def endpoint(value: str) -> str:
 
 
 def run_metadata(sqs: str) -> dict[str, Any]:
-    revision = (
-        subprocess.run(
+    try:
+        revision = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False
         ).stdout.strip()
-        or "unknown"
-    )
+    except OSError:  # No git, e.g. CI's python:*-slim-bookworm image.
+        revision = ""
+    revision = revision or os.environ.get("GITHUB_SHA") or "unknown"
     versions: dict[str, str | None] = {}
     for name in (
         "laravel-cloud-queues",
