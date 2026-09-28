@@ -68,7 +68,7 @@ def test_ci_gate(evidence):
         "conformance:",
     ):
         assert required in workflow, required
-    assert "needs: [lint, typecheck, test, packaging, conformance]" in workflow
+    assert "needs: [lint, typecheck, docs, test, packaging, conformance]" in workflow
     result = subprocess.run(
         [sys.executable, "-m", "ruff", "check", "src", "tests"],
         cwd=ROOT,
