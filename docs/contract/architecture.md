@@ -62,28 +62,11 @@ path as the worker; handler exceptions surface to the test). Inside a running lo
 `dispatch_async` awaits in that loop; sync `dispatch` of an async handler inside a running
 loop runs it on a helper thread with its own loop (no nested loop).
 
-## Lead decisions made while writing the contract (D13, pending cross-agent review)
+## Lead decisions
 
-1. `httpx` is a core dependency: §11 requires it for the agent client, which is core
-   (managed mode is the product center); §4's dependency list omitted it.
-   `typing-extensions` is a core dependency for Python 3.10 typing features.
-2. Envelope: Laravel's top-level `uuid` and `displayName`, everything else under one
-   versioned `laravel_cloud_queues` object (avoids colliding with Laravel payload keys that
-   Laravel Cloud tooling may read, such as `job`, `data`, `attempts`).
-3. Completion lifecycle events are emitted right after the outcome is reported to the
-   transport. Laravel emits them lazily (next `pop`, `WorkerStopping`, or right after
-   `failed_job`); the observable order and fields are the same. For terminal failures the
-   order is: complete message -> `failed_job` -> `failed` (same timestamp).
-4. Redis reservations expire at now + lease (60 s), renewed every lease/3 by the watchdog,
-   instead of now + job timeout + margin (§11 text). With D7's watchdog the lease is what
-   protects a running job; this also makes `timeout=0` safe and bounds redelivery after a
-   crash or a 124 exit to one lease window.
-5. Direct SQS receive sets `VisibilityTimeout=lease` on `ReceiveMessage`, so the lease is
-   known regardless of the queue's default visibility timeout.
-6. UUIDv7 is implemented in-package (a few lines): `failed_job.id` must be bound to the
-   failure timestamp, which stdlib `uuid.uuid7()` (3.14+) cannot do.
-7. Explicit `JobContext.release()` always releases (Laravel parity); when attempts are
-   exhausted the next delivery fails the pre-run check with `MaxAttemptsExceededError`.
+Recorded as **D13** in `docs/decisions.md` (terminal-failure order, event timing, `GET /next`
+retries, strict managed config, labeled deviations, dependencies, envelope layout, Redis
+lease expiry, explicit release).
 
 ## Lane ownership (paths)
 

@@ -11,9 +11,10 @@ from ..base import Delivery
 class AgentConsumer:
     """HTTP over the agent Unix socket (httpx, base URL ``http://localhost``, no redirects,
     bounded response size). ``GET /next``: 65 s timeout, 3 attempts (retry after 0 ms,
-    500 ms) on connection errors; 204 empty; 200 JSON object/array else fatal; missing/empty/
-    non-string ``messageId`` = empty poll; non-string ``receiptHandle`` -> None; non-string
-    ``body`` -> "". Other statuses / unreachable -> AgentUnavailableError.
+    500 ms) on connection errors and HTTP error statuses (D13.3); 204 empty; 200 JSON
+    object/array else fatal; missing/empty/non-string ``messageId`` = empty poll;
+    non-string ``receiptHandle`` -> None; non-string ``body`` -> "". Other statuses /
+    unreachable -> AgentUnavailableError.
     ``POST /result``: body ``messageId``, ``receiptHandle`` (omitted if None), ``status``
     (``processed``|``released``), ``delay`` (omitted if None; 0 kept); 10 s timeout, 3
     attempts 100 ms apart on connection errors only; 5xx / connection failure ->
