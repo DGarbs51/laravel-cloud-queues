@@ -69,9 +69,8 @@ class DefaultInvoker:
     awaitable (async handlers)."""
 
     def is_injected(self, parameter: inspect.Parameter) -> bool:
-        # String form covers annotations left unevaluated by ``from __future__ import
-        # annotations``.
-        return parameter.annotation is JobContext or parameter.annotation == "JobContext"
+        # inspect_handler passes parameters with resolved type hints.
+        return parameter.annotation is JobContext
 
     async def invoke(
         self,
@@ -217,7 +216,12 @@ class Registry:
     ) -> Any:
         """Register a handler. Default wire name: ``module.qualname`` (explicit ``name``
         preferred for refactor safety). Duplicate names -> ConfigurationError. Shorthand
-        fields override ``policy`` fields."""
+        fields override ``policy`` fields.
+
+        Parameters annotated ``JobContext`` are injected at run time, but they stay in the
+        static ``dispatch`` signature (ParamSpec cannot drop them), so typed callers could
+        not omit them. The typed pattern is to call :func:`current_job` inside the handler
+        (``Depends(current_job)`` with FastAPI) instead of declaring the parameter."""
         base = policy or RetryPolicy()
         effective = RetryPolicy(
             tries=base.tries if tries is None else tries,

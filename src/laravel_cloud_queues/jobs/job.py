@@ -47,7 +47,11 @@ class DispatchOptions:
 class Job(Generic[P, R]):
     """Wraps a handler. Calling it calls the handler directly; ``dispatch``/``dispatch_async``
     take exactly the handler's parameters, so options never collide with handler parameters
-    named ``queue``/``delay``/``timeout``."""
+    named ``queue``/``delay``/``timeout``.
+
+    Static limitation: a ``JobContext`` handler parameter is injected at run time but still
+    appears in the typed ``dispatch``/``dispatch_async`` signature. Typed code should call
+    :func:`~laravel_cloud_queues.current_job` inside the handler instead."""
 
     def __init__(
         self,

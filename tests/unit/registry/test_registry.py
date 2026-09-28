@@ -216,7 +216,7 @@ def _param(annotation: object) -> inspect.Parameter:
     ("annotation", "injected"),
     [
         (JobContext, True),
-        ("JobContext", True),
+        ("JobContext", False),  # inspect_handler resolves hints before asking
         (int, False),
         (Optional[JobContext], False),  # noqa: UP045 - exact JobContext only
         (inspect.Parameter.empty, False),
@@ -224,6 +224,18 @@ def _param(annotation: object) -> inspect.Parameter:
 )
 def test_is_injected(annotation: object, injected: bool) -> None:
     assert DefaultInvoker().is_injected(_param(annotation)) is injected
+
+
+def test_postponed_annotations_are_resolved_before_injection() -> None:
+    """This module uses ``from __future__ import annotations``: the handler's annotations
+    are strings until inspect_handler resolves them."""
+
+    def handler(order_id: int, context: JobContext) -> None: ...
+
+    assert inspect.signature(handler).parameters["context"].annotation == "JobContext"
+    job = Registry().job(handler)
+    assert job._signature.injected == ("context",)
+    assert job._signature.serialized == ("order_id",)
 
 
 def test_merge_injected_keeps_positional_shape() -> None:
