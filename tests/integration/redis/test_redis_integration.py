@@ -6,13 +6,14 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from hashlib import sha256
 from threading import Event
 from uuid import UUID, uuid4
 
 import pytest
 
 from laravel_cloud_queues.config import RedisConfig
-from laravel_cloud_queues.errors import LeaseLostError, TransportError
+from laravel_cloud_queues.errors import LeaseLostError
 from laravel_cloud_queues.transports.base import OutgoingMessage
 from laravel_cloud_queues.transports.redis import RedisConsumer, RedisProducer
 
@@ -302,14 +303,33 @@ def test_server_time_sets_all_scores(broker, monkeypatch):
     assert now + 49 <= client.zscore(delayed, delivery.receipt) <= now + 51
 
 
-@pytest.mark.parametrize("wrapper", ["invalid", '{"id":"a","body":"b","attempts":-1}'])
-def test_invalid_transport_wrapper_is_not_discarded(broker, wrapper):
-    config, client, _, consumer = broker
+@pytest.mark.parametrize("wrapper", ["invalid ✓", '{"id":"a","body":"b","attempts":-1}', "[]", ""])
+def test_invalid_transport_wrapper_can_be_completed_without_blocking_queue(broker, wrapper):
+    """§12: malformed entries reach the worker's terminal-failure path, then are deleted."""
+    config, client, producer, consumer = broker
     pending = f"{config.prefix}queues:broken"
     client.rpush(pending, wrapper)
-    with pytest.raises(TransportError):
-        consumer.receive(["broken"], 0)
-    assert client.lrange(pending, 0, -1) == [wrapper]
+    client.rpush(pending + ":notify", 1)
+    sent = producer.send(OutgoingMessage("valid body", "broken"))
+
+    malformed = consumer.receive(["broken"], 0)
+    assert malformed is not None
+    assert malformed.message_id == "malformed-" + sha256(wrapper.encode("utf-8")).hexdigest()
+    assert malformed.queue == "broken"
+    assert malformed.body == malformed.receipt == wrapper
+    assert malformed.attempt == 1
+    assert client.zrange(pending + ":reserved", 0, -1) == [wrapper]
+    assert client.llen(pending) == client.llen(pending + ":notify") == 1
+    consumer.complete(malformed)
+    assert client.zcard(pending + ":reserved") == 0
+
+    valid = consumer.receive(["broken"], 0)
+    assert valid is not None
+    assert valid.message_id == sent.message_id
+    assert valid.body == "valid body"
+    assert valid.attempt == 1
+    consumer.complete(valid)
+    assert consumer.receive(["broken"], 0) is None
 
 
 def test_no_package_payload_limit(broker):

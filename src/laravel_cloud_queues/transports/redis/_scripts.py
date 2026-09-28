@@ -39,17 +39,20 @@ local member = redis.call('lindex', KEYS[1], 0)
 if not member then return false end
 -- Validate before removing: Lua errors do not roll back prior writes.
 local ok, job = pcall(cjson.decode, member)
-if not ok or type(job) ~= 'table' or type(job.id) ~= 'string'
+local malformed = not ok or type(job) ~= 'table' or type(job.id) ~= 'string'
     or type(job.body) ~= 'string' or type(job.attempts) ~= 'number'
     or job.attempts < 0 or job.attempts >= 9007199254740991
-    or job.attempts ~= math.floor(job.attempts) then
-    return redis.error_reply('Invalid queue transport wrapper')
+    or job.attempts ~= math.floor(job.attempts)
+local reserved = member
+if not malformed then
+    job.attempts = job.attempts + 1
+    reserved = cjson.encode(job)
 end
-job.attempts = job.attempts + 1
-local reserved = cjson.encode(job)
 redis.call('zadd', KEYS[3], now + tonumber(ARGV[1]), reserved)
 redis.call('lpop', KEYS[1])
 redis.call('lpop', KEYS[4])
+-- A one-element array marks a raw malformed member for terminal failure by core.
+if malformed then return {reserved} end
 return reserved
 """
 )

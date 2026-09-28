@@ -12,6 +12,7 @@ import math
 import ssl
 import time
 from collections.abc import Sequence
+from hashlib import sha256
 from threading import Event
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -154,10 +155,20 @@ class RedisConsumer(_RedisTransport):
                     "EVAL", _scripts.RESERVE, 4, *self._keys(queue), self._lease_seconds
                 )
                 if member is not None:
-                    if not isinstance(member, str):
+                    if isinstance(member, str):
+                        wrapper = json.loads(member)
+                    elif (
+                        isinstance(member, list) and len(member) == 1 and isinstance(member[0], str)
+                    ):
+                        # Malformed wrappers retain their raw receipt so core can fail/delete them.
+                        member = member[0]
+                        wrapper = {
+                            "id": "malformed-" + sha256(member.encode("utf-8")).hexdigest(),
+                            "body": member,
+                            "attempts": 1,
+                        }
+                    else:
                         raise TransportError("Invalid Redis reservation response.")
-                    # The script validates the wrapper before reserving; body stays opaque.
-                    wrapper = json.loads(member)
                     return Delivery(
                         message_id=wrapper["id"],
                         queue=queue,
