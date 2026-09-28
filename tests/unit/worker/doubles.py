@@ -258,7 +258,8 @@ class FakeTelemetry:
         if self.emits:
             self.env.journal.append(("event", dict(event)))
 
-    def log_line(self, record: Mapping[str, object]) -> None:
+    def log_line(self, record: Mapping[str, object], *, lock_timeout: float | None = None) -> None:
+        self.lock_timeouts.append(lock_timeout)
         self.env.journal.append(("line", dict(record)))
 
 

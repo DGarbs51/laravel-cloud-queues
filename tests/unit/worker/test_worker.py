@@ -651,3 +651,45 @@ def test_each_delivery_gets_its_own_context(make: Any) -> None:
         "attempt": 2,
         "max_tries": 3,
     }
+
+
+@pytest.mark.parametrize(
+    "empty_options",
+    [{"stop_when_empty": True}, {"stop_when_empty": False, "stop_when_empty_for": 0}],
+)
+def test_failed_receive_is_not_an_empty_poll(make: Any, empty_options: dict[str, Any]) -> None:
+    h = make([TransportError("throttled"), delivery()], max_jobs=1, **empty_options)
+    pauses = _record_pauses(h)
+    assert h.run() == EXIT_OK
+    assert h.env.ran == ["succeed"]
+    assert pauses == [1.0]
+    assert len(h.consumer.receives) == 2
+
+
+@pytest.mark.parametrize("mode", ["sqs", "managed"])
+@pytest.mark.parametrize("lost_during_stop", [False, True])
+def test_timeout_never_reports_after_lease_loss(
+    make: Any, monkeypatch: pytest.MonkeyPatch, mode: str, lost_during_stop: bool
+) -> None:
+    from laravel_cloud_queues.worker._watchdog import Watchdog
+
+    if lost_during_stop:
+        original = Watchdog.signal_stop
+
+        def stop(watchdog: Watchdog) -> None:
+            original(watchdog)
+            watchdog.lost = True
+
+        monkeypatch.setattr(Watchdog, "signal_stop", stop)
+    h = make(
+        [delivery("sleep:5", timeout=0.6)],
+        mode=mode,
+        renewal=True,
+        lease_seconds=1,
+        renew_error=None if lost_during_stop else LeaseLostError("gone"),
+    )
+    assert exit_code(h) == EXIT_TIMEOUT
+    assert h.env.of("complete") == []
+    assert h.env.of("release") == []
+    assert h.lines() == []
+    assert types_of(h) == (["started"] if mode == "managed" else [])

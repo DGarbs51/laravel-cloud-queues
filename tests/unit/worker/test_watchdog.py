@@ -89,3 +89,51 @@ def test_recent_renewal_skips_the_final_check() -> None:
     watchdog.stop()
     assert renewer.calls == []
     assert not watchdog.lost
+
+
+def test_stop_marks_an_in_flight_renewal_lost(monkeypatch: Any) -> None:
+    from laravel_cloud_queues.worker import _watchdog
+
+    monkeypatch.setattr(_watchdog, "JOIN_TIMEOUT", 0.01)
+    entered, finish = threading.Event(), threading.Event()
+
+    class SlowRenewer(Renewer):
+        def renew(self, delivery: Delivery, lease_seconds: int) -> None:
+            entered.set()
+            assert finish.wait(5)
+
+    watchdog = start(SlowRenewer(), 0.15)
+    try:
+        assert entered.wait(2)
+        watchdog.stop()
+        assert watchdog.lost
+    finally:
+        finish.set()
+        watchdog._thread.join(2)
+
+
+def test_renewal_failure_during_stop_is_lost() -> None:
+    entered = threading.Event()
+
+    class FailingRenewer(Renewer):
+        def renew(self, delivery: Delivery, lease_seconds: int) -> None:
+            entered.set()
+            assert watchdog._stop.wait(2)
+            raise TransportError("renewal failed during shutdown")
+
+    watchdog = start(FailingRenewer(), 0.3)
+    assert entered.wait(2)
+    watchdog.stop()
+    assert watchdog.lost
+
+
+def test_stop_joins_for_at_least_thirty_seconds_or_the_lease() -> None:
+    from unittest.mock import Mock
+
+    for lease in (1, 60):
+        watchdog = Watchdog(cast(Any, Renewer()), DELIVERY, lease)
+        thread = Mock()
+        thread.is_alive.return_value = False
+        watchdog._thread = thread
+        watchdog.stop()
+        thread.join.assert_called_once_with(max(lease, 30))

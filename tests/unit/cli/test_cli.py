@@ -300,3 +300,77 @@ def test_module_entry_point() -> None:
     assert result.returncode == 0
     for command in ("work", "inspect", "conformance"):
         assert command in result.stdout
+
+
+@pytest.mark.parametrize("debug", [False, True])
+@pytest.mark.parametrize("package_error", [False, True])
+def test_errors_and_tracebacks_redact_urls(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    debug: bool,
+    package_error: bool,
+) -> None:
+    from laravel_cloud_queues.errors import ConfigurationError
+
+    error = ConfigurationError if package_error else RuntimeError
+
+    def fail(_: str) -> Any:
+        raise error("Cannot connect to redis://user:ERR_PASSWORD@cache/0?ToKeN=ERR_TOKEN&db=1")
+
+    monkeypatch.setattr(cli, "resolve_target", fail)
+    assert cli.main(["inspect", "app:registry", *(["--debug"] if debug else [])]) == (
+        2 if package_error else 1
+    )
+    output = capsys.readouterr().err
+    assert "ERR_PASSWORD" not in output and "ERR_TOKEN" not in output
+    assert f"{error.__name__}: Cannot connect" in output
+    assert ("Traceback" in output) == debug
+    assert "cache/0?ToKeN=" in output and "db=1" in output
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_inspect_redacts_all_url_fields(
+    app: str, capsys: pytest.CaptureFixture[str], json_output: bool
+) -> None:
+    import importlib
+    from dataclasses import replace
+
+    cli._import_path()
+    module = importlib.import_module(app)
+    url = "https://user:URL_PASSWORD@host/path?ToKeN=URL_TOKEN&db=1"
+    config = module.managed.config
+    module.managed.config = replace(
+        config,
+        sqs=replace(config.sqs, prefix=url, endpoint_url=url),
+        managed=replace(config.managed, agent=replace(config.managed.agent, socket=url)),
+        log_socket=url,
+    )
+    assert cli.main(["inspect", f"{app}:managed", *(["--json"] if json_output else [])]) == 0
+    output = capsys.readouterr().out
+    assert "URL_PASSWORD" not in output and "URL_TOKEN" not in output
+    assert output.count("db=1") == 4
+
+
+@pytest.mark.parametrize(
+    ("text", "secrets"),
+    [
+        ("redis://user:PASS@[::1]:6379/0?TOKEN=ONE&password=TWO&db=1", ["PASS", "ONE", "TWO"]),
+        (
+            "https://a/?secret=ONE&key=TWO&signature=THREE&credential=FOUR",
+            ["ONE", "TWO", "THREE", "FOUR"],
+        ),
+        (
+            "https://u:p%40ss@host/?%74oken=VALUE&X-Amz-Credential=SIGNED",
+            ["p%40ss", "VALUE", "SIGNED"],
+        ),
+        (
+            "error: 'https://u:PASS@host/?Token=ONE', redis://u:OTHER@cache/0",
+            ["PASS", "ONE", "OTHER"],
+        ),
+    ],
+)
+def test_redact(text: str, secrets: list[str]) -> None:
+    redacted = cli._redact(text)
+    assert all(secret not in redacted for secret in secrets)
+    assert cli._redact(redacted) == redacted
+    assert cli._redact("/tmp/agent.sock") == "/tmp/agent.sock"

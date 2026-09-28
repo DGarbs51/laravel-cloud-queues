@@ -47,6 +47,7 @@ from ..jobs.context import JobContext
 from ..jobs.execution import HandlerResult, prepare_execution, run_prepared
 from ..jobs.policy import ResolvedPolicy, WorkerDefaults
 from ..observability import Telemetry, failed_job_event, failure_log_record, lifecycle_event
+from ..observability._guard import raw_diagnostic, signal_safe
 from ..registry import Registry, WorkerTarget
 from ..transports import Consumer, Delivery
 from ._watchdog import Watchdog
@@ -240,6 +241,7 @@ class Worker:
         jobs = 0
         while not self._stopping.is_set():
             pause = options.sleep if runtime.sleep_when_empty else 0.0
+            receive_failed = False
             try:
                 delivery = await anyio.to_thread.run_sync(
                     runtime.consumer.receive, runtime.queues, runtime.wait
@@ -254,6 +256,7 @@ class Worker:
             except TransportError as exc:
                 logger.warning("Receive failed (%s: %s); retrying.", type(exc).__name__, exc)
                 delivery, pause = None, TRANSIENT_RETRY_SECONDS
+                receive_failed = True
 
             if delivery is not None:
                 jobs += 1
@@ -267,10 +270,11 @@ class Worker:
             reason = None
             if self._stopping.is_set():
                 reason = "signal"
-            elif delivery is None and options.stop_when_empty:
+            elif not receive_failed and delivery is None and options.stop_when_empty:
                 reason = "queue empty"
             elif (
                 delivery is None
+                and not receive_failed
                 and options.stop_when_empty_for is not None
                 and now - (last_job if last_job is not None else started)
                 >= options.stop_when_empty_for
@@ -430,7 +434,8 @@ class Worker:
                 "message_id": delivery.message_id,
                 "attempt": delivery.attempt,
                 "duration_ms": duration,
-            }
+            },
+            lock_timeout=lock_timeout,
         )
 
     def _log_failure(
@@ -439,6 +444,8 @@ class Worker:
         delivery: Delivery,
         exception: BaseException,
         started_at: datetime,
+        *,
+        lock_timeout: float | None = None,
     ) -> None:
         """D6b failure record on stdout, written before ``complete`` (``sqs`` / ``redis``)."""
         if runtime.config.emits_cloud_events:
@@ -452,7 +459,7 @@ class Worker:
             started_at=started_at,
             timestamp=_utcnow(),
         )
-        runtime.telemetry.log_line(record)
+        runtime.telemetry.log_line(record, lock_timeout=lock_timeout)
 
     # --- timeout (SIGALRM, D2) -----------------------------------------------------------
 
@@ -461,7 +468,8 @@ class Worker:
         if running is None or runtime is None:
             return  # The timer fired as the job finished; it has been disarmed.
         try:
-            self._timed_out(runtime, running, frame)
+            with signal_safe():
+                self._timed_out(runtime, running, frame)
         finally:
             os._exit(EXIT_TIMEOUT)
 
@@ -472,28 +480,31 @@ class Worker:
         event. No release and no backoff: visibility / reservation expiry redelivers."""
         if running.watchdog is not None:
             running.watchdog.signal_stop()
+            if running.watchdog.lost:
+                raw_diagnostic(
+                    f"Not reporting timed-out message {running.delivery.message_id}: lease lost."
+                )
+                return
         delivery, policy = running.delivery, running.policy
         terminal = policy.fail_on_timeout or policy.is_last_attempt(delivery.attempt)
-        logger.error(
-            "Job %s (message %s, attempt %d) exceeded its %g s timeout; %s.",
-            running.job_name,
-            delivery.message_id,
-            delivery.attempt,
-            policy.timeout,
-            "failing it" if terminal else "it will be retried",
+        raw_diagnostic(
+            f"Job {running.job_name} (message {delivery.message_id}, attempt {delivery.attempt}) "
+            f"exceeded its {policy.timeout:g} s timeout; "
+            + ("failing it." if terminal else "it will be retried.")
         )
         exception = None
         if terminal:
             exception = JobTimeoutError(f"{running.job_name} has timed out.")
             exception.__traceback__ = _traceback(frame)
-            self._log_failure(runtime, delivery, exception, running.started_at)
+            self._log_failure(
+                runtime, delivery, exception, running.started_at, lock_timeout=ALARM_LOCK_TIMEOUT
+            )
             try:
                 runtime.consumer.complete(delivery)
             except Exception as exc:
-                logger.error(
-                    "Could not complete timed-out message %s (%s).",
-                    delivery.message_id,
-                    type(exc).__name__,
+                raw_diagnostic(
+                    f"Could not complete timed-out message {delivery.message_id} "
+                    f"({type(exc).__name__})."
                 )
         self._record(
             runtime,
