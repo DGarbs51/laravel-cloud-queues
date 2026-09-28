@@ -14,13 +14,14 @@ These are settled; the lead's interview only needs to cover anything not listed 
 - **Branching: explicit stay-on-main run.** Lanes still get their own worktrees and branches, but the lead integrates accepted lanes directly into `main` and pushes. There is no final PR; the final report lists the pushed commits.
 - **Every push to `main` deploys `probe-app/` to Laravel Cloud** (Laravel GTM org, app `laravel-cloud-queues`, environment `production`). This is intentional: use it to test the production deploy continually. Keep `main` deployable: run the lane's checks before each push, and never push a commit that breaks `probe-app/`. Once the package can dispatch and consume, switch `probe-app/`'s worker processes from the prototype `worker.py` to `laravel-cloud-queues work` so each push exercises the real package (the D6c live smoke test).
 - **Local test infrastructure:** SQS via `moto` locally, LocalStack in CI (D9); Redis via Laravel Herd's Valkey on `127.0.0.1:6379` locally, containers in CI. Docker is not installed on the development machine.
+- **CI:** GitHub Actions; full gate on every push to `main` and on pull requests; drift check weekly (D11).
 - **Paid usage:** follow the skill; extra charges need the user's approval.
 - **Private Laravel repositories:** reachable with the user's `gh` login for verification; cite by name only (this repository is public).
 
 ## Authority
 
 1. **`PROJECT_SCOPE.md` is authoritative.** This prompt defines execution, ownership and gates. It does not restate the scope; when it cites a section (§), read that section. Nothing here is a substitute for the scope.
-2. **`docs/decisions.md` (D1–D9)** records resolved decisions. The scope incorporates them; if the two disagree, the decision record wins and the scope must be corrected.
+2. **`docs/decisions.md` (D1–D11)** records resolved decisions. The scope incorporates them; if the two disagree, the decision record wins and the scope must be corrected.
 3. **`docs/references.md`** lists what to verify against: pinned public sources, Laravel Cloud docs, and private Laravel repositories (cite by name only).
 4. **`docs/audits/2026-09-27/`** explains why the scope says what it says, including `platform-findings.md` (live Laravel Cloud evidence).
 
