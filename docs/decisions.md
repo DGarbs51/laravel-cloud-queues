@@ -96,7 +96,7 @@ Smaller choices made when applying D1–D6 and the audit fixes to `PROJECT_SCOPE
 - ~~`/result` 4xx is fatal~~ Revised 2026-09-28: 4xx is logged as `AgentProtocolError` and the worker continues, matching Laravel and Symfony (§11).
 - Worker exit codes: 0 clean stop or agent unhealthy (revised 2026-09-28 to match Laravel), 1 other fatal transport error, 2 configuration error, 124 timeout (§11, §23).
 - Fresh delays accept `int` or `timedelta`; positive fractions round up; >900 s, negative and non-finite values are rejected (§10).
-- The Redis backend has no package-imposed payload size limit (revised 2026-09-28); it keeps the 900-second delay cap, and FIFO and fair-queue options are rejected in `redis` mode (§8, §10).
+- The Redis backend has no transport payload limit (revised 2026-09-28; bounded by the 16 MiB envelope decode ceiling since D14.2); it keeps the 900-second delay cap, and FIFO and fair-queue options are rejected in `redis` mode (§8, §10).
 - Self-managed SQS requires explicit credentials unless `LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS=default` opts into boto3's default chain (§6).
 - Direct SQS and Redis run a watchdog thread that renews visibility or reservations during a job (§11). Confirmed 2026-09-28:
   - lease window 60 s by default;

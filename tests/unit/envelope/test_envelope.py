@@ -66,7 +66,7 @@ def test_dashboard_retry_and_policy_survive_roundtrip():
     restored = decode_envelope(body)
     assert encode_envelope(restored) == body
     assert restored.policy.tries == 3
-    assert restored.policy.backoff == [1, 5]
+    assert restored.policy.backoff == (1, 5)
     assert restored.policy.timeout == 60
     assert restored.policy.fail_on_timeout is False
     assert restored.args == original.args
