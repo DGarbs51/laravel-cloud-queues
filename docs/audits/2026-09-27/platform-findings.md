@@ -59,3 +59,24 @@ From <https://laravel.com/cloud/docs/queues> and <https://laravel.com/cloud/docs
 - Queue names may be at most 39 characters, including `.fifo`.
 - A worker that exceeds its memory restarts, and the job is redelivered.
 - Python 3.10–3.14 are supported; the version comes from `.python-version` or `requires-python`.
+
+## Attached resources in a Python container (second probe run)
+
+After attaching a MySQL database, a Laravel Valkey cache and object storage to the environment, `/verify` (now returning every variable) showed the following. Values are omitted here; only names and shapes are recorded.
+
+| Resource | Variables injected | Shape |
+|---|---|---|
+| Database (MySQL) | `DATABASE_URL` | `mysql://<user>:<password>@<host>.db.laravel.cloud:3306/<database>` |
+| Valkey | `REDIS_URL` | `rediss://application:<password>@<host>.caches.laravel.cloud:6379/0` (TLS) |
+| Object storage (Cloudflare R2) | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT`, `AWS_ENDPOINT_URL`, `AWS_REGION=auto`, `AWS_DEFAULT_REGION=auto`, `AWS_BUCKET`, `AWS_USE_PATH_STYLE_ENDPOINT` | R2 credentials and endpoint |
+
+Python applications receive single URL variables, not Laravel-style split variables (`DB_HOST`, `REDIS_HOST` and so on).
+
+Other platform variables observed: `NGINX_HTTP_TIMEOUT=20` (web requests are cut off after 20 seconds), `NGINX_UPSTREAM_PORT=3000`, `WEB_CONCURRENCY=1`, `PYTHONUNBUFFERED=1`, `UV_COMPILE_BYTECODE=1`, IPv6 cluster networking (`KUBERNETES_*`, `SVC_*`).
+
+### Implications
+
+1. **A Redis/Valkey queue backend is viable on worker clusters today.** `REDIS_URL` is sufficient for a TLS client, and Valkey supports the Lua scripting a reliable queue needs.
+2. **Object storage occupies the standard `AWS_*` names.** boto3 honors `AWS_ENDPOINT_URL` for every service, so an SQS client built from the default chain in the same container would send SQS requests to R2 with R2 credentials and region `auto`. Self-managed SQS must use package-specific configuration passed explicitly to the client, not the standard `AWS_*` variables or Laravel's `sqs` connection variable names.
+3. **Managed mode must select credentials explicitly.** When managed queues reach Python, `credentials: "ecs"` must use the ECS container credential provider, because the default chain would pick up the R2 keys first.
+4. **Synchronous dispatch and eager execution inside web requests must finish well under 20 seconds.**
