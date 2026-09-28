@@ -53,7 +53,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6a",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
     },
     {
       "id": "config.managed_parse",
@@ -104,7 +104,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
     },
     {
       "id": "config.credentials_explicit",
@@ -144,7 +144,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
     },
     {
       "id": "config.agent_socket_resolution",
@@ -195,7 +195,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_agent_socket_precedence"]
     },
     {
       "id": "config.sqs_isolated_aws",
@@ -217,7 +217,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6a",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes"]
     },
     {
       "id": "queue.url_and_normalization",
@@ -266,7 +266,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_queue_names"]
     },
     {
       "id": "sqs.queue_not_found",
@@ -300,7 +300,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_broker_errors"]
     },
     {
       "id": "envelope.v1_shape",
@@ -337,7 +337,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["tests/unit/envelope/test_envelope.py::test_dashboard_retry_and_policy_survive_roundtrip", "tests/unit/envelope/test_envelope.py::test_policy_omission_and_zero_values", "tests/unit/envelope/test_envelope.py::test_namespaced_unknown_keys_do_not_collide"]
     },
     {
       "id": "envelope.retry_policy_in_message",
@@ -398,7 +398,7 @@
       ],
       "deviation": null,
       "project_decision": "D4",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[policy-deploy]"]
     },
     {
       "id": "envelope.codecs",
@@ -415,7 +415,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§8",
-      "probe": null
+      "probe": ["tests/unit/codecs/test_codecs.py::test_roundtrip", "tests/unit/codecs/test_codecs.py::test_invalid_values_are_job_defects", "tests/unit/codecs/test_codecs.py::test_unserializable_values_are_dispatch_errors", "tests/unit/codecs/test_codecs.py::test_numeric_and_union_rules", "tests/unit/codecs/test_codecs.py::test_any_scalar_and_escaped_dict", "tests/unit/codecs/test_codecs.py::test_payload_cannot_import", "tests/unit/codecs/test_codecs.py::test_cycles_and_direct_decode_depth_are_bounded", "tests/unit/codecs/test_codecs.py::test_custom_codec_is_explicit_and_registry_local", "tests/unit/codecs/test_codecs.py::test_custom_output_must_be_json", "tests/unit/codecs/test_codecs.py::test_pydantic_roundtrip_and_strict_fields", "tests/unit/codecs/test_codecs.py::test_enum_scalar_values_and_literals"]
     },
     {
       "id": "envelope.trust_boundary",
@@ -438,7 +438,7 @@
         "decision": null
       },
       "project_decision": "D4",
-      "probe": null
+      "probe": ["tests/unit/envelope/test_envelope.py::test_malformed_json_is_a_job_defect", "tests/unit/envelope/test_envelope.py::test_million_deep_body_rejected_before_parser", "tests/unit/envelope/test_envelope.py::test_unsupported_version", "tests/unit/envelope/test_envelope.py::test_pointer_takes_precedence_over_missing_envelope", "tests/unit/codecs/test_codecs.py::test_payload_cannot_import"]
     },
     {
       "id": "envelope.payload_size_limit",
@@ -476,7 +476,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_oversized_payload"]
     },
     {
       "id": "sqs.max_message_size_mapping",
@@ -496,7 +496,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_broker_errors"]
     },
     {
       "id": "registry.job_declaration",
@@ -518,7 +518,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_declaration_builder_eager"]
     },
     {
       "id": "dispatch.standard",
@@ -557,7 +557,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]", "demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.async]"]
     },
     {
       "id": "dispatch.named_queue",
@@ -582,7 +582,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[named]"]
     },
     {
       "id": "dispatch.queue_override",
@@ -601,7 +601,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[override]"]
     },
     {
       "id": "dispatch.options_builder",
@@ -622,7 +622,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_declaration_builder_eager"]
     },
     {
       "id": "dispatch.delay_standard",
@@ -660,7 +660,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[delay]"]
     },
     {
       "id": "dispatch.delay_validation",
@@ -704,7 +704,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_policy"]
     },
     {
       "id": "dispatch.fifo_defaults",
@@ -739,7 +739,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[fifo]", "demo/conformance/probes/test_brokers.py::test_sqs_options[fifo-explicit]"]
     },
     {
       "id": "dispatch.fifo_delay_rejected",
@@ -779,7 +779,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_invalid_options"]
     },
     {
       "id": "dispatch.fair_queue_group",
@@ -812,7 +812,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[fair]"]
     },
     {
       "id": "dispatch.cross_model_rejected",
@@ -852,7 +852,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_invalid_options"]
     },
     {
       "id": "agent.receive_selection",
@@ -901,7 +901,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_agent_queue_assignment", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "agent.next_protocol",
@@ -955,7 +955,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["tests/integration/agent/test_socket.py::test_protocol_response_fixtures", "tests/integration/agent/test_socket.py::test_named_emulator_faults"]
     },
     {
       "id": "agent.next_retries",
@@ -999,7 +999,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["tests/integration/agent/test_socket.py::test_disconnect_retries", "tests/integration/agent/test_socket.py::test_protocol_fault_fixtures"]
     },
     {
       "id": "agent.receive_count_default",
@@ -1033,7 +1033,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["tests/unit/agent/test_consumer.py::test_receive_count", "tests/unit/agent/test_consumer.py::test_malformed_attributes"]
     },
     {
       "id": "agent.result_protocol",
@@ -1085,7 +1085,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["tests/integration/agent/test_socket.py::test_delivery_processed_deletes", "tests/integration/agent/test_socket.py::test_release_redelivers_same_message", "tests/integration/agent/test_socket.py::test_competing_outcomes_send_only_once"]
     },
     {
       "id": "agent.result_4xx_nonfatal",
@@ -1130,7 +1130,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_result_failure[422]"]
     },
     {
       "id": "agent.unhealthy_exit_zero",
@@ -1203,7 +1203,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_result_failure[503]"]
     },
     {
       "id": "worker.ambiguous_ack_stops",
@@ -1221,7 +1221,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_ambiguous_ack", "demo/conformance/probes/test_brokers.py::test_ambiguous_direct_ack"]
     },
     {
       "id": "sqs.receive_direct",
@@ -1268,7 +1268,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]"]
     },
     {
       "id": "sqs.retry_visibility_release",
@@ -1317,7 +1317,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "demo/conformance/probes/test_managed.py::test_outcomes[retry]"]
     },
     {
       "id": "sqs.attempts_receive_count",
@@ -1362,7 +1362,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "demo/conformance/probes/test_managed.py::test_outcomes[retry]"]
     },
     {
       "id": "sqs.visibility_renewal",
@@ -1399,7 +1399,7 @@
         "decision": null
       },
       "project_decision": "D6, D7",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_visibility_renewal"]
     },
     {
       "id": "redis.transport",
@@ -1447,7 +1447,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6, D7",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_redis_processes", "tests/integration/redis/test_redis_integration.py::test_dispatch_reserve_complete", "tests/integration/redis/test_redis_integration.py::test_retry_preserves_exact_member_id_and_counts", "tests/integration/redis/test_redis_integration.py::test_delayed_job_becomes_visible_during_blocking_wait", "tests/integration/redis/test_redis_integration.py::test_no_package_payload_limit"]
     },
     {
       "id": "redis.reservation_renewal_and_expiry",
@@ -1479,7 +1479,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6, D7",
-      "probe": null
+      "probe": ["tests/integration/redis/test_redis_integration.py::test_expiry_after_crash_redelivers", "tests/integration/redis/test_redis_integration.py::test_watchdog_renewal_prevents_redelivery_past_initial_lease"]
     },
     {
       "id": "redis.atomicity_concurrent_workers",
@@ -1506,7 +1506,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6",
-      "probe": null
+      "probe": ["tests/integration/redis/test_redis_integration.py::test_concurrent_reservations_are_unique"]
     },
     {
       "id": "redis.tls",
@@ -1528,7 +1528,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6",
-      "probe": null
+      "probe": ["tests/integration/redis/test_redis_integration.py::test_tls_roundtrip"]
     },
     {
       "id": "retry.default_tries_one",
@@ -1568,7 +1568,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[default]"]
     },
     {
       "id": "retry.attempt_checks",
@@ -1606,7 +1606,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_policy"]
     },
     {
       "id": "retry.exhaustion",
@@ -1643,7 +1643,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[exhaustion]"]
     },
     {
       "id": "retry.backoff_schedule",
@@ -1687,7 +1687,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_policy"]
     },
     {
       "id": "retry.explicit_release",
@@ -1724,7 +1724,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[release]"]
     },
     {
       "id": "retry.explicit_fail",
@@ -1756,7 +1756,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[fail]"]
     },
     {
       "id": "retry.dashboard_replay",
@@ -1784,7 +1784,7 @@
       ],
       "deviation": null,
       "project_decision": "D3",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_replay"]
     },
     {
       "id": "timeout.release_exit_124",
@@ -1830,7 +1830,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D2",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_timeout[python]", "demo/conformance/probes/test_managed.py::test_timeout[async]", "demo/conformance/probes/test_managed.py::test_timeout[sleep]"]
     },
     {
       "id": "timeout.fail_on_timeout",
@@ -1874,7 +1874,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D2",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_timeout[fail-on-timeout]"]
     },
     {
       "id": "timeout.last_attempt_terminal",
@@ -1910,7 +1910,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D2",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_timeout[last-attempt]"]
     },
     {
       "id": "timeout.native_blocking_limitation",
@@ -1930,7 +1930,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D2",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_native_timeout"]
     },
     {
       "id": "worker.separate_process_single_job",
@@ -1957,7 +1957,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "worker.sync_handler",
@@ -1978,7 +1978,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§13",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "worker.async_handler",
@@ -1999,7 +1999,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§13",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "worker.unknown_job_terminal",
@@ -2045,7 +2045,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_poison[unknown]"]
     },
     {
       "id": "worker.schema_mismatch_terminal",
@@ -2073,7 +2073,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_poison[schema]"]
     },
     {
       "id": "worker.undecodable_message",
@@ -2123,7 +2123,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_poison[json]", "demo/conformance/probes/test_managed.py::test_poison[array]", "demo/conformance/probes/test_managed.py::test_poison[version]", "demo/conformance/probes/test_managed.py::test_poison[pointer]"]
     },
     {
       "id": "worker.terminal_failure_order",
@@ -2181,7 +2181,7 @@
       ],
       "deviation": null,
       "project_decision": "D1",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_failure_order"]
     },
     {
       "id": "worker.log_only_failures",
@@ -2203,7 +2203,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6b, D12",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.default_failure]", "demo/conformance/probes/test_brokers.py::test_redis_processes[demo.default_failure]"]
     },
     {
       "id": "worker.graceful_shutdown",
@@ -2235,7 +2235,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_graceful_shutdown"]
     },
     {
       "id": "worker.lifecycle_options",
@@ -2269,7 +2269,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D8",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_lifecycle_options"]
     },
     {
       "id": "worker.multi_queue_priority",
@@ -2301,7 +2301,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_brokers.py::test_priority"]
     },
     {
       "id": "worker.two_sequential_jobs_isolated",
@@ -2326,7 +2326,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§13, §17",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "fastapi.lifespan",
@@ -2348,7 +2348,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§13, §17",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "fastapi.depends",
@@ -2370,7 +2370,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§13, §17",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_fastapi.py::test_depends_and_eager"]
     },
     {
       "id": "fastapi.yield_teardown_before_ack",
@@ -2392,7 +2392,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§13, §17",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_failure_order", "demo/conformance/probes/test_managed.py::test_outcomes"]
     },
     {
       "id": "observability.lifecycle_events",
@@ -2447,7 +2447,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "observability.queued_event",
@@ -2494,7 +2494,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_queued_event_after_send"]
     },
     {
       "id": "observability.failed_job_event",
@@ -2547,7 +2547,7 @@
       ],
       "deviation": null,
       "project_decision": "D1",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[fail]", "demo/conformance/probes/test_managed.py::test_poison[json]"]
     },
     {
       "id": "observability.failed_job_size_policy",
@@ -2592,7 +2592,7 @@
         "decision": "D1"
       },
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_failure_sizes"]
     },
     {
       "id": "observability.socket_writer",
@@ -2629,7 +2629,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_contracts.py::test_socket_writer"]
     },
     {
       "id": "observability.outage_nonfatal",
@@ -2662,7 +2662,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": null
+      "probe": ["demo/conformance/probes/test_managed.py::test_socket_outage"]
     },
     {
       "id": "tracing.propagation",
@@ -2683,7 +2683,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§16",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_fastapi.py::test_tracing_optional", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "testing.eager_mode",
@@ -2704,7 +2704,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§20",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_fastapi.py::test_depends_and_eager", "demo/conformance/probes/test_contracts.py::test_declaration_builder_eager"]
     },
     {
       "id": "cli.commands_and_exit_codes",
@@ -2736,7 +2736,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_project.py::test_cli", "demo/conformance/probes/test_managed.py::test_timeout", "demo/conformance/probes/test_managed.py::test_result_failure"]
     },
     {
       "id": "packaging.build_and_isolated_install",
@@ -2761,7 +2761,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§4, §5",
-      "probe": null
+      "probe": ["tests/packaging/test_packaging.py::test_wheel_contains_only_package_and_metadata", "tests/packaging/test_packaging.py::test_wheel_has_py_typed", "tests/packaging/test_packaging.py::test_sdist_contains_only_package_and_metadata", "tests/packaging/test_packaging.py::test_sdist_has_py_typed", "tests/packaging/test_packaging.py::test_no_shipped_module_imports_repo_only_tooling", "tests/packaging/test_packaging.py::test_wheel_install_core_import_without_extras", "tests/packaging/test_packaging.py::test_sdist_install_core_import_without_extras", "tests/packaging/test_packaging.py::test_fastapi_extra_installs_and_imports", "tests/packaging/test_packaging.py::test_console_entry_point_runs", "tests/packaging/test_packaging.py::test_wheel_venv_does_not_see_repo_source"]
     },
     {
       "id": "packaging.typing_strict",
@@ -2783,7 +2783,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§5, D5",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_project.py::test_typing"]
     },
     {
       "id": "ci.full_gate",
@@ -2803,7 +2803,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D9, D11",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_project.py::test_ci_gate"]
     },
     {
       "id": "docs.readme",
@@ -2825,7 +2825,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§25",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_project.py::test_readme"]
     },
     {
       "id": "conformance.report_and_gate",
@@ -2850,7 +2850,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§22",
-      "probe": null
+      "probe": ["tests/conformance/test_runner.py::test_missing_record_fails", "tests/conformance/test_runner.py::test_removed_catalog_record_fails_scope_coverage", "tests/conformance/test_runner.py::test_unapproved_nonpass_fails", "tests/conformance/test_runner.py::test_approved_skip_passes", "tests/conformance/test_runner.py::test_duplicate_id_fails", "tests/conformance/test_runner.py::test_evidence_tier_and_error_are_preserved", "tests/conformance/test_runner.py::test_partial_explicit_and_incomplete_run", "tests/conformance/test_runner.py::test_report_redacts_sensitive_fields_and_endpoint", "tests/conformance/test_runner.py::test_unknown_selection_and_collection_failure_fail", "tests/conformance/test_runner.py::test_only_smoke"]
     },
     {
       "id": "cloud.live_managed",
@@ -2871,7 +2871,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§1",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_project.py::test_live_managed"]
     },
     {
       "id": "cloud.dashboard_retry_live",
@@ -2889,7 +2889,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D3",
-      "probe": null
+      "probe": ["demo/conformance/probes/test_project.py::test_dashboard_retry_live"]
     }
   ]
 }
