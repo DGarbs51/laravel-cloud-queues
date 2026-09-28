@@ -106,3 +106,17 @@ Other observations:
 
 - Laravel Cloud's edge (Cloudflare, browser integrity check enabled) rejects Python `urllib`'s default User-Agent with HTTP 403; `curl` succeeds. Relevant to any HTTP client calling a Cloud app.
 - Logs are retrievable with `cpx cloud environment:logs`, but only the most recent 100 lines.
+
+## Live smoke test of the real package (2026-09-28, D6c)
+
+`probe-app/` now installs `laravel-cloud-queues` from this repository (commit `44cec19`) and runs `python -m laravel_cloud_queues.cli work main:app` as background processes on the App cluster (1) and the worker cluster (4), with `LARAVEL_CLOUD_QUEUES_BACKEND=redis` against the environment's Laravel Valkey over TLS. One `POST /queue/e2e` from the web process dispatched six jobs; the workers recorded:
+
+| Case | Observed |
+|---|---|
+| `ok` (sync), `async_ok` | Processed on attempt 1 |
+| `delayed` (5 s) | Processed on attempt 1 after the delay |
+| `flaky_retry` (`tries` 2, backoff 3 s) | Released on attempt 1 (`status: released`), processed on attempt 2 |
+| `terminal_fail` (`tries` 2) | Released on attempt 1; on attempt 2 one D6b `failed_job` JSON line, then `status: failed` |
+| `timeout_then_terminal` (`tries` 2, timeout 3 s) | Attempt 1: "exceeded its 3 s timeout; it will be retried", worker exited 124 and was restarted by Cloud 0.8 s later; the reservation lease (60 s) expired and the job was redelivered; attempt 2 timed out and was failed as the last attempt (`failed_job` line, `status: failed`), exit 124, restarted again |
+
+Confirmed in addition to the prototype run: **Laravel Cloud restarts a background process after it exits 124** (the gap noted above), the package's Redis lease expiry redelivers a timed-out job with an incremented attempt, and D6b failure records and per-outcome JSON lines appear in `environment:logs`.
