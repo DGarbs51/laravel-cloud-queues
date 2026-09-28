@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.metadata
+
 from .config import QueueConfig, load_config
 from .errors import (
     ArgumentError,
@@ -17,7 +19,8 @@ from .errors import (
 from .jobs import DispatchReceipt, Job, JobContext, RetryPolicy, current_job
 from .registry import Registry
 
-__version__ = "0.1.0"
+# Single source of truth is pyproject.toml; bump with `uv version --bump <part>`.
+__version__ = importlib.metadata.version("laravel-cloud-queues")
 
 __all__ = [
     "ArgumentError",
