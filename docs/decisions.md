@@ -79,8 +79,8 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
 
 - **Terminal failures outside managed mode (D6b):** log only.
   1. Write the full failure record as one structured JSON line to the worker's log output (visible in Cloud's Logs tab).
-  2. Also emit the D1 `failed_job` event to the log socket when it exists; best-effort, and unverified whether it surfaces anywhere.
-  3. Delete the message.
+  2. Delete the message.
+  - (Revised by D12: no `failed_job` event is sent in these modes.)
   - No failed-job store, dead-letter queue or retry command in v1. Re-running a failed job means dispatching it again.
 
 - **Testing (D6c):**
@@ -128,3 +128,7 @@ Local development and agents use `moto` for SQS tests (no Docker required). CI u
 GitHub Actions:
 - Full gate (§5) on every push to `main` and on pull requests: Python 3.10–3.14 matrix on Linux, with LocalStack and Valkey/Redis service containers.
 - Upstream drift check (§2) on a weekly schedule, advisory only.
+
+## D12 — No lifecycle events outside managed queues (2026-09-28)
+
+Per the Laravel Cloud team, only managed queues receive queue lifecycle events today. In `sqs` and `redis` modes the package sends no lifecycle or `failed_job` events to the log socket; workers log structured lines instead. Revisit if the platform starts ingesting them for worker clusters.

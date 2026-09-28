@@ -21,7 +21,7 @@ These are settled; the lead's interview only needs to cover anything not listed 
 ## Authority
 
 1. **`PROJECT_SCOPE.md` is authoritative.** This prompt defines execution, ownership and gates. It does not restate the scope; when it cites a section (§), read that section. Nothing here is a substitute for the scope.
-2. **`docs/decisions.md` (D1–D11)** records resolved decisions. The scope incorporates them; if the two disagree, the decision record wins and the scope must be corrected.
+2. **`docs/decisions.md` (D1–D12)** records resolved decisions. The scope incorporates them; if the two disagree, the decision record wins and the scope must be corrected.
 3. **`docs/references.md`** lists what to verify against: pinned public sources, Laravel Cloud docs, and private Laravel repositories (cite by name only).
 4. **`docs/audits/2026-09-27/`** explains why the scope says what it says, including `platform-findings.md` (live Laravel Cloud evidence).
 

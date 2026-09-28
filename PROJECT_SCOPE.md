@@ -759,8 +759,9 @@ On terminal failure in `managed` mode:
 On terminal failure in `sqs` and `redis` modes (D6b):
 
 1. write the full failure record as one structured JSON line to the worker's log output (visible in Laravel Cloud's Logs tab);
-2. also emit the `failed_job` event to the log socket when it exists (best-effort; unverified whether it surfaces anywhere);
-3. delete the message.
+2. delete the message.
+
+No `failed_job` or lifecycle events are sent to the log socket in these modes (D12).
 
 There is no dead-letter queue or retry command in v1; re-running a failed job means dispatching it again.
 
@@ -986,7 +987,7 @@ Record/log telemetry degradation locally and let the conformance report surface 
 
 Agent `/result` reporting is **not** observability; it is part of queue correctness and remains fatal when unavailable after bounded retries (§11).
 
-In `sqs` and `redis` modes, lifecycle events are still emitted to the log socket when it exists. Whether they surface anywhere in Laravel Cloud outside managed queues is unverified; the Queues dashboard covers managed queues only.
+In `sqs` and `redis` modes, the package emits **no** lifecycle or `failed_job` events: Laravel Cloud currently ingests queue lifecycle events for managed queues only (confirmed by the Laravel Cloud team, D12). Observability in these modes is the worker's own structured log lines. Revisit if the platform starts accepting them.
 
 ---
 
