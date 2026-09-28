@@ -1,7 +1,6 @@
 """Worker subprocess: lifespan once, teardown before ack, SIGTERM shutdown.
 
-Redis and the registry are on main. These tests invoke ``laravel-cloud-queues work``
-and fail until the worker CLI lands. They are not skipped when Valkey is up.
+``laravel-cloud-queues work`` against local Valkey. Not skipped when Valkey is up.
 """
 
 from __future__ import annotations
