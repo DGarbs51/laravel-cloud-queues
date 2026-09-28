@@ -223,6 +223,25 @@ as a **long-lived service and restarts it whenever it exits**, for any reason. C
   runtime at 90 seconds; **Pro** workers have no fixed runtime limit and one hour to finish.
   Keep job timeouts inside those limits.
 
+### Live smoke test on Laravel Cloud
+
+[`probe-app/`](probe-app/README.md) is a repository-only FastAPI probe that runs the real
+package on Laravel Cloud today: its App and worker clusters run
+`python -m laravel_cloud_queues.cli work main:app` as background processes in `redis` mode
+against the environment's Laravel Valkey, and its routes dispatch one job per case (success,
+delay, retry, terminal failure, timeout, bursts) and report what the workers recorded. Use
+it as the template for a live check of your own deployment. It is not shipped in the
+package, and its `/verify` route dumps the container environment, so deploy it only to a
+throwaway environment.
+
+Results of the 2026-09-28 run are recorded at the end of
+[`docs/audits/2026-09-27/platform-findings.md`](docs/audits/2026-09-27/platform-findings.md):
+sync and async jobs processed, a 5 s delay honored, a flaky job released and processed on
+attempt 2, a terminal failure logged as one `failed_job` line, and a timed-out job that
+exited the worker with 124, **was restarted by Laravel Cloud 0.8 s later**, was redelivered
+after the 60 s Redis lease expired and failed on its last attempt, all across five worker
+processes on two clusters sharing one Valkey queue over TLS.
+
 ### Managed queues (when Laravel Cloud enables them for Python)
 
 In managed mode the platform injects `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG`; the package
@@ -846,33 +865,59 @@ the worker process. Those belong to the transport tests and the conformance suit
 
 ## Demo and conformance suite
 
-`demo/` is an executable FastAPI conformance application, and `demo/conformance` runs every
-feature in the conformance catalog ([`docs/contract/catalog.json`](docs/contract/catalog.json))
-against local emulators (moto or LocalStack for SQS, a Redis/Valkey server, the Laravel
-Cloud agent emulator and observability collector in `harness/`) and reports what matches
-the pinned Laravel baseline (`laravel/framework` v13.33.0) and what deliberately deviates.
-From a repository checkout:
+`demo/` is an executable FastAPI conformance application (`demo.app:app`, with sync/async
+jobs, lifespan state, `yield` dependencies, named queues, retries, explicit release/fail,
+timeouts and large payloads), and `demo/conformance` runs every feature in the conformance
+catalog ([`docs/contract/catalog.json`](docs/contract/catalog.json)) against local
+emulators (moto or LocalStack for SQS, a Redis/Valkey server, the Laravel Cloud agent
+emulator and observability collector in `harness/`), spawning real worker subprocesses, and
+reports what matches the pinned Laravel baseline (`laravel/framework` v13.33.0) and what
+deliberately deviates. From a repository checkout:
 
 ```sh
 uv sync
 uv run python -m demo.conformance --sqs moto --report compatibility-report.json
-# equivalent entry point:
+# The console script delegates to the same runner (exit 2 outside a checkout):
 uv run laravel-cloud-queues conformance --sqs moto --report compatibility-report.json
 ```
 
+Options: `--sqs moto|localstack` (default from `LARAVEL_CLOUD_QUEUES_TEST_SQS`, else
+`moto`), `--report PATH` (default `compatibility-report.json`), `--only <feature.id> ...`
+for a subset (an explicitly selected report, not a release verdict); other arguments pass
+through to pytest. Process logs and sanitized collector captures land in
+`conformance-artifacts/`.
+
+| Variable | Meaning |
+|---|---|
+| `LARAVEL_CLOUD_QUEUES_TEST_SQS` | `moto` (in-process HTTP server, no Docker) or `localstack` |
+| `LARAVEL_CLOUD_QUEUES_TEST_SQS_ENDPOINT` | LocalStack endpoint (default `http://localhost:4566`) |
+| `LARAVEL_CLOUD_QUEUES_TEST_REDIS_URL` | Redis/Valkey for the `redis` probes (default `redis://127.0.0.1:6379/15`; Laravel Herd's Valkey works). Unique key prefixes, never `FLUSHDB` |
+| `LARAVEL_CLOUD_QUEUES_TEST_REDIS_TLS_URL` | A TLS Redis/Valkey with certificate verification for the `rediss://` probe, e.g. `rediss://localhost:6380/0?ssl_ca_certs=/path/ca.crt` |
+| `LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES` | `1` fails immediately when a service is missing instead of skipping the probe (CI) |
+
 It prints one `PASS`/`FAIL`/`PARTIAL`/`SKIPPED`/`UNSUPPORTED` line per feature plus a
-summary, and writes a JSON report with expected and observed behavior, evidence, upstream
-source references, evidence tier (`unit`, `socket`, `emulated`, `live`), deviation labels
-and environment metadata. The command exits non-zero on any missing catalog record or
-unapproved non-pass status; only the two live Laravel Cloud managed-queue checks may be
-skipped today. Run a subset with `--only <feature.id> ...`. See
-[`demo/README.md`](demo/README.md) for services and options.
+summary, and writes a JSON report with expected and observed behavior, evidence (for
+example original and retried message IDs and attempt counts), upstream source references,
+evidence tier (`unit`, `socket`, `emulated`, `live`), deviation labels and environment
+metadata. The command exits non-zero on any missing catalog record, unexecuted required
+probe or unapproved non-pass status. An unavailable local service skips its probe, and that
+skip **still fails the gate**: only the two live Laravel Cloud managed-queue checks may be
+skipped today. A full run also executes the packaging and typing checks, so it needs the
+development dependencies.
+
+CI runs the same command with `--sqs localstack` against pinned LocalStack and Valkey
+service containers plus a verified-TLS Valkey, uploads the report and
+`conformance-artifacts/`, and requires it for the aggregate gate; LocalStack is the
+authoritative SQS gate, moto is local convenience. See [`demo/README.md`](demo/README.md)
+for the producer/worker demo (`laravel-cloud-queues work demo.app:app` plus
+`python -m demo.produce`) and probe-authoring rules.
 
 **`demo/`, `probe-app/`, `harness/`, `tests/` and `docs/` are repository-only development
 tooling. They are not shipped in the PyPI wheel or sdist**, and a packaging test proves it.
 `laravel-cloud-queues conformance` from an installed package explains how to run the suite
 from a checkout instead of failing obscurely. `probe-app/` is a throwaway FastAPI app
-deployed to Laravel Cloud to inspect what the platform injects.
+deployed to Laravel Cloud to inspect what the platform injects and to run the
+[live smoke test](#live-smoke-test-on-laravel-cloud).
 
 ## Support matrix and public API
 
