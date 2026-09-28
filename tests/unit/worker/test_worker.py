@@ -12,7 +12,6 @@ import signal
 from typing import Any
 
 import pytest
-from tests.unit.worker.doubles import Exited, Harness, delivery
 
 from laravel_cloud_queues.errors import (
     AgentProtocolError,
@@ -29,6 +28,7 @@ from laravel_cloud_queues.errors import (
     TransportError,
 )
 from laravel_cloud_queues.worker import EXIT_CONFIG, EXIT_FATAL, EXIT_OK, EXIT_TIMEOUT
+from tests.unit.worker.doubles import Exited, Harness, delivery
 
 
 def exit_code(h: Harness) -> int:

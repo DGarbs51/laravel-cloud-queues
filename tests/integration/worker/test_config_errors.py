@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from tests.integration.worker.support import Workers, clean_env
 
 pytestmark = pytest.mark.subprocess

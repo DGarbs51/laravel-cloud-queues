@@ -238,14 +238,19 @@ def test_fastapi_extra_installs_and_imports(fastapi_venv: Path, tmp_path: Path) 
 
 
 def test_console_entry_point_runs(wheel_venv: Path, tmp_path: Path) -> None:
-    # TODO(cli lane): tighten this once `laravel_cloud_queues.cli.main` is implemented;
-    # today it unconditionally raises NotImplementedError (docs/contract/cli.md).
     script = _venv_script(wheel_venv, "laravel-cloud-queues")
     result = subprocess.run(
         [str(script), "--help"], cwd=tmp_path, capture_output=True, text=True, check=False
     )
-    assert result.returncode != 0
-    assert "NotImplementedError" in result.stderr + result.stdout
+    assert result.returncode == 0, result.stderr
+    for command in ("work", "inspect", "conformance"):
+        assert command in result.stdout
+    # Installed without a checkout: conformance explains how to run it and exits 2 (cli.md).
+    result = subprocess.run(
+        [str(script), "conformance"], cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 2
+    assert "repository checkout" in result.stderr
 
 
 def test_wheel_venv_does_not_see_repo_source(wheel_venv: Path, tmp_path: Path) -> None:

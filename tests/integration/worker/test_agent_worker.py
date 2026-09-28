@@ -18,14 +18,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from harness.agent_emulator import AgentEmulator, status
 from harness.log_collector import LogCollector, validate_failed_job_event, validate_sequence
-from tests.integration.worker.apps.basic import build
-from tests.integration.worker.support import Workers, clean_env
-
 from laravel_cloud_queues.config import load_config
 from laravel_cloud_queues.jobs.dispatch import prepare_dispatch
 from laravel_cloud_queues.registry import Registry
+from tests.integration.worker.apps.basic import build
+from tests.integration.worker.support import Workers, clean_env
 
 pytestmark = [
     pytest.mark.subprocess,
