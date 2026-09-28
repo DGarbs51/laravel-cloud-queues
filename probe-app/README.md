@@ -2,7 +2,7 @@
 
 Repository-only tooling. Not part of the published `laravel-cloud-queues` package.
 
-A minimal FastAPI app (Python 3.14, uv) whose `GET /verify` route reports what a Laravel Cloud container exposes. It lets us check the platform assumptions in `docs/audits/2026-09-27/` against a real deployment.
+A minimal FastAPI app (Python 3.14, uv) whose `GET /verify` route reports what a Laravel Cloud container exposes, plus a live smoke test of the real `laravel-cloud-queues` package on Laravel Cloud worker clusters (D6c). It installs the package from this repository (`[tool.uv.sources]` path `..`, built as a wheel because Cloud deploys only `probe-app/`).
 
 ## Deploy to Laravel Cloud
 
@@ -40,3 +40,22 @@ uv sync
 PROBE_TOKEN=dev uv run uvicorn main:app --port 8000
 curl "localhost:8000/verify?token=dev"
 ```
+
+## Queue smoke test (D6c)
+
+Environment: a Laravel Valkey cache attached (injects `REDIS_URL`) and `LARAVEL_CLOUD_QUEUES_BACKEND=redis`.
+Background processes on the App and worker clusters run:
+
+```sh
+python -m laravel_cloud_queues.cli work main:app
+```
+
+Dispatch one job per case and read what the workers recorded (all routes require `PROBE_TOKEN`):
+
+```sh
+curl -X POST "https://<your-app>/queue/e2e?token=$PROBE_TOKEN"        # returns {case: job uuid}
+curl "https://<your-app>/queue/jobs/<uuid>?token=$PROBE_TOKEN"          # events per attempt
+curl -X POST "https://<your-app>/queue/burst?n=50&token=$PROBE_TOKEN"
+```
+
+Cases: `ok` (sync), `async_ok`, `delayed` (5 s), `flaky_retry` (tries 2, fails once), `terminal_fail` (tries 2, D6b failure record in the worker log), `timeout_then_terminal` (timeout 3 s, exits 124 twice, failed on the last attempt). Worker logs (`cpx cloud environment:logs`) show one JSON line per outcome.
