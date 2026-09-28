@@ -15,6 +15,8 @@ from ..codecs import CodecRegistry
 from ..config import QueueConfig
 from ..jobs.job import AnyJob, Job
 from ..jobs.policy import RetryPolicy
+from ..observability import Telemetry
+from ..transports import Backend
 
 if TYPE_CHECKING:
     from ..jobs.context import JobContext
@@ -67,10 +69,13 @@ class Registry:
         invoker: Invoker | None = None,
         include: Sequence[str | ModuleType] = (),
         discover: Sequence[str] = (),
+        backend: Backend | None = None,
+        telemetry: Telemetry | None = None,
     ) -> None:
         """``config`` defaults to :func:`load_config` resolved lazily on first dispatch or
         worker start. ``include``: modules imported by the worker at start (canonical).
-        ``discover``: packages walked for job modules (opt-in convenience)."""
+        ``discover``: packages walked for job modules (opt-in convenience). ``backend`` /
+        ``telemetry`` override the ones built from ``config`` (tests, harnesses)."""
         raise NotImplementedError
 
     @property
@@ -83,6 +88,17 @@ class Registry:
 
     @property
     def codecs(self) -> CodecRegistry:
+        raise NotImplementedError
+
+    @property
+    def backend(self) -> Backend:
+        """Lazily ``create_backend(self.config)`` (thread-safe, once per process)."""
+        raise NotImplementedError
+
+    @property
+    def telemetry(self) -> Telemetry:
+        """Lazily built: socket sink on ``config.log_socket`` in managed mode, else a no-op
+        sink (D12). Stdout failure lines are written in every mode."""
         raise NotImplementedError
 
     @property

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 from ..config import Mode, QueueConfig
 from .base import (
@@ -23,6 +23,7 @@ __all__ = [
     "SQS_MAX_PAYLOAD_BYTES",
     "Backend",
     "Consumer",
+    "ConsumerFactory",
     "Delivery",
     "OutgoingMessage",
     "Producer",
@@ -31,11 +32,15 @@ __all__ = [
 ]
 
 
+class ConsumerFactory(Protocol):
+    def __call__(self, *, lease_seconds: int = 60) -> Consumer: ...
+
+
 @dataclass(frozen=True)
 class Backend:
     mode: Mode
     producer: Producer
-    consumer_factory: Callable[[], Consumer]
+    consumer_factory: ConsumerFactory
     """Creates the worker's consumer lazily (web processes never open one)."""
 
 
