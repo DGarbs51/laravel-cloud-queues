@@ -1,6 +1,9 @@
 # CLI contract
 
-One entry point: `laravel-cloud-queues` (`laravel_cloud_queues.cli:main`), stdlib `argparse`.
+One entry point: `laravel-cloud-queues` (`laravel_cloud_queues.cli:main`), built on `click`.
+The command group `laravel_cloud_queues.cli:cli` can be mounted in any click CLI, for example
+Flask's: `app.cli.add_command(cli, "queues")` gives `flask queues work ...`. A mounted group
+keeps the same error handling and exit codes.
 Errors are actionable one-line messages; `--debug` adds tracebacks. Secrets are never printed.
 
 ## `work TARGET`

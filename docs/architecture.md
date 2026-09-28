@@ -82,7 +82,9 @@ propagation. All best-effort: a telemetry failure is logged and never raised.
 asyncio on the main thread. Per delivery: receive, decode, pre-run attempt check, arm
 `setitimer`, start the lease watchdog thread, run, disarm, report exactly one outcome.
 Timeouts exit the process with 124 from the signal handler. `SIGTERM` finishes the current
-job before exiting. Exit codes 0/1/2/124 are documented in the README.
+job before exiting. Exit codes 0/1/2/124 are documented in the README. The CLI is a `click`
+group (`cli.cli`); `cli.main(argv)` wraps it for the console script and returns the exit
+code.
 
 ## Configuration flow
 
@@ -95,7 +97,7 @@ loads configuration lazily on first dispatch or worker start, and never in eager
 
 ## Extension points
 
-**Framework adapters** (Django, Flask, ...) build on three seams and do not touch
+**Framework adapters** (Django, Flask, ...) build on four seams and do not touch
 transports or the worker:
 
 1. **`Invoker`** (`laravel_cloud_queues.registry.Invoker`): `is_injected(parameter)` decides
@@ -110,6 +112,9 @@ transports or the worker:
 3. **Registration sugar**: an adapter wraps `Registry.job(...)` with framework-native
    declaration (decorators, settings, management commands) while keeping the same wire
    contract, so a Django producer and a FastAPI worker could share a queue.
+4. **CLI**: the `click` group `laravel_cloud_queues.cli.cli` mounts into a click-based host
+   CLI (`app.cli.add_command(cli, "queues")` in Flask). A Django management command can
+   delegate to `laravel_cloud_queues.cli.main(argv)`, which returns the exit code.
 
 **Codecs**: register a `Codec` (tag, Python type, `encode`, `decode`) on the registry's
 `CodecRegistry` to serialize an application type; the tag is only ever resolved through
