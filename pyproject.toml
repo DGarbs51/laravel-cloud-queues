@@ -67,7 +67,7 @@ only-include = ["src/laravel_cloud_queues", "README.md", "LICENSE", "pyproject.t
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-src = ["src", "tests", "harness", "demo"]
+src = ["src", "."]
 extend-exclude = ["probe-app", ".worktrees", "*.md"]
 
 [tool.ruff.lint]
@@ -93,7 +93,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = ["-ra", "--strict-markers"]
+addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
 timeout = 120
 markers = [
     "agent: needs the local Laravel Cloud agent emulator",

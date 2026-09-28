@@ -53,8 +53,12 @@ option validation, argument encoding, envelope, size check; pure CPU) -> `to_thr
 **Worker.** `anyio.run(..., backend="asyncio")` on the main thread. Enter the target's
 lifespan once. Loop: `to_thread(consumer.receive)` -> `started` -> `prepare_execution`
 (job defects are terminal) -> pre-run attempt check -> arm `setitimer` + start watchdog
-thread -> `run_prepared` (invoker; sync handlers run directly on the main thread) -> disarm,
-stop watchdog -> report outcome to the consumer -> completion event. See worker.md.
+thread -> `run_prepared` (handler + per-job teardown; sync handlers run on the main thread)
+-> disarm, stop watchdog -> report outcome. Managed mode completes a terminal message before
+`failed_job` -> `failed`; self-managed `sqs`/`redis` writes the failure line to stdout before
+completion and sends no socket events (D6b/D12). Completion events are immediate, and the
+timer excludes reporting/rest (`completion-event-immediate`, `timeout-window-handler-only`,
+both project deviations; D13.2). See worker.md for outcomes and acknowledgement failures.
 
 **Eager testing.** `registry.testing(eager=True)` swaps the dispatch send step for a recorder
 that immediately runs `prepare_execution` + `run_prepared` on the encoded body (same code

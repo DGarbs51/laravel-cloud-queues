@@ -30,10 +30,10 @@ Verdict: **confirmed**. Nuances: a Laravel worker with `--queue=high,low` never 
 
 | | Source | Behaviour |
 |---|---|---|
-| Laravel | `LF:Foundation/Cloud/Queue.php:294-324` `requestNextJobFromAgent()`: `->timeout(65)->retry([0, 500], throw: false)->get('/next')`; `LF:Support/helpers.php:311-346` `retry()`: array `$times` → `count + 1` attempts, delay `$backoff[$attempts - 1]`; `LF:Http/Client/PendingRequest.php:1055-1128` `send()` | Three attempts total; sleeps 0 ms after the first failure and 500 ms after the second. Because no `when` callback is given, both `ConnectionException` and any non-2xx response are retried (`send()` throws the response on attempts 1–2; `throw: false` returns the final response instead of throwing). Only then: 204 → `null`; non-OK → `AgentUnreachableException`; non-array JSON → `AgentUnreachableException`. |
+| Laravel | `LF:Foundation/Cloud/Queue.php:294-324` `requestNextJobFromAgent()`: `->timeout(65)->retry([0, 500], throw: false)->get('/next')`; `LF:Support/helpers.php:311-346` `retry()`: array `$times` → `count + 1` attempts, delay `$backoff[$attempts - 1]`; `LF:Http/Client/PendingRequest.php:1055-1128` `send()` | Three attempts total; sleeps 0 ms after the first failure and 500 ms after the second. Because no `when` callback is given, both `ConnectionException` and HTTP 4xx/5xx responses are retried (`send()` throws the response on attempts 1–2; `throw: false` returns the final response instead of throwing). After HTTP handling: 204 → `null`; any other non-200 response → `AgentUnreachableException`; non-array JSON on 200 → `AgentUnreachableException`. Returned 3xx and 201 responses are not retried: `Response::throw()` throws only for client/server errors (`LF:Http/Client/Response.php:250-272, 352-362`). |
 | Symfony | `SOC:Queue/Agent/AgentClient.php:44-76` `next()` | One request; `ConnectException` → `TransportException`; any other `GuzzleException` → `TransportException`. |
 
-Verdict: **confirmed**. Test evidence: `LF:tests/Foundation/Cloud/QueueTest.php:1206-1250` (`testPopRetriesATimedOutLongPollImmediately`, `testPopThrowsWhenEveryLongPollAttemptTimesOut`: 3 requests, one `usleep(500_000)`). Nuance: Laravel also retries non-2xx statuses (see §3, question 4).
+Verdict: **confirmed**. Test evidence: `LF:tests/Foundation/Cloud/QueueTest.php:1206-1250` (`testPopRetriesATimedOutLongPollImmediately`, `testPopThrowsWhenEveryLongPollAttemptTimesOut`: 3 requests, one `usleep(500_000)`). Nuance: Laravel also retries HTTP 4xx/5xx responses (see §3, question 4).
 
 ### Row 3 — 200 without `messageId`
 
@@ -132,7 +132,7 @@ Laravel `LF:Foundation/CloudBootstrapper.php:217-241`: `json_decode(..., flags: 
 
 ### Row 18 — `credentials: "ecs"`
 
-Laravel `LF:Queue/Connectors/SqsConnector.php:87-113` `resolveCredentialProvider()`: `match` on the string: `ecs` → `CredentialProvider::ecsCredentials`, `instance` → `instanceProfile`, other string → `InvalidArgumentException`. `withCredentials()` (`:61-78`): when the key is absent (or not a string), it falls through to `key`/`secret`, else optionally a cached default provider, else the SDK's own default chain. Symfony `SOC:Queue/Sqs/SqsClientFactory.php:20-36`: `ecs` → ECS provider; anything else → SDK default chain; region defaults to `us-east-1`. Verdict: **confirmed**.
+Laravel `LF:Queue/Connectors/SqsConnector.php:87-113` `resolveCredentialProvider()`: `match` on the string: `ecs` → `CredentialProvider::ecsCredentials`, `instance` → `instanceProfile`, other string → `InvalidArgumentException`. `withCredentials()` (`:61-78`): when the key is absent, it first honors explicit `key`/`secret` (including `token`), else optionally a cached default provider, else the SDK's default chain. Non-string values are not all fallbacks: `resolveCredentialProvider()` (`:89-107`) also accepts provider objects (for example `{"provider":"ecs"}`) and callable providers. The project accepts only the strings `ecs`/`instance` in managed mode (`credentials-explicit-only`, D13.4). Symfony `SOC:Queue/Sqs/SqsClientFactory.php:20-36`: `ecs` → ECS provider; anything else → SDK default chain; region defaults to `us-east-1`. Verdict: **confirmed**.
 
 ### Row 19 — Queue URL
 
@@ -164,7 +164,7 @@ Nuances that change fixtures are listed with the rows and in §4.
 - **released:** `LF:Queue/Worker.php:671-684` (`finally` of `handleJobException`): `$job->release($backoff)` → `CloudJob::release()` (`CloudJob.php:55-61`) reports `released` with `delay`; `SqsJob::release()` calls `ChangeMessageVisibility`. The exception is rethrown (`:686`) and the `released` event follows at the next `pop()`.
 - **terminal failure:** `LF:Queue/Jobs/Job.php:182-225` `fail()`: `markAsFailed()` → (return if already deleted) → `try { $this->delete(); $this->failed($e); } finally { dispatch(JobFailed) }`. `delete()` is the acknowledgement (POST `processed` / `DeleteMessage`). `JobFailed` reaches `WorkCommand::logFailedJob()` (`LF:Queue/Console/WorkCommand.php:203-207, 421-428`) → `FailedJobProvider::log()` (`LF:Foundation/Cloud/FailedJobProvider.php:57-92`): `failed_job` emitted, then `finishProcessingJob(timestamp:)` emits `failed`. **Exact order: delete/`processed` → `failed_job` → `failed`.** Because the dispatch is in a `finally`, the two events are still emitted when `delete()` throws (agent 4xx/5xx).
 
-Consequence: D1 and §15 ("the message is completed before the record is written") match Laravel; §11 ("Terminal failure deletes after failure reporting") and §12 ("emit `failed_job`; complete the message" / "emit `failed` and `failed_job` ... then complete") do not. See §4.
+Project resolution (D13.1): D1/§15 match Laravel in managed mode, through either the agent or direct SQS: complete → `failed_job` → `failed` (same timestamp). This supersedes the reversed managed-mode wording in §11/§12. Self-managed `sqs`/`redis` retains D6b: write the structured failure record to stdout first, then complete; no socket events (D12). Terminal timeouts follow the same mode-specific order, then exit 124.
 
 ### Q2. Undecodable payload / unknown job: is `started` emitted first? Which events?
 
@@ -184,13 +184,13 @@ A `{"@pointer": ...}` body with overflow disabled behaves as a malformed body in
 
 The loop continues in every case (`Worker::runJob()` `LF:Queue/Worker.php:558-573`: report, `stopWorkerIfLostConnection` is false for a plain `RequestException`). The flags are set before the report, so the job is never reported twice (`CloudJob.php:41-43, 58-60`; test `QueueTest.php:992-1015`). What is emitted depends on where the 4xx happened:
 
-1. **4xx on `processed` after a successful handler** (inside `fire()`): `deleted = true`, exception propagates out of `fire()` → `handleJobException` → with `tries = 1` `markJobAsFailedIfWillExceedMaxAttempts` calls `fail()`, which returns early because `isDeleted()` (`Job.php:186-188`) — no `JobFailed`, so **no `failed_job`**; but `markAsFailed()` ran, so the next `pop()` emits a **`failed`** lifecycle event. With `tries > 1` nothing marks the job and the next `pop()` emits `processed`.
+1. **4xx on `processed` after a successful handler** (inside `fire()`): `deleted = true`, exception propagates out of `fire()` → `handleJobException` → with `tries = 1` `markJobAsFailedIfWillExceedMaxAttempts` calls `fail()`, which returns early because `isDeleted()` (`Job.php:186-188`) — no `JobFailed`, so **no `failed_job`**; but `markAsFailed()` ran, so the next `pop()` emits a **`failed`** lifecycle event. With attempts remaining, nothing marks the job and the next `pop()` emits `processed`.
 2. **4xx on `released`**: `released = true` was set first; the next `pop()` emits **`released`**.
 3. **4xx on `processed` inside `fail()`**: `JobFailed` still fires from the `finally`, so **`failed_job` then `failed`** are emitted, then the `RequestException` propagates.
 
 Symfony: `RuntimeException` (`AgentClient.php:131-133`); event behaviour after it is not determinable from source.
 
-Recommendation for the contract: emit the lifecycle event for the outcome the worker chose (`processed`/`released`/`failed`) regardless of the 4xx, log `AgentProtocolError`, do not report again. This matches Laravel in cases 2 and 3 and in the `tries > 1` variant of case 1; Laravel's `failed`-without-`failed_job` in case 1 is an artefact, not a design.
+Project decision (D13.5): emit the lifecycle event for the chosen outcome (`processed`/`released`/`failed`) after 4xx, log `AgentProtocolError`, and do not report again. Label `outcome-event-after-ack-rejection` (follows project). Laravel differs when a successful handler's processed report is rejected on its last permitted attempt: it emits `failed` without `failed_job`. With attempts remaining it can emit `processed`; release/terminal paths remain as described above.
 
 ### Q4. Exact agent protocol
 
@@ -201,16 +201,16 @@ Recommendation for the contract: emit the lifecycle event for the outcome the wo
 | | Laravel | Symfony |
 |---|---|---|
 | Path / query / body | `/next`, no query, no body | same |
-| Headers | Laravel HTTP client defaults (`Accept`/`Content-Type: application/json` from `asJson()`, Guzzle User-Agent); nothing bespoke | Guzzle defaults |
+| Headers | No bespoke agent headers. `asJson()` selects JSON body format, not `Accept: application/json`; that requires the separate `acceptJson()` call, which the agent does not make (`PendingRequest.php:325-328, 432-445`). Guzzle supplies its defaults | Guzzle defaults |
 | Timeout | 65 s total request timeout (`Queue.php:298`) | 65 s (`AgentClient.php:50`) |
-| Retries | 3 attempts, sleeps 0 ms then 500 ms; retried on connection errors **and** non-2xx statuses (`Queue.php:299`; `PendingRequest.php:1075-1128`; `helpers.php:311-346`) | 1 attempt |
+| Retries | 3 attempts, sleeps 0 ms then 500 ms; retried on connection errors **and** HTTP 4xx/5xx responses (`Queue.php:299`; `PendingRequest.php:1075-1128`; `helpers.php:311-346`) | 1 attempt |
 | 204 | `null` (`Queue.php:307-309`) | `null` (`AgentClient.php:61-63`) |
 | Other non-OK | `AgentUnreachableException` (`:311-315`) | `TransportException` (`:65-67`) |
 | Body | `$response->json()` (associative decode, `LF:Http/Client/Response.php:107-115`); non-array → `AgentUnreachableException` (`:317-321`) | `json_decode(..., true)`; non-array → `TransportException` (`:69-73`) |
 | `messageId` | non-empty string required, else empty poll (`:264-266`) | same (`CloudQueueTransport.php:304-306`) |
 | `receiptHandle` | string, else `null` (`:269`) | same (`:308`) |
 | `body` | string, else `''` (`:277`) | same (`:309`) |
-| `attributes` | `?? []`; `ApproximateReceiveCount` read by `(int)` cast — **missing → 0** (`:278`; `SqsJob.php:132-135`) | `max(1, (int) (... ?? 1))` — missing → 1 (`:315, 359-362`) |
+| `attributes` | `?? []`; `SqsJob::attempts()` indexes `ApproximateReceiveCount` without a fallback (`:278`; `SqsJob.php:132-135`). Numeric strings are cast; a missing key raises **`ErrorException`** under the console error handler (`LF:Foundation/Console/Kernel.php:120-127`; `LF:Foundation/Bootstrap/HandleExceptions.php:47-49, 71-77`) | `max(1, (int) (... ?? 1))` — missing → 1 (`:315, 359-362`) |
 | `queueUrl` | `?? null`, stored as the `CloudJob` queue; **not** used for telemetry (`:281`; telemetry uses the pop argument, `:250, 542`) | string non-empty, else config `queueUrl`; used for telemetry normalization and direct-mode SQS calls (`:313`; `QueueEventSubscriber.php:261-267`) |
 
 **`POST /result`**
@@ -220,12 +220,14 @@ Recommendation for the contract: emit the lifecycle event for the outcome the wo
 | Body | JSON object `{messageId, receiptHandle, status, delay}` through `array_filter(..., fn ($v) => $v !== null)`: `null` omitted, `0` kept | identical filter (`:96-101`) |
 | `status` values used | `processed` (`CloudJob::delete`), `released` (`CloudJob::release`, with `delay`); no `failed` status, no `queueUrl` | `processed` (`ack`, poison decode), `released` (`release`) |
 | Timeout | 10 s per attempt | 10 s per attempt |
-| Retries | `retry(3, 100, when: ConnectionException)` → 3 attempts, 100 ms sleeps, connection errors only; `throw()` makes any non-2xx raise immediately | loop: `ConnectException` → up to 3 attempts, `usleep(100_000)`; any other `GuzzleException` → `TransportException` without retry |
+| Retries | `retry(3, 100, when: ConnectionException)` → 3 attempts, 100 ms sleeps, connection errors only; `throw()` makes HTTP 4xx/5xx responses raise immediately; it does not reject returned 3xx (`Response.php:250-272, 352-362`) | loop: `ConnectException` → up to 3 attempts, `usleep(100_000)`; any other `GuzzleException` → `TransportException` without retry |
 | 5xx | `AgentUnreachableException` (fatal, exit 0 via lost-connection path) | `TransportException` |
 | 4xx | rethrown `RequestException` (non-fatal) | `RuntimeException` |
 | 2xx | success (no body parsing) | success |
 
-Differences: GET retry count; GET connect timeout; missing receive count (0 vs 1); telemetry queue source; Laravel additionally retries non-2xx GET statuses.
+Returned 3xx and 201 responses are not retried; GET rejects any final response other than 200/204. Agent unavailability, including exhausted retries after a lost `/result` response, is `AgentUnavailableError` and exits 0 in the project. The exit-1 ambiguous-ack rule applies only to direct SQS/Redis brokers.
+
+Differences: GET retry count; GET connect timeout; missing receive count (`ErrorException` under Laravel console bootstrapping vs Symfony 1); telemetry queue source; Laravel additionally retries HTTP 4xx/5xx GET responses.
 
 ### Q5. `failed_job` event fields
 
@@ -279,6 +281,8 @@ Order at the pin (`LF:Queue/Worker.php:319-356`, Cloud configuration `LF:Foundat
 
 Events: retryable timeout → `released` (via `WorkerStopping`); terminal timeout → `failed_job`, `failed` (no `released`). Test `QueueTest.php:1346-1383, 1462-1509`.
 
+Project deviation `timeout-window-handler-only` (D13.2, follows project): arm only around handler execution and per-job teardown, after decoding/pre-run checks, and disarm before outcome reporting and `--rest`. Laravel arms before `process()` and resets after reporting/rest (`LF:Queue/Worker.php:268-296`), so its timeout can fire during those phases. Managed terminal timeouts complete → `failed_job` → `failed` → exit 124; self-managed `sqs`/`redis` writes its stdout failure record → completes → exits 124, with no socket events (D6b/D12).
+
 ### Q9. Queue URL rules
 
 - `SqsQueue::getQueue($queue)` (`LF:Queue/SqsQueue.php:687-694`): `enum_value($queue) ?: $this->default` (empty string → default), `resolveQueue()` (queue routing), then `FILTER_VALIDATE_URL` → pass-through unchanged, else `suffixQueue()`.
@@ -311,20 +315,22 @@ Events: retryable timeout → `released` (via `WorkerStopping`); terminal timeou
 
 ### Q12. Contradictions with `PROJECT_SCOPE.md` / `docs/decisions.md`
 
-Evidence-based; none of these files were edited.
+Evidence-based resolutions incorporated in D13 and the contract pack after R2 review. `PROJECT_SCOPE.md` wording noted here remains superseded where D13 says so.
 
-1. **Acknowledgement order (§11, §12 vs Laravel, D1, §15).** Laravel acknowledges (`delete`/`processed`) before `failed_job` and `failed` (Q1). §11 "Terminal failure deletes after failure reporting" and §12 "emit the `failed_job` event; complete the message" / "emit `failed` and `failed_job` from the worker, then complete the message" reverse it. D1 ("Laravel deletes the message before the record is written") and §15 are correct. The contract should say: complete → `failed_job` → `failed`.
-2. **Deterministic defects terminal on first delivery (§8, §12, §24) is not Laravel behaviour.** Laravel applies the ordinary retry policy to malformed bodies and unknown classes (Q2). Symfony deletes on decode failure. Unlabeled deviation; catalog label `deterministic-defects-terminal` (follows project).
-3. **Missing `ApproximateReceiveCount` → 1 (§11)** is Symfony; Laravel yields 0 (Q4). Catalog label `missing-receive-count-is-one` (follows symfony).
+1. **Acknowledgement order (§11, §12 vs Laravel, D1, §15).** Laravel acknowledges (`delete`/`processed`) before `failed_job` and `failed` (Q1). §11 "Terminal failure deletes after failure reporting" and §12 "emit the `failed_job` event; complete the message" / "emit `failed` and `failed_job` from the worker, then complete the message" reverse it. D1 ("Laravel deletes the message before the record is written") and §15 are correct. D13.1 resolves managed mode as complete → `failed_job` → `failed`; self-managed `sqs`/`redis` keeps D6b's stdout failure record → complete, with no socket events (D12).
+2. **Deterministic defects terminal on first delivery (§8, §12, §24) is not Laravel behaviour.** Laravel applies the ordinary retry policy to malformed bodies and unknown classes (Q2). Symfony deletes on decode failure. Catalog deviation label `deterministic-defects-terminal` (follows project).
+3. **Missing `ApproximateReceiveCount` → 1 (§11)** is the project/Symfony fallback. Laravel indexes the missing key without a fallback, raising `ErrorException` under its console `HandleExceptions` handler (Q4). The project parses numeric strings and defaults missing/invalid values to 1; Symfony casts and clamps. Catalog label `missing-receive-count-is-one` (follows symfony).
 4. **Telemetry queue from agent `queueUrl` (§11)** is Symfony; Laravel normalizes the pop argument (Q4, Q6). Catalog label `telemetry-queue-from-queue-url` (follows symfony).
-5. **`WaitTimeSeconds=20`, `MaxNumberOfMessages=1` (§11)** are Symfony's parameters; Laravel's `SqsQueue::pop` passes neither (`SqsQueue.php:644-657`). Catalog label `receive-long-poll-params` (follows symfony).
-6. **`GET /next` retry trigger (§11).** Laravel retries any non-2xx status as well as connection errors (Q4); §11 limits retries to connection errors and makes other statuses immediately fatal. Minor; lead's call (catalog records Laravel's behaviour on `agent.next_retries`; the project rule is flagged as a nuance, not a deviation, until decided).
+5. **Direct polling (§11, D13.5).** One SQS queue uses Symfony's `WaitTimeSeconds=20`, `MaxNumberOfMessages=1`; several queues use priority short polls (`WaitTimeSeconds=0`), then `--sleep` only if all are empty. No extra sleep follows an empty long poll. Redis blocks for at most `--sleep`, without an extra sleep after the wait. Laravel's `SqsQueue::pop` passes neither wait nor batch size (`SqsQueue.php:644-657`), and its worker always sleeps `--sleep` after an empty pop (`Worker.php:289-292`). Label `receive-long-poll-params` follows Symfony's single-queue parameters with these project polling/sleep choices.
+6. **`GET /next` retry trigger (§11).** Laravel retries HTTP 4xx/5xx responses as well as connection errors (Q4); §11 limits retries to connection errors. D13.3 adopts Laravel's retry triggers. Returned 3xx/201 responses are not retried and GET accepts only 200/204.
 7. **§6 "driver other than `cloud`, or a missing `connection` … configuration error. This follows Laravel's throwing decoder."** Laravel throws only on malformed JSON; a non-`cloud` driver silently disables managed queues and a missing `connection` is auto-created (row 17). The stricter shape check is a project decision; catalog label `managed-config-strict-shape` (follows project).
-8. **§6 credentials.** Laravel throws only for an unknown *string*; an absent `credentials` key falls through to `key`/`secret` and then the SDK default chain (row 18). The scope does not define an absent key; the catalog treats it as a configuration error in managed mode (label `credentials-explicit-only`, follows project) — confirm.
-9. **`processed`/`released` timing (§15).** Laravel emits the completion event at the next `pop()`/stop, so `duration_ms` includes `--rest` and post-job time; the project emits at outcome completion. Semantically equivalent ("one completion event per delivery"); recorded as a nuance, not a deviation.
+8. **§6 credentials.** Laravel rejects unknown named providers, accepts provider objects/callables, and uses explicit `key`/`secret` (including `token`) before the SDK default chain when `credentials` is absent (row 18). D13.4 permits only the strings `ecs`/`instance` in project managed mode; all other or missing values are configuration errors (label `credentials-explicit-only`, follows project).
+9. **`processed`/`released` timing (§15).** Laravel emits the completion event at the next `pop()`/stop, so `duration_ms` includes `--rest` and post-job time; the project emits at outcome completion. D13.2 labels this `completion-event-immediate` (follows project); the duration endpoint intentionally excludes `--rest` and idle time before the next poll.
 10. **D7 exit codes: "0 … agent unhealthy (matches Laravel)".** Confirmed, with the nuance that on the `GET /next` path Laravel sleeps 1 s before exiting (`Worker.php:501-507`).
 
-No contradiction found for: D2 (timeout mechanics), D4 (policy in payload; Laravel fills only `null` fields from worker defaults), D1 field set and order, §6 queue URL rules, §10 FIFO defaults, §14 no-release-on-timeout, §15 timestamp format and `duration_ms` carriers, §23 exit 124.
+The timeout-window difference is labeled `timeout-window-handler-only` (D13.2; Q8). D13.8 replaces §11's Redis timeout+margin expiry with now + lease (default 60 s), renewed every lease/3, allowing `timeout=0`; direct SQS receive sets `VisibilityTimeout=lease`. Laravel Redis uses `availableAt(retryAfter)` (`LF:Queue/RedisQueue.php:589-594`).
+
+No further contradiction found for: D2 (process-level timeout mechanics), D4 (policy in payload; Laravel fills only `null` fields from worker defaults), D1 field set and order, §6 queue URL intent (the precise repeated-suffix behavior is in Q9/§4), §10 FIFO defaults, §14 no-release-on-timeout, §15 timestamp format and `duration_ms` carriers, §23 exit 124.
 
 ---
 
@@ -333,12 +339,12 @@ No contradiction found for: D2 (timeout mechanics), D4 (policy in payload; Larav
 - `array_filter($options)` drops **falsy** `MessageGroupId`/`MessageDeduplicationId`: `''` and `'0'` are omitted by Laravel (`SqsQueue.php:635`). The project validates IDs (1–128 chars) so `'0'` is a valid explicit ID; only `''` means "omit".
 - `exception_preview` is 1 001 UTF-8 **characters**; a message of `'0'` is treated as empty.
 - `failed_job.id` is a UUIDv7 derived from the failure timestamp, which is also the `failed` lifecycle timestamp.
-- Terminal timeout emits `failed_job` + `failed` and **no** `released`; retryable timeout emits only `released`. Both exit 124 without releasing the message.
+- In managed mode, terminal timeout completes → `failed_job` → `failed` (no `released`); retryable timeout emits only `released`. In self-managed `sqs`/`redis`, terminal timeout writes the failure record to stdout → completes; retryable timeout writes an info line. Both modes exit 124 without releasing the message; self-managed modes send no socket events.
 - `started` is emitted before the body is decoded; `job_name` is `''` when the body is not JSON.
 - `queued` is emitted after `SendMessage` succeeds, with the logical (normalized) queue name; never for a failed send.
-- Missing receive count: Laravel 0, Symfony 1, project 1.
-- `Str::finish` collapses repeated suffixes; `Str::chopEnd` removes only one — `name-s-s` with suffix `-s` builds `name-s` but normalizes back to `name-s`, not `name-s-s`. Conformance fixtures must include an already-suffixed name.
-- GET `/next` in Laravel is retried on non-2xx statuses too (row 2).
+- Missing receive count: Laravel console execution raises `ErrorException` on the missing key; Symfony defaults/casts/clamps to 1; the project parses numeric strings and defaults missing/invalid values to 1.
+- `Str::finish` collapses repeated suffixes; `Str::chopEnd` removes only one — `name-s-s` with suffix `-s` builds `.../name-s` and normalizes to `name`, not `name-s` or `name-s-s`. Conformance fixtures must include an already-suffixed name.
+- GET `/next` in Laravel is retried on HTTP 4xx/5xx responses too (row 2).
 - A Laravel multi-queue worker never uses the agent; the project rejects a conflicting CLI queue at startup instead (row 1, §11).
 
 ## 5. Not determinable from source

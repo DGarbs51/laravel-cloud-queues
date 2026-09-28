@@ -45,10 +45,39 @@ class Backend:
 
 
 def create_backend(config: QueueConfig) -> Backend:
-    """Build producer/consumer for ``config.mode``. Imports ``redis`` lazily (optional extra).
+    """Build the producer now and defer consumer creation until worker startup."""
+    from ..errors import ConfigurationError
 
-    managed + agent enabled: SqsProducer + AgentConsumer. managed + agent disabled, or sqs:
-    SqsProducer + SqsConsumer. redis: RedisProducer + RedisConsumer.
-    CONTRACT STUB — wired by lane L3a (SQS/managed) with L4 (agent) and L5 (redis).
-    """
-    raise NotImplementedError
+    if config.mode == "redis":
+        from .redis import RedisConsumer, RedisProducer
+
+        redis_config = config.redis
+        if redis_config is None:
+            raise ConfigurationError("Redis backend requires Redis configuration.")
+
+        def redis_consumer(*, lease_seconds: int = 60) -> Consumer:
+            return RedisConsumer(redis_config, lease_seconds=lease_seconds)
+
+        return Backend(config.mode, RedisProducer(redis_config), redis_consumer)
+
+    from .sqs import SqsConsumer, SqsProducer
+
+    connection = config.sqs
+    if config.mode not in ("managed", "sqs") or connection is None:
+        raise ConfigurationError("SQS backend requires SQS configuration.")
+    if config.mode == "managed":
+        managed = config.managed
+        if managed is None:
+            raise ConfigurationError("Managed backend requires managed configuration.")
+        if managed.agent.enabled:
+            from .agent import AgentConsumer
+
+            def agent_consumer(*, lease_seconds: int = 60) -> Consumer:
+                return AgentConsumer(managed)
+
+            return Backend(config.mode, SqsProducer(connection), agent_consumer)
+
+    def sqs_consumer(*, lease_seconds: int = 60) -> Consumer:
+        return SqsConsumer(connection, lease_seconds=lease_seconds)
+
+    return Backend(config.mode, SqsProducer(connection), sqs_consumer)
