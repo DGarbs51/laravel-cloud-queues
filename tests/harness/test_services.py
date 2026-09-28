@@ -159,3 +159,16 @@ def test_unavailable_service_skip_or_fail(
         ).wait(timeout=10)
     assert result.returncode == (1 if required else 0), result.stdout + result.stderr
     assert ("error" if required else "skipped") in result.stdout
+
+
+@pytest.mark.parametrize("required", ["1", "true", "TRUE", "yes", "YeS"])
+def test_required_service_gate_accepts_truthy_values(monkeypatch, required):
+    from harness.pytest_plugin import _unavailable
+    from harness.sqs import ServiceUnavailable
+
+    monkeypatch.setenv("LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES", required)
+    try:
+        with pytest.raises(pytest.fail.Exception):
+            _unavailable(ServiceUnavailable("missing service"))
+    except pytest.skip.Exception as exc:
+        raise AssertionError("Required service must fail instead of skipping") from exc

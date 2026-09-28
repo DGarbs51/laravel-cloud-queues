@@ -25,7 +25,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def _unavailable(exc: ServiceUnavailable) -> NoReturn:
-    if os.environ.get("LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES") == "1":
+    if os.environ.get("LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES", "").lower() in {"1", "true", "yes"}:
         pytest.fail(str(exc))
     pytest.skip(str(exc))
 

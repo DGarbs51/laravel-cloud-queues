@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-fastapi = ["fastapi>=0.115"]
+fastapi = ["fastapi>=0.121"]
 redis = ["redis>=5.0"]
 otel = ["opentelemetry-api>=1.27"]
 
@@ -46,7 +46,7 @@ laravel-cloud-queues = "laravel_cloud_queues.cli:main"
 [dependency-groups]
 dev = [
     "boto3-stubs[sqs]>=1.35",
-    "fastapi>=0.115",
+    "fastapi>=0.121",
     "moto[server]>=5.0",
     "mypy>=1.13",
     "opentelemetry-api>=1.27",

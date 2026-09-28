@@ -44,7 +44,9 @@ Both return snapshots. Times use the monotonic clock. Each delivery gets a new r
 before a lost response. `wait_for_result(id, timeout=5)` waits for the first completed request for
 that message and raises `TimeoutError` if absent. Use `results` to inspect retries or hanging requests.
 Processed messages cannot be acknowledged again; unknown/deleted IDs and stale receipts default to
-404 (`unknown_message_status` and `stale_receipt_status` are configurable).
+404 (`unknown_message_status` and `stale_receipt_status` are configurable). Omitting the issued
+receipt also counts as stale. `delay` is allowed only for `released`, as an integer from 0 to 43,200;
+invalid result shapes return 422.
 
 Fault queues are independent for `next` and `result`. Inject a name (`disconnect`, `malformed_json`,
 `non_object_json`, `missing_message_id`, `empty_message_id`, `non_string_fields`, `hang`), or use
@@ -60,7 +62,8 @@ SIGINT/SIGTERM cleanly stop it. A fresh manual listener has no queued messages.
 `with LogCollector() as collector:` starts a persistent NDJSON Unix listener; `log_collector` provides
 it as a fixture. `raw_lines` preserves bytes including trailing newlines; EOF fragments are preserved
 and flagged in `errors`. `events` contains parsed JSON values; invalid JSON/UTF-8 and non-object events
-are flagged. All properties return snapshots. Pure validators return lists of errors, empty on success:
+are flagged, as are lines over 16,384 bytes including the newline. All properties return snapshots.
+Validators reject extra keys and invalid calendar timestamps, returning lists of errors, empty on success:
 `validate_lifecycle_event`, `validate_failed_job_event`, and `validate_sequence(events, expected_types)`.
 The sequence validator uses lifecycle types and `failed_job` for failure records, in exact order.
 
@@ -85,8 +88,8 @@ use content-based deduplication. All AWS credentials/config are explicit and iso
   Pair it with `redis_prefix` for prefix-scoped teardown. `redis_service()` offers the same lifetime
   as a context manager yielding `(client, prefix)`; `available()` probes availability. Cleanup uses
   SCAN/DEL and never flushes a database. Tests must put every created Redis key under their prefix.
-- Missing SQS/Redis services skip fixture setup unless `LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES=1`,
-  which fails setup. Invalid service configuration and test failures are never converted to skips.
+- Missing SQS/Redis services skip fixture setup unless `LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES` is `1`,
+  `true`, or `yes` (case-insensitive), which fails setup. Invalid service configuration and test failures are never converted to skips.
 
 `run_process([command, ...], env={"NAME": "value", "REMOVE_ME": None}, cwd=...)` returns a running
 `Process`. `wait(timeout=10)` returns `ProcessResult(returncode, stdout, stderr)`; timeouts raise

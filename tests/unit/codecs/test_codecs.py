@@ -264,3 +264,38 @@ def test_enum_scalar_values_and_literals():
         codecs.decode("blue", Literal[Color.RED])
     with pytest.raises(CodecError):
         codecs.decode(1.0, Literal[1])
+
+
+@dataclass
+class Circle:
+    child: Shape | None
+    kind: Literal["circle"] = "circle"
+
+
+@dataclass
+class Square:
+    child: Shape | None
+    kind: Literal["square"] = "square"
+
+
+Shape = Circle | Square
+
+
+@pytest.mark.timeout(2)
+@pytest.mark.parametrize("valid", [False, True])
+def test_recursive_union_work_is_bounded(valid):
+    from time import perf_counter
+
+    data = None if valid else 5
+    for _ in range(60):
+        data = {"child": data}
+    codecs = default_codecs()
+    started = perf_counter()
+    if valid:
+        assert isinstance(codecs.decode(data, Shape), Circle)
+    else:
+        with pytest.raises(CodecError):
+            codecs.decode(data, Shape)
+    assert perf_counter() - started < 0.5
+    # Failure state must never leak into the next top-level call.
+    assert codecs.decode({"child": None}, Shape) == Circle(None)
