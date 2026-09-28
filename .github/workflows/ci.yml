@@ -288,19 +288,29 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .ci-tls
-          printf "subjectAltName=DNS:localhost,IP:127.0.0.1\n" > .ci-tls/server.ext
+          # Python 3.13+ enables VERIFY_X509_STRICT: the CA needs basicConstraints
+          # and keyUsage, and the leaf needs a SAN (hostname checks ignore CN).
+          printf '%s\n' \
+            "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+            "basicConstraints=critical,CA:FALSE" \
+            "keyUsage=critical,digitalSignature,keyEncipherment" \
+            "extendedKeyUsage=serverAuth" \
+            "subjectKeyIdentifier=hash" \
+            "authorityKeyIdentifier=keyid,issuer" > .ci-tls/server.ext
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
             -keyout .ci-tls/ca.key -out .ci-tls/ca.crt \
             -subj "/CN=laravel-cloud-queues-test-ca" \
             -addext "basicConstraints=critical,CA:TRUE" \
-            -addext "keyUsage=critical,keyCertSign,cRLSign"
+            -addext "keyUsage=critical,keyCertSign,cRLSign" \
+            -addext "subjectKeyIdentifier=hash"
           openssl req -newkey rsa:2048 -nodes \
             -keyout .ci-tls/server.key -out .ci-tls/server.csr \
             -subj "/CN=localhost"
-          # -extfile adds a SAN: redis-py's default SSL context verifies the
-          # hostname against SAN, not the legacy CN (unsupported since Python 3.7+).
           openssl x509 -req -in .ci-tls/server.csr -CA .ci-tls/ca.crt -CAkey .ci-tls/ca.key \
             -CAcreateserial -out .ci-tls/server.crt -days 1 -extfile .ci-tls/server.ext
+          # The Valkey image runs as a non-root user; the throwaway test key must be
+          # readable inside the container.
+          chmod 0644 .ci-tls/server.key
 
       - name: Start a TLS-only Valkey container
         run: |
