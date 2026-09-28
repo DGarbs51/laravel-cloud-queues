@@ -1,7 +1,7 @@
 # Executable conformance demo
 
 `demo/` is repository-only. It is excluded from the wheel and source distribution,
-as are the harness, tests and `probe-app/`. Run from a repository checkout:
+as are the harness and tests. Run from a repository checkout:
 
 ```sh
 uv sync

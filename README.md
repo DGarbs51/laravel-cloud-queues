@@ -264,16 +264,15 @@ as a **long-lived service and restarts it whenever it exits**, for any reason. C
 
 ### Live smoke test on Laravel Cloud
 
-[`probe-app/`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/probe-app/README.md) is a repository-only FastAPI probe that runs the real
-package on Laravel Cloud today: its App and worker clusters run
-`python -m laravel_cloud_queues.cli work main:app` as background processes in `redis` mode
-against the environment's Laravel Valkey, and its routes dispatch one job per case (success,
-delay, retry, terminal failure, timeout, bursts) and report what the workers recorded. Use
-it as the template for a live check of your own deployment. It is not shipped in the
-package, and its `/verify` route dumps the container environment, so deploy it only to a
-throwaway environment.
+Two canary applications run the released package from PyPI on Laravel Cloud, one branch
+per Python version (3.10–3.14), in `redis` mode against a Laravel Valkey:
+[`fastapi-cloud-queues`](https://github.com/DGarbs51/fastapi-cloud-queues) (FastAPI) and
+[`python-cloud-queues`](https://github.com/DGarbs51/python-cloud-queues) (plain Python).
+Each has a dashboard whose **Run check** dispatches one job per case (quick, async, slow,
+retry, terminal failure, timeout) and gives a pass/fail verdict for each. Use either as the
+template for a live check of your own deployment.
 
-Results of the 2026-09-28 run are recorded at the end of
+Results of the 2026-09-28 run of the earlier in-repository probe are recorded at the end of
 [`docs/audits/2026-09-27/platform-findings.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/audits/2026-09-27/platform-findings.md):
 sync and async jobs processed, a 5 s delay honored, a flaky job released and processed on
 attempt 2, a terminal failure logged as one `failed_job` line, and a timed-out job that
@@ -971,12 +970,11 @@ authoritative SQS gate, moto is local convenience. See [`demo/README.md`](https:
 for the producer/worker demo (`laravel-cloud-queues work demo.app:app` plus
 `python -m demo.produce`) and probe-authoring rules.
 
-**`demo/`, `probe-app/`, `harness/`, `tests/` and `docs/` are repository-only development
+**`demo/`, `harness/`, `tests/` and `docs/` are repository-only development
 tooling. They are not shipped in the PyPI wheel or sdist**, and a packaging test proves it.
 `laravel-cloud-queues conformance` from an installed package explains how to run the suite
-from a checkout instead of failing obscurely. `probe-app/` is a throwaway FastAPI app
-deployed to Laravel Cloud to inspect what the platform injects and to run the
-[live smoke test](#live-smoke-test-on-laravel-cloud).
+from a checkout instead of failing obscurely. The
+[live smoke test](#live-smoke-test-on-laravel-cloud) runs from separate canary repositories.
 
 ## Support matrix and public API
 
@@ -1079,5 +1077,5 @@ MIT. See [`LICENSE`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/
 17 support matrix ....................... Support matrix and public API
 18 limitations + roadmap ................ Known limitations and roadmap (compression/S3 offload,
                                            native-code timeout, best-effort records, at-least-once)
-19 demo/ + probe-app/ not shipped ....... Demo and conformance suite (last paragraph)
+19 demo/ not shipped .................. Demo and conformance suite (last paragraph)
 -->

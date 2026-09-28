@@ -121,7 +121,7 @@ Local development and agents use `moto` for SQS tests (no Docker required). CI u
 
 - The build runs with Claude Opus 5.5 as lead orchestrator using the `solo-orchestrator` skill inside Solo. The lead routes lanes to any configured model; reviews preferably come from a different lab.
 - Explicit stay-on-main run: lanes use their own worktrees and branches, and the lead integrates accepted lanes directly into `main`. There is no final PR.
-- Each push to `main` deploys `probe-app/` to Laravel Cloud, used as a continuous production deploy test. Keep `main` deployable, and move `probe-app/`'s workers to `laravel-cloud-queues work` once the package can consume.
+- Each push to `main` deploys `probe-app/` to Laravel Cloud, used as a continuous production deploy test. Keep `main` deployable, and move `probe-app/`'s workers to `laravel-cloud-queues work` once the package can consume. *Superseded 2026-09-28:* `probe-app/` and its Cloud application were removed; the `fastapi-cloud-queues` and `python-cloud-queues` canaries, which install released versions from PyPI, replace it. Pushes to `main` no longer deploy anything.
 
 ## D11 — CI provider (2026-09-28)
 

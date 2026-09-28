@@ -118,7 +118,6 @@ def test_readme():
         "limitation",
         "roadmap",
         "demo/",
-        "probe-app/",
     ):
         assert term in text, f"README missing required topic: {term}"
     assert Path(ROOT / "demo/README.md").is_file()
