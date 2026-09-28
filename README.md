@@ -9,6 +9,10 @@ The package feels like Python and FastAPI. It matches Laravel's queue *infrastru
 contract (SQS message lifecycle, retries, FIFO, timeouts, Laravel Cloud's queue agent and
 observability events), not Laravel's PHP API.
 
+**Documentation: [laravel-cloud-queues.readthedocs.io](https://laravel-cloud-queues.readthedocs.io/)**
+(sources in [`docs/`](docs/); build locally with
+`uv sync --group docs --all-extras && uv run sphinx-build -b html docs docs/_build/html`).
+
 > **Platform status (verified 2026-09-27).** Laravel Cloud runs Python 3.10–3.14
 > applications, including FastAPI, but **managed queues are not yet available for
 > Python**: the Cloud API rejects managed-queue creation for FastAPI applications, and

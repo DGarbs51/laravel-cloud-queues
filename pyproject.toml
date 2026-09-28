@@ -38,7 +38,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/DGarbs51/laravel-cloud-queues"
-Documentation = "https://github.com/DGarbs51/laravel-cloud-queues#readme"
+Documentation = "https://laravel-cloud-queues.readthedocs.io/"
 Source = "https://github.com/DGarbs51/laravel-cloud-queues"
 Issues = "https://github.com/DGarbs51/laravel-cloud-queues/issues"
 
@@ -64,6 +64,13 @@ dev = [
     "redis>=5.0",
     "ruff>=0.8",
     "ty>=0.0.84",
+]
+# Read the Docs and the CI docs job: `uv sync --group docs --all-extras`.
+docs = [
+    "furo>=2024.8.6",
+    "myst-parser>=4.0",
+    "sphinx>=8.1",
+    "sphinx-copybutton>=0.5.2",
 ]
 
 [tool.hatch.build.targets.wheel]
