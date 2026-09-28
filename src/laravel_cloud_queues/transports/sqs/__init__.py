@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from urllib.parse import urlsplit
 
 from ...config import SqsConnectionConfig
 from ..base import Delivery, OutgoingMessage, SentMessage
@@ -11,12 +12,24 @@ from ..base import Delivery, OutgoingMessage, SentMessage
 def queue_url(connection: SqsConnectionConfig, queue: str) -> str:
     """Laravel ``SqsQueue::getQueue``/``suffixQueue``: full URLs pass through; prefix trailing
     ``/`` trimmed; suffix appended once (``Str::finish``); FIFO ``{base}{suffix}.fifo``."""
-    raise NotImplementedError
+    queue = queue or connection.queue
+    parsed = urlsplit(queue)
+    if parsed.scheme and parsed.netloc:
+        return queue
+    fifo = ".fifo" if queue.endswith(".fifo") else ""
+    base = queue.removesuffix(fifo) if fifo else queue
+    if connection.suffix:
+        while base.endswith(connection.suffix):
+            base = base.removesuffix(connection.suffix)
+    return f"{connection.prefix.rstrip('/')}/{base}{connection.suffix}{fifo}"
 
 
 def normalize_queue(connection: SqsConnectionConfig, queue_or_url: str) -> str:
     """Inverse of :func:`queue_url` (Laravel Cloud ``Queue::normalizeQueue``): logical name."""
-    raise NotImplementedError
+    name = queue_or_url.removeprefix(connection.prefix.rstrip("/") + "/")
+    fifo = ".fifo" if name.endswith(".fifo") else ""
+    base = name.removesuffix(fifo) if fifo else name
+    return base.removesuffix(connection.suffix) + fifo
 
 
 class SqsProducer:
