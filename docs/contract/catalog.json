@@ -173,7 +173,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6a",
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes"]
     },
     {
       "id": "queue.url_and_normalization",
@@ -314,7 +314,7 @@
       ],
       "deviation": null,
       "project_decision": "D4",
-      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[policy-deploy]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[policy-deploy]"]
     },
     {
       "id": "envelope.codecs",
@@ -424,7 +424,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]", "demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.async]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]", "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.async]"]
     },
     {
       "id": "dispatch.named_queue",
@@ -442,7 +442,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[named]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[named]"]
     },
     {
       "id": "dispatch.queue_override",
@@ -454,7 +454,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[override]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[override]"]
     },
     {
       "id": "dispatch.options_builder",
@@ -495,7 +495,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[delay]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[delay]"]
     },
     {
       "id": "dispatch.delay_validation",
@@ -553,7 +553,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[fifo]", "demo/conformance/probes/test_brokers.py::test_sqs_options[fifo-explicit]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[fifo]", "tests/conformance/probes/test_brokers.py::test_sqs_options[fifo-explicit]"]
     },
     {
       "id": "dispatch.fifo_delay_rejected",
@@ -606,7 +606,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_options[fair]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[fair]"]
     },
     {
       "id": "dispatch.cross_model_rejected",
@@ -674,7 +674,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_managed.py::test_agent_queue_assignment", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_agent_queue_assignment", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "agent.next_protocol",
@@ -879,7 +879,7 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_result_failure[422]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_result_failure[422]"]
     },
     {
       "id": "agent.unhealthy_exit_zero",
@@ -938,7 +938,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_managed.py::test_result_failure[503]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_result_failure[503]"]
     },
     {
       "id": "worker.ambiguous_ack_stops",
@@ -950,7 +950,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7, D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_ambiguous_ack", "demo/conformance/probes/test_brokers.py::test_ambiguous_direct_ack"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_ambiguous_ack", "tests/conformance/probes/test_brokers.py::test_ambiguous_direct_ack"]
     },
     {
       "id": "sqs.receive_direct",
@@ -989,7 +989,7 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]"]
     },
     {
       "id": "sqs.retry_visibility_release",
@@ -1028,7 +1028,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "demo/conformance/probes/test_managed.py::test_outcomes[retry]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "tests/conformance/probes/test_managed.py::test_outcomes[retry]"]
     },
     {
       "id": "sqs.attempts_receive_count",
@@ -1062,7 +1062,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "demo/conformance/probes/test_managed.py::test_outcomes[retry]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "tests/conformance/probes/test_managed.py::test_outcomes[retry]"]
     },
     {
       "id": "sqs.visibility_renewal",
@@ -1090,7 +1090,7 @@
         "decision": null
       },
       "project_decision": "D6, D7",
-      "probe": ["demo/conformance/probes/test_brokers.py::test_visibility_renewal"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_visibility_renewal"]
     },
     {
       "id": "redis.transport",
@@ -1128,7 +1128,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6, D7, D13",
-      "probe": ["demo/conformance/probes/test_brokers.py::test_redis_processes", "tests/integration/redis/test_redis_integration.py::test_dispatch_reserve_complete", "tests/integration/redis/test_redis_integration.py::test_retry_preserves_exact_member_id_and_counts", "tests/integration/redis/test_redis_integration.py::test_delayed_job_becomes_visible_during_blocking_wait", "tests/integration/redis/test_redis_integration.py::test_no_package_payload_limit"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_redis_processes", "tests/integration/redis/test_redis_integration.py::test_dispatch_reserve_complete", "tests/integration/redis/test_redis_integration.py::test_retry_preserves_exact_member_id_and_counts", "tests/integration/redis/test_redis_integration.py::test_delayed_job_becomes_visible_during_blocking_wait", "tests/integration/redis/test_redis_integration.py::test_no_package_payload_limit"]
     },
     {
       "id": "redis.reservation_renewal_and_expiry",
@@ -1210,7 +1210,7 @@
       ],
       "deviation": null,
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[default]", "tests/integration/worker/test_sqs_worker.py::test_default_tries_is_one", "tests/integration/worker/test_redis_worker.py::test_default_tries_is_one"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[default]", "tests/integration/worker/test_sqs_worker.py::test_default_tries_is_one", "tests/integration/worker/test_redis_worker.py::test_default_tries_is_one"]
     },
     {
       "id": "retry.attempt_checks",
@@ -1271,7 +1271,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[exhaustion]", "tests/integration/worker/test_sqs_worker.py::test_retry_releases_the_same_message_until_exhausted", "tests/integration/worker/test_redis_worker.py::test_retry_releases_the_same_job_until_exhausted"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[exhaustion]", "tests/integration/worker/test_sqs_worker.py::test_retry_releases_the_same_message_until_exhausted", "tests/integration/worker/test_redis_worker.py::test_retry_releases_the_same_job_until_exhausted"]
     },
     {
       "id": "retry.backoff_schedule",
@@ -1333,7 +1333,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[release]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[release]"]
     },
     {
       "id": "retry.explicit_fail",
@@ -1356,7 +1356,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[fail]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[fail]"]
     },
     {
       "id": "retry.dashboard_replay",
@@ -1374,7 +1374,7 @@
       ],
       "deviation": null,
       "project_decision": "D3",
-      "probe": ["demo/conformance/probes/test_managed.py::test_replay"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_replay"]
     },
     {
       "id": "timeout.release_exit_124",
@@ -1417,7 +1417,7 @@
         "decision": "D13"
       },
       "project_decision": "D2, D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_timeout[python]", "demo/conformance/probes/test_managed.py::test_timeout[async]", "demo/conformance/probes/test_managed.py::test_timeout[sleep]", "tests/integration/worker/test_sqs_worker.py::test_retryable_timeout_exits_124_and_redelivers_with_next_attempt", "tests/integration/worker/test_redis_worker.py::test_retryable_timeout_redelivers_after_reservation_expiry"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_timeout[python]", "tests/conformance/probes/test_managed.py::test_timeout[async]", "tests/conformance/probes/test_managed.py::test_timeout[sleep]", "tests/integration/worker/test_sqs_worker.py::test_retryable_timeout_exits_124_and_redelivers_with_next_attempt", "tests/integration/worker/test_redis_worker.py::test_retryable_timeout_redelivers_after_reservation_expiry"]
     },
     {
       "id": "timeout.fail_on_timeout",
@@ -1460,7 +1460,7 @@
         "decision": "D13"
       },
       "project_decision": "D2, D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_timeout[fail-on-timeout]", "tests/integration/worker/test_sqs_worker.py::test_fail_on_timeout_fails_with_attempts_left"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_timeout[fail-on-timeout]", "tests/integration/worker/test_sqs_worker.py::test_fail_on_timeout_fails_with_attempts_left"]
     },
     {
       "id": "timeout.last_attempt_terminal",
@@ -1498,7 +1498,7 @@
         "decision": "D13"
       },
       "project_decision": "D2, D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_timeout[last-attempt]", "tests/integration/worker/test_sqs_worker.py::test_timeout_on_last_attempt_fails_and_deletes", "tests/integration/worker/test_redis_worker.py::test_timeout_on_last_attempt_fails"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_timeout[last-attempt]", "tests/integration/worker/test_sqs_worker.py::test_timeout_on_last_attempt_fails_and_deletes", "tests/integration/worker/test_redis_worker.py::test_timeout_on_last_attempt_fails"]
     },
     {
       "id": "timeout.native_blocking_limitation",
@@ -1510,7 +1510,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D2",
-      "probe": ["demo/conformance/probes/test_managed.py::test_native_timeout"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_native_timeout"]
     },
     {
       "id": "worker.separate_process_single_job",
@@ -1528,7 +1528,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "worker.sync_handler",
@@ -1540,7 +1540,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "worker.async_handler",
@@ -1552,7 +1552,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "worker.unknown_job_terminal",
@@ -1586,7 +1586,7 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_poison[unknown]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_poison[unknown]"]
     },
     {
       "id": "worker.schema_mismatch_terminal",
@@ -1603,7 +1603,7 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_poison[schema]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_poison[schema]"]
     },
     {
       "id": "worker.undecodable_message",
@@ -1642,7 +1642,7 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_poison[json]", "demo/conformance/probes/test_managed.py::test_poison[array]", "demo/conformance/probes/test_managed.py::test_poison[version]", "demo/conformance/probes/test_managed.py::test_poison[pointer]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_poison[json]", "tests/conformance/probes/test_managed.py::test_poison[array]", "tests/conformance/probes/test_managed.py::test_poison[version]", "tests/conformance/probes/test_managed.py::test_poison[pointer]"]
     },
     {
       "id": "worker.terminal_failure_order",
@@ -1691,7 +1691,7 @@
       ],
       "deviation": null,
       "project_decision": "D1, D6b, D12, D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_failure_order"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_failure_order"]
     },
     {
       "id": "worker.log_only_failures",
@@ -1703,7 +1703,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6b, D12, D13",
-      "probe": ["demo/conformance/probes/test_brokers.py::test_sqs_processes[demo.default_failure]", "demo/conformance/probes/test_brokers.py::test_redis_processes[demo.default_failure]"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.default_failure]", "tests/conformance/probes/test_brokers.py::test_redis_processes[demo.default_failure]"]
     },
     {
       "id": "worker.graceful_shutdown",
@@ -1726,7 +1726,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_managed.py::test_graceful_shutdown", "tests/integration/worker/test_agent_worker.py::test_sigterm_while_idle_exits_promptly", "tests/integration/worker/test_sqs_worker.py::test_sigterm_while_idle_waits_at_most_for_the_current_long_poll", "tests/integration/worker/test_redis_worker.py::test_sigterm_while_idle_exits_promptly"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_graceful_shutdown", "tests/integration/worker/test_agent_worker.py::test_sigterm_while_idle_exits_promptly", "tests/integration/worker/test_sqs_worker.py::test_sigterm_while_idle_waits_at_most_for_the_current_long_poll", "tests/integration/worker/test_redis_worker.py::test_sigterm_while_idle_exits_promptly"]
     },
     {
       "id": "worker.lifecycle_options",
@@ -1754,7 +1754,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D8",
-      "probe": ["demo/conformance/probes/test_managed.py::test_lifecycle_options"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_lifecycle_options"]
     },
     {
       "id": "worker.multi_queue_priority",
@@ -1778,7 +1778,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_brokers.py::test_priority"]
+      "probe": ["tests/conformance/probes/test_brokers.py::test_priority"]
     },
     {
       "id": "worker.two_sequential_jobs_isolated",
@@ -1790,7 +1790,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "fastapi.lifespan",
@@ -1802,7 +1802,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "fastapi.depends",
@@ -1814,7 +1814,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_fastapi.py::test_depends_and_eager"]
+      "probe": ["tests/conformance/probes/test_fastapi.py::test_depends_and_eager"]
     },
     {
       "id": "fastapi.yield_teardown_before_ack",
@@ -1826,7 +1826,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_managed.py::test_failure_order", "demo/conformance/probes/test_managed.py::test_outcomes"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_failure_order", "tests/conformance/probes/test_managed.py::test_outcomes"]
     },
     {
       "id": "observability.lifecycle_events",
@@ -1875,7 +1875,7 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "observability.queued_event",
@@ -1914,7 +1914,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_queued_event_after_send"]
+      "probe": ["tests/conformance/probes/test_contracts.py::test_queued_event_after_send"]
     },
     {
       "id": "observability.failed_job_event",
@@ -1953,7 +1953,7 @@
       ],
       "deviation": null,
       "project_decision": "D1",
-      "probe": ["demo/conformance/probes/test_managed.py::test_outcomes[fail]", "demo/conformance/probes/test_managed.py::test_poison[json]"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[fail]", "tests/conformance/probes/test_managed.py::test_poison[json]"]
     },
     {
       "id": "observability.failed_job_size_policy",
@@ -1987,7 +1987,7 @@
         "decision": "D1"
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_failure_sizes"]
+      "probe": ["tests/conformance/probes/test_contracts.py::test_failure_sizes"]
     },
     {
       "id": "observability.socket_writer",
@@ -2040,7 +2040,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_managed.py::test_socket_outage"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_socket_outage"]
     },
     {
       "id": "tracing.propagation",
@@ -2052,7 +2052,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_fastapi.py::test_tracing_optional", "demo/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_fastapi.py::test_tracing_optional", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "testing.eager_mode",
@@ -2064,7 +2064,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/unit/testing/test_eager.py::test_records_every_dispatch_without_running", "tests/unit/testing/test_eager.py::test_records_fifo_and_fair_options", "tests/unit/testing/test_eager.py::test_dispatch_validation_still_applies", "tests/unit/testing/test_eager.py::test_follows_configured_redis_mode", "tests/unit/testing/test_eager.py::test_uses_given_backend_capabilities", "tests/unit/testing/test_eager.py::test_session_is_restored_on_exit", "tests/unit/testing/test_eager.py::test_eager_runs_sync_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_runs_async_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_arguments_round_trip_through_the_payload", "tests/unit/testing/test_eager.py::test_eager_reraises_handler_exceptions", "tests/unit/testing/test_eager.py::test_eager_explicit_fail_raises", "tests/unit/testing/test_eager.py::test_eager_release_is_recorded_not_rerun", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_awaits_in_the_running_loop", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_reraises", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_uses_a_helper_thread", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_reraises", "tests/unit/testing/test_eager.py::test_eager_nested_dispatch", "demo/conformance/probes/test_fastapi.py::test_depends_and_eager"]
+      "probe": ["tests/unit/testing/test_eager.py::test_records_every_dispatch_without_running", "tests/unit/testing/test_eager.py::test_records_fifo_and_fair_options", "tests/unit/testing/test_eager.py::test_dispatch_validation_still_applies", "tests/unit/testing/test_eager.py::test_follows_configured_redis_mode", "tests/unit/testing/test_eager.py::test_uses_given_backend_capabilities", "tests/unit/testing/test_eager.py::test_session_is_restored_on_exit", "tests/unit/testing/test_eager.py::test_eager_runs_sync_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_runs_async_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_arguments_round_trip_through_the_payload", "tests/unit/testing/test_eager.py::test_eager_reraises_handler_exceptions", "tests/unit/testing/test_eager.py::test_eager_explicit_fail_raises", "tests/unit/testing/test_eager.py::test_eager_release_is_recorded_not_rerun", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_awaits_in_the_running_loop", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_reraises", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_uses_a_helper_thread", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_reraises", "tests/unit/testing/test_eager.py::test_eager_nested_dispatch", "tests/conformance/probes/test_fastapi.py::test_depends_and_eager"]
     },
     {
       "id": "cli.commands_and_exit_codes",
@@ -2087,12 +2087,12 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7",
-      "probe": ["demo/conformance/probes/test_project.py::test_cli", "demo/conformance/probes/test_managed.py::test_timeout", "demo/conformance/probes/test_managed.py::test_result_failure", "tests/conformance/test_runner.py::test_only_smoke[console]", "tests/conformance/test_runner.py::test_only_smoke[console-failed-gate]"]
+      "probe": ["tests/conformance/probes/test_project.py::test_cli", "tests/conformance/probes/test_managed.py::test_timeout", "tests/conformance/probes/test_managed.py::test_result_failure", "tests/conformance/test_runner.py::test_only_smoke[console]", "tests/conformance/test_runner.py::test_only_smoke[console-failed-gate]"]
     },
     {
       "id": "packaging.build_and_isolated_install",
       "title": "Wheel and sdist build, install and exclusions",
-      "expected": "hatchling builds a wheel and an sdist on Python 3.10-3.14; each installs into a fresh environment outside the checkout (never editable) and provides: core import without extras, the [fastapi] extra, the console entry point, py.typed, the documented public exports; no shipped module imports demo/ or test tooling; demo/ and docs/ are absent from both artifacts.",
+      "expected": "hatchling builds a wheel and an sdist on Python 3.10-3.14; each installs into a fresh environment outside the checkout (never editable) and provides: core import without extras, the [fastapi] extra, the console entry point, py.typed, the documented public exports; no shipped module imports test tooling; tests/ and docs/ are absent from both artifacts.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [],
@@ -2111,7 +2111,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["demo/conformance/probes/test_project.py::test_typing"]
+      "probe": ["tests/conformance/probes/test_project.py::test_typing"]
     },
     {
       "id": "ci.full_gate",
@@ -2123,24 +2123,24 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D9, D11",
-      "probe": ["demo/conformance/probes/test_project.py::test_ci_gate"]
+      "probe": ["tests/conformance/probes/test_project.py::test_ci_gate"]
     },
     {
       "id": "docs.readme",
       "title": "README requirements",
-      "expected": "README.md covers installation, FastAPI integration, declaring and dispatching jobs, dependencies, running the worker, named queues, delays, retry policy, FIFO/fair queues, JobContext, local SQS/LocalStack, eager testing, demo/conformance, Cloud zero-config behavior and the current platform status, worker clusters with sqs/redis including the AWS_* collision, support matrix, limitations and roadmap, and the statement that demo/ is not shipped, and documents live Laravel Cloud managed-queue verification as pending.",
+      "expected": "README.md covers installation, FastAPI integration, declaring and dispatching jobs, dependencies, running the worker, named queues, delays, retry policy, FIFO/fair queues, JobContext, local SQS/LocalStack, eager testing, the conformance suite, Cloud zero-config behavior and the current platform status, worker clusters with sqs/redis including the AWS_* collision, support matrix, limitations and roadmap, and the statement that the conformance suite is not shipped, and documents live Laravel Cloud managed-queue verification as pending.",
       "tier": "unit",
       "required": true,
       "laravel_source": [],
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_project.py::test_readme"]
+      "probe": ["tests/conformance/probes/test_project.py::test_readme"]
     },
     {
       "id": "conformance.report_and_gate",
       "title": "Conformance reports and exit status",
-      "expected": "demo/ runs every catalog probe and produces the human-readable table and compatibility-report.json with schema version, run metadata (revision, environment, timestamp, Python/package/framework versions) and, per feature: id, expected, observed, status, evidence, error, upstream baseline/source reference, evidence tier, deviation label. The command exits non-zero when any catalog record lacks a result or any required feature is not pass unless its id and status are on the exception list.",
+      "expected": "tests/conformance runs every catalog probe and produces the human-readable table and compatibility-report.json with schema version, run metadata (revision, environment, timestamp, Python/package/framework versions) and, per feature: id, expected, observed, status, evidence, error, upstream baseline/source reference, evidence tier, deviation label. The command exits non-zero when any catalog record lacks a result or any required feature is not pass unless its id and status are on the exception list.",
       "tier": "unit",
       "required": true,
       "laravel_source": [],
@@ -2159,7 +2159,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["demo/conformance/probes/test_project.py::test_live_managed"]
+      "probe": ["tests/conformance/probes/test_project.py::test_live_managed"]
     },
     {
       "id": "cloud.dashboard_retry_live",
@@ -2171,7 +2171,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D3",
-      "probe": ["demo/conformance/probes/test_project.py::test_dashboard_retry_live"]
+      "probe": ["tests/conformance/probes/test_project.py::test_dashboard_retry_live"]
     }
   ]
 }

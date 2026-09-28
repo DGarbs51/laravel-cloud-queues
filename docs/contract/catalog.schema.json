@@ -239,7 +239,7 @@
           "description": "Decision record(s) (D4), or \"python-only\" for behaviour with no Laravel counterpart (FastAPI integration, tracing, packaging). Required when laravel_source is empty and no deviation is recorded."
         },
         "probe": {
-          "description": "Pytest node IDs (demo probes or tests) that prove this feature; filled by the conformance lane.",
+          "description": "Pytest node IDs (conformance probes or tests) that prove this feature; filled by the conformance lane.",
           "oneOf": [
             {
               "type": "null"

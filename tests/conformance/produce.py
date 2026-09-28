@@ -7,7 +7,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from demo.app import app
+from tests.conformance.app import app
 
 
 def main() -> None:

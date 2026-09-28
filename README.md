@@ -34,7 +34,7 @@ observability events), not Laravel's PHP API.
 - [Observability](#observability)
 - [Local development](#local-development)
 - [Testing your application](#testing-your-application)
-- [Demo and conformance suite](#demo-and-conformance-suite)
+- [Conformance suite](#conformance-suite)
 - [Support matrix and public API](#support-matrix-and-public-api)
 - [Known limitations and roadmap](#known-limitations-and-roadmap)
 - Further reading: [`docs/architecture.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/architecture.md),
@@ -921,11 +921,11 @@ What eager mode does **not** prove: retry and backoff behavior, timeouts, visibi
 FIFO ordering, queue existence, payload limits against a real broker, or anything about
 the worker process. Those belong to the transport tests and the conformance suite below.
 
-## Demo and conformance suite
+## Conformance suite
 
-`demo/` is an executable FastAPI conformance application (`demo.app:app`, with sync/async
+`tests/conformance/` holds a FastAPI fixture application (`tests.conformance.app:app`, with sync/async
 jobs, lifespan state, `yield` dependencies, named queues, retries, explicit release/fail,
-timeouts and large payloads), and `demo/conformance` runs every feature in the conformance
+timeouts and large payloads) and a runner that checks every feature in the conformance
 catalog ([`docs/contract/catalog.json`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/contract/catalog.json)) against local
 emulators (moto or LocalStack for SQS, a Redis/Valkey server, the Laravel Cloud agent
 emulator and observability collector in `harness/`), spawning real worker subprocesses, and
@@ -934,7 +934,7 @@ deliberately deviates. From a repository checkout:
 
 ```sh
 uv sync
-uv run python -m demo.conformance --sqs moto --report compatibility-report.json
+uv run python -m tests.conformance --sqs moto --report compatibility-report.json
 # The console script delegates to the same runner (exit 2 outside a checkout):
 uv run laravel-cloud-queues conformance --sqs moto --report compatibility-report.json
 ```
@@ -966,11 +966,10 @@ development dependencies.
 CI runs the same command with `--sqs localstack` against pinned LocalStack and Valkey
 service containers plus a verified-TLS Valkey, uploads the report and
 `conformance-artifacts/`, and requires it for the aggregate gate; LocalStack is the
-authoritative SQS gate, moto is local convenience. See [`demo/README.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/demo/README.md)
-for the producer/worker demo (`laravel-cloud-queues work demo.app:app` plus
-`python -m demo.produce`) and probe-authoring rules.
+authoritative SQS gate, moto is local convenience. See [`tests/conformance/README.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/tests/conformance/README.md)
+for the fixture app, its manual producer/worker run and probe-authoring rules.
 
-**`demo/`, `harness/`, `tests/` and `docs/` are repository-only development
+**`harness/`, `tests/` and `docs/` are repository-only development
 tooling. They are not shipped in the PyPI wheel or sdist**, and a packaging test proves it.
 `laravel-cloud-queues conformance` from an installed package explains how to run the suite
 from a checkout instead of failing obscurely. The

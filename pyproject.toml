@@ -87,7 +87,6 @@ ignore = ["RUF001", "RUF002", "RUF003", "ANN401"]
 [tool.ruff.lint.per-file-ignores]
 # Only shipped code (src/) and harness/ require full annotations.
 "tests/**" = ["B011", "PT011", "PT018", "ANN"]
-"demo/**" = ["ANN"]
 ".github/scripts/**" = ["ANN"]
 # Proof worker deliberately blocks inside async code and polls; keep the scenarios literal.
 "tests/runtime_proof/**" = ["ASYNC", "RUF046", "SIM105"]

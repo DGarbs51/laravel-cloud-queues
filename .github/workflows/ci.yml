@@ -31,9 +31,9 @@ jobs:
           # Code roots only (matches [tool.ruff] src in pyproject.toml), not
           # docs: ruff >=0.16 also formats fenced ```python
           # blocks inside Markdown, and pre-existing prose in those files trips it.
-          # harness/ and demo/ don't exist yet on every lane's branch; skip if absent.
+          # harness/ doesn't exist yet on every lane's branch; skip if absent.
           targets=()
-          for dir in src tests harness demo .github/scripts; do
+          for dir in src tests harness .github/scripts; do
             [ -d "$dir" ] && targets+=("$dir")
           done
           uv run ruff check "${targets[@]}"
@@ -400,7 +400,7 @@ jobs:
 
       - name: Run catalog conformance gate
         run: >-
-          .github/scripts/cloud-python.sh uv run python -m demo.conformance
+          .github/scripts/cloud-python.sh uv run python -m tests.conformance
           --sqs localstack --report compatibility-report.json
       - name: Upload compatibility report and evidence
         if: always()

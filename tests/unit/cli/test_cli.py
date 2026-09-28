@@ -273,9 +273,8 @@ def test_conformance_without_checkout_explains_and_exits_2(
 def test_conformance_delegates_from_a_subdirectory_of_the_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    suite = tmp_path / "demo" / "conformance"
+    suite = tmp_path / "tests" / "conformance"
     suite.mkdir(parents=True)
-    (tmp_path / "demo" / "__init__.py").write_text("")
     (suite / "__init__.py").write_text("")
     (suite / "__main__.py").write_text(
         "import json, os, sys\n"

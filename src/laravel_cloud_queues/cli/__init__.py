@@ -275,19 +275,19 @@ def _conformance(args: Sequence[str]) -> int:
     if root is None:
         click.echo(
             f"{PROG}: error: the conformance suite needs a repository checkout "
-            "(demo/conformance and the harness emulators are not installed with the package). "
+            "(tests/conformance and the harness emulators are not installed with the package). "
             "Clone the laravel-cloud-queues repository, run `uv sync` in it and run "
-            f"`{PROG} conformance` (or `python -m demo.conformance`) from its root.",
+            f"`{PROG} conformance` (or `python -m tests.conformance`) from its root.",
             err=True,
         )
         return EXIT_CONFIG
-    command = [sys.executable, "-m", "demo.conformance", *args]
+    command = [sys.executable, "-m", "tests.conformance", *args]
     return subprocess.call(command, cwd=root)
 
 
 def _checkout_root(start: Path) -> Path | None:
     for directory in (start, *start.parents):
-        if (directory / "demo" / "conformance" / "__main__.py").is_file():
+        if (directory / "tests" / "conformance" / "__main__.py").is_file():
             return directory
     return None
 

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from demo.conformance import ROOT
-from demo.conformance.plugin import Evidence, NodeResult, safe
+from tests.conformance import ROOT
+from tests.conformance.plugin import Evidence, NodeResult, safe
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def artifacts(request: pytest.FixtureRequest) -> Iterator[Path]:
 @pytest.fixture
 def evidence(request: pytest.FixtureRequest) -> Evidence:
     """Standalone pytest remains useful; the runner supplies its recording plugin."""
-    from demo.conformance.plugin import ConformancePlugin
+    from tests.conformance.plugin import ConformancePlugin
 
     for plugin in request.config.pluginmanager.get_plugins():
         if isinstance(plugin, ConformancePlugin):

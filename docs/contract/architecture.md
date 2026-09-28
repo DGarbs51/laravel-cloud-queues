@@ -85,7 +85,7 @@ lease expiry, explicit release).
 | L6 worker + CLI | `worker/`, `cli/` |
 | L8 FastAPI | `fastapi/` |
 | L9 local platform | `harness/` |
-| L10 demo + conformance | `demo/` |
+| L10 demo + conformance | `demo/` (now `tests/conformance/`) |
 
 Each lane also owns its tests under `tests/unit/<area>/` and `tests/integration/<area>/`.
 `errors.py`, `config/_models.py`, `transports/base.py`, `__init__.py` and `pyproject.toml`

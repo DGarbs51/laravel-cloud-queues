@@ -34,6 +34,6 @@ connection and performs no queue operation. Exit 0, or 2 on configuration error.
 
 ## `conformance [ARGS...]`
 
-Runs the repository's conformance suite (`demo/`, harness emulators) and writes the human
+Runs the repository's conformance suite (`tests/conformance/`, harness emulators) and writes the human
 and JSON reports; arguments pass through. When run from an installed package without a
 checkout, prints how to run it from a repository checkout and exits 2.

@@ -15,7 +15,7 @@ def applied_then_lost(self: SqsConsumer, delivery: Delivery) -> None:
 
 def main() -> int:
     SqsConsumer.complete = applied_then_lost  # type: ignore[method-assign]
-    return Worker(resolve_target("demo.app:app"), WorkerOptions(max_jobs=2)).run()
+    return Worker(resolve_target("tests.conformance.app:app"), WorkerOptions(max_jobs=2)).run()
 
 
 if __name__ == "__main__":

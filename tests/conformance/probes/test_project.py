@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from demo.conformance import ROOT
+from tests.conformance import ROOT
 
 
 @pytest.mark.conformance("cloud.live_managed", tier="live")
@@ -70,7 +70,7 @@ def test_ci_gate(evidence):
         assert required in workflow, required
     assert "needs: [lint, typecheck, test, packaging, conformance]" in workflow
     result = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", "src", "harness", "demo", "tests"],
+        [sys.executable, "-m", "ruff", "check", "src", "harness", "tests"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -79,7 +79,7 @@ def test_ci_gate(evidence):
     evidence.record("lint", result.stdout + result.stderr)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(
-        [sys.executable, "-m", "ruff", "format", "--check", "src", "harness", "demo", "tests"],
+        [sys.executable, "-m", "ruff", "format", "--check", "src", "harness", "tests"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -117,16 +117,19 @@ def test_readme():
         "3.10",
         "limitation",
         "roadmap",
-        "demo/",
+        "tests/conformance",
     ):
         assert term in text, f"README missing required topic: {term}"
-    assert Path(ROOT / "demo/README.md").is_file()
+    assert Path(ROOT / "tests/conformance/README.md").is_file()
 
 
 @pytest.mark.conformance("cli.commands_and_exit_codes", tier="emulated")
 @pytest.mark.parametrize(
     ("target", "job"),
-    [("tests.integration.worker.apps.basic:registry", "sync_ok"), ("demo.app:app", "demo.sync")],
+    [
+        ("tests.integration.worker.apps.basic:registry", "sync_ok"),
+        ("tests.conformance.app:app", "demo.sync"),
+    ],
     ids=["registry", "fastapi"],
 )
 def test_cli(run_process, artifacts, evidence, target, job):
