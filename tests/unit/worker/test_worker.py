@@ -24,6 +24,7 @@ from laravel_cloud_queues.errors import (
     JobTimeoutError,
     LeaseLostError,
     MalformedEnvelopeError,
+    ManagedQueueNotFoundError,
     MaxAttemptsExceededError,
     TransportError,
 )
@@ -267,6 +268,12 @@ def test_transient_receive_error_pauses_one_second_and_retries(make: Any) -> Non
 def test_fatal_receive_errors(make: Any, error: Exception, code: int) -> None:
     h = make([error, delivery()])
     assert h.run() == code
+    assert h.env.ran == []
+
+
+def test_missing_queue_on_receive_is_a_configuration_error(make: Any) -> None:
+    h = make([ManagedQueueNotFoundError("emails"), delivery()])
+    assert h.run() == EXIT_CONFIG
     assert h.env.ran == []
 
 
