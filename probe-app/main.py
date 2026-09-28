@@ -95,10 +95,11 @@ def health() -> dict[str, str]:
 
 
 def require_token(token: str) -> None:
-    expected = os.environ.get("PROBE_TOKEN")
+    # PROBE_TOKEN (owner) or PROBE_SMOKE_TOKEN (automation running the smoke test).
+    expected = [t for t in (os.environ.get("PROBE_TOKEN"), os.environ.get("PROBE_SMOKE_TOKEN")) if t]
     if not expected:
         raise HTTPException(503, "Set PROBE_TOKEN in the environment to enable this route.")
-    if not hmac.compare_digest(token, expected):
+    if not any(hmac.compare_digest(token.encode(), t.encode()) for t in expected):
         raise HTTPException(403, "Invalid token.")
 
 
