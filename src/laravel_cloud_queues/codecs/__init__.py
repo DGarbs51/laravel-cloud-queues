@@ -1,13 +1,15 @@
-"""Annotation-driven value codecs; payloads never name Python classes or imports.
+"""The annotation-driven codecs for job arguments.
 
-Tags have exactly ``$type`` and ``value`` keys. Dictionaries containing ``$type``
-are escaped with the ``dict`` tag; non-string keys are rejected. Union members
-are tried in declaration order (so integral floats may select an earlier int).
-Any/unannotated values allow JSON containers and known scalar tags, but never
-construct dataclasses, models, custom classes or tagged tuples. Dataclasses and
-models use plain objects and are constructed only from the trusted annotation.
-Nested tuples need explicit element annotations; tuple-in-Any is unsupported.
-Finite Decimal exponents are not bounded beyond the JSON size/depth limits.
+Payloads never name Python classes or imports. Tags have exactly ``$type`` and
+``value`` keys. Dictionaries containing ``$type`` are escaped with the ``dict`` tag,
+and non-string keys are rejected. Union members are tried in declaration order, so an
+integral float may select an earlier ``int`` member.
+
+``Any`` and unannotated values allow JSON containers and known scalar tags, but never
+construct dataclasses, models, custom classes or tagged tuples. Dataclasses and models
+are encoded as plain objects and constructed only from the trusted annotation. Nested
+tuples need explicit element annotations, since tuples inside ``Any`` are unsupported.
+Finite ``Decimal`` exponents are not bounded beyond the JSON size and depth limits.
 """
 
 from __future__ import annotations
@@ -49,8 +51,11 @@ else:
         BaseModel = None
 
 JSONValue: TypeAlias = bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"] | None
+"""A value that may be represented in JSON."""
 T = TypeVar("T")
+"""The Python type handled by a codec."""
 TYPE_TAG_KEY = "$type"
+"""The key that marks a tagged value."""
 _SCALARS = {
     "uuid": UUID,
     "datetime": datetime,
@@ -59,32 +64,51 @@ _SCALARS = {
     "decimal": Decimal,
     "bytes": bytes,
 }
+"""The built-in scalar tags and the Python types they represent."""
 _TAGS = {*_SCALARS, "tuple", "dict"}
+"""The tags reserved by the built-in codecs."""
 _MAX_DEPTH = 64
+"""The maximum nesting depth of an encoded or decoded value."""
 
 
 class Codec(Protocol, Generic[T]):
-    """Custom codec; the registry wraps its JSON value in a tag."""
+    """A custom codec for a Python type.
+
+    The registry wraps the codec's JSON value in a tag.
+    """
 
     @property
-    def tag(self) -> str: ...
+    def tag(self) -> str:
+        """Get the tag that identifies values encoded by the codec."""
+        ...
 
     @property
-    def python_type(self) -> type[T]: ...
+    def python_type(self) -> type[T]:
+        """Get the Python type handled by the codec."""
+        ...
 
-    def encode(self, value: T) -> JSONValue: ...
+    def encode(self, value: T) -> JSONValue:
+        """Encode the value as JSON."""
+        ...
 
-    def decode(self, data: JSONValue) -> T: ...
+    def decode(self, data: JSONValue) -> T:
+        """Decode the value from JSON."""
+        ...
 
 
 def _model(annotation: object) -> bool:
+    """Determine if the annotation is a Pydantic model class."""
     return (
         BaseModel is not None and isinstance(annotation, type) and issubclass(annotation, BaseModel)
     )
 
 
 def _json(value: object, depth: int = 0) -> JSONValue:
-    """Validate custom-codec output and direct decode input without trusting casts."""
+    """Ensure the value is finite JSON with string object keys, without trusting casts.
+
+    This validates custom codec output and direct decode input. Raises a
+    :class:`ValueError` if the value is invalid or nested too deeply.
+    """
     if depth > _MAX_DEPTH:
         raise ValueError("Value nesting limit exceeded")
     if value is None or type(value) in (bool, int, str):
@@ -99,14 +123,23 @@ def _json(value: object, depth: int = 0) -> JSONValue:
 
 
 class CodecRegistry:
-    """Built-ins plus explicitly registered, registry-local custom codecs."""
+    """The registry of built-in and explicitly registered custom codecs.
+
+    Custom codecs are local to the registry they are registered with.
+    """
 
     def __init__(self) -> None:
+        """Create a new codec registry instance."""
         # Heterogeneous codec types are erased only in this internal lookup.
         self._custom: dict[type[Any], Codec[Any]] = {}
         self._tags: dict[str, Codec[Any]] = {}
 
     def register(self, codec: Codec[T]) -> None:
+        """Register a custom codec with the registry.
+
+        Raises a :class:`ConfigurationError` if the tag or Python type is empty, reserved,
+        already registered, or handled by a built-in codec.
+        """
         if (
             not codec.tag
             or codec.tag in _TAGS
@@ -123,7 +156,11 @@ class CodecRegistry:
         self._tags[codec.tag] = codec
 
     def _validate_annotation(self, annotation: object, seen: tuple[object, ...] = ()) -> None:
-        """Registration-time validation, including nested fields and recursive types."""
+        """Ensure the annotation is supported, including nested fields and recursive types.
+
+        This runs at registration time and raises a :class:`ConfigurationError` if any part
+        of the annotation is unsupported.
+        """
         if annotation in seen:
             return
         seen = (*seen, annotation)
@@ -178,13 +215,18 @@ class CodecRegistry:
         raise ConfigurationError("Unsupported serialized parameter annotation")
 
     def encode(self, value: object) -> JSONValue:
-        """Encode native values; invalid, cyclic or too-deep values are dispatch errors."""
+        """Encode the native value as JSON.
+
+        Raises a :class:`SerializationError` at dispatch time if the value is invalid,
+        cyclic or nested too deeply.
+        """
         try:
             return self._encode(value, 0)
         except Exception:
             raise SerializationError("Argument cannot be serialized") from None
 
     def _encode(self, value: object, depth: int) -> JSONValue:
+        """Encode the value at the given nesting depth."""
         if depth > _MAX_DEPTH:
             raise ValueError("Value nesting limit exceeded")
         if isinstance(value, Enum):
@@ -221,7 +263,11 @@ class CodecRegistry:
         return _json(value, depth)
 
     def decode(self, data: JSONValue, annotation: object) -> object:
-        """Validate first; decoding failures are deterministic job defects."""
+        """Decode the JSON data into a value matching the annotation.
+
+        The data is validated first. Raises a :class:`CodecError` on failure, since a
+        value that does not match its annotation is a deterministic job defect.
+        """
         try:
             return self._decode(_json(data), annotation, {})
         except Exception:
@@ -230,6 +276,7 @@ class CodecRegistry:
     def _decode(
         self, data: JSONValue, annotation: object, failures: dict[tuple[int, int], object]
     ) -> object:
+        """Decode the data against the annotation, remembering failed union members."""
         origin, args = get_origin(annotation), get_args(annotation)
         if origin is Annotated:
             return self._decode(data, args[0], failures)
@@ -374,7 +421,7 @@ class CodecRegistry:
 
 
 def default_codecs() -> CodecRegistry:
-    """Return an independent registry with built-in support."""
+    """Create an independent registry with the built-in codecs."""
     return CodecRegistry()
 
 

@@ -1,4 +1,4 @@
-"""FastAPI integration.
+"""The FastAPI integration for queued jobs.
 
 Requires FastAPI >= 0.121 (the ``[fastapi]`` extra). Importing this package is the only
 place ``laravel_cloud_queues`` imports FastAPI.
@@ -69,9 +69,10 @@ R = TypeVar("R")
 
 
 class LaravelCloudQueues:
-    """Binds a registry to a FastAPI app (``app.state.laravel_cloud_queues = self``).
+    """The binding between a job registry and a FastAPI app.
 
-    Jobs may use ``Depends()`` (fresh scope per job, ``yield`` teardown before the outcome is
+    The instance is stored on ``app.state.laravel_cloud_queues``. Jobs may use
+    ``Depends()`` (fresh scope per job, ``yield`` teardown before the outcome is
     acknowledged, ``app.dependency_overrides`` honored, sub-dependency cache per job) and
     ``JobContext`` via ``Depends(current_job)`` or a ``JobContext`` annotation. Request-only
     dependencies raise :class:`~laravel_cloud_queues.errors.ConfigurationError`.
@@ -85,6 +86,10 @@ class LaravelCloudQueues:
         registry: Registry | None = None,
         config: QueueConfig | None = None,
     ) -> None:
+        """Create a new FastAPI queue binding instance.
+
+        A registry using a :class:`FastAPIInvoker` is created when none is given.
+        """
         self._app = app
         if registry is None:
             registry = Registry(config=config, invoker=FastAPIInvoker(app))
@@ -93,10 +98,12 @@ class LaravelCloudQueues:
 
     @property
     def app(self) -> FastAPI:
+        """Get the FastAPI application."""
         return self._app
 
     @property
     def registry(self) -> Registry:
+        """Get the job registry."""
         return self._registry
 
     @overload
@@ -130,7 +137,14 @@ class LaravelCloudQueues:
         fail_on_timeout: bool | None = None,
         policy: RetryPolicy | None = None,
     ) -> Any:
+        """Register a handler as a queued job, either directly or as a decorator.
+
+        Raises a :class:`~laravel_cloud_queues.errors.ConfigurationError` if the handler
+        depends on a request-only dependency.
+        """
+
         def register(fn: Callable[..., Any]) -> Any:
+            """Register the given handler with the registry."""
             with inspecting(fn):
                 reject_request_dependencies(fn, self._app.dependency_overrides)
                 # Overloads only allow keywords when the function is omitted; the
@@ -151,6 +165,7 @@ class LaravelCloudQueues:
         return register
 
     def lifespan(self) -> AbstractAsyncContextManager[None]:
+        """Get a context manager that runs the app's lifespan around the worker."""
         return enter_lifespan(self._app)
 
 

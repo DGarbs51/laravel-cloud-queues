@@ -1,4 +1,4 @@
-"""Per-job FastAPI dependency scope.
+"""The invoker that runs each job in its own FastAPI dependency scope.
 
 FastAPI 0.121+ reads yield-dependency exit stacks from the request scope
 (``fastapi_inner_astack`` and ``fastapi_function_astack``) and ignores the
@@ -52,9 +52,11 @@ from ._depends import (
 )
 
 _MIN_FASTAPI = (0, 121)
+"""The minimum supported FastAPI version."""
 
 
 def _version_tuple(version: str) -> tuple[int, int]:
+    """Parse the major and minor numbers from a version string."""
     major_text, _, rest = version.partition(".")
     minor_digits: list[str] = []
     for char in rest:
@@ -72,33 +74,41 @@ if _version_tuple(_fastapi_version) < _MIN_FASTAPI:  # pragma: no cover
     )
 
 logger = logging.getLogger("laravel_cloud_queues.fastapi")
+"""The logger for the FastAPI integration."""
 
 TEARDOWN_DEADLINE_SECONDS = 10.0
+"""The number of seconds async teardown may take after an explicit release or fail."""
 
 _Outcome = Literal["pending", "success", "control", "error"]
+"""The outcome of a handler, as recorded for dependency teardown."""
 
 
 class _OverrideProvider:
-    """``dependency_overrides`` plus ``current_job`` -> this delivery's context."""
+    """The app's dependency overrides, with ``current_job`` bound to the delivery context."""
 
     def __init__(self, app: FastAPI, context: JobContext) -> None:
+        """Create a new override provider instance."""
         overrides = dict(app.dependency_overrides)
         if current_job not in overrides:
 
             def provide_current_job() -> JobContext:
+                """Get the context of the current delivery."""
                 return context
 
             overrides[current_job] = provide_current_job
         self.dependency_overrides = overrides
+        """The dependency overrides consulted by the FastAPI solver."""
 
 
 class FastAPIInvoker:
-    """:class:`~laravel_cloud_queues.registry.Invoker` backed by FastAPI's dependency solver."""
+    """A :class:`~laravel_cloud_queues.registry.Invoker` backed by FastAPI's dependency solver."""
 
     def __init__(self, app: FastAPI) -> None:
+        """Create a new FastAPI invoker instance."""
         self._app = app
 
     def is_injected(self, parameter: inspect.Parameter) -> bool:
+        """Determine if the given parameter is injected rather than taken from the payload."""
         return parameter_is_injected(parameter)
 
     async def invoke(
@@ -108,6 +118,11 @@ class FastAPIInvoker:
         kwargs: Mapping[str, object],
         context: JobContext,
     ) -> None:
+        """Invoke the job's handler within a fresh dependency scope.
+
+        ``yield`` teardown finishes before this method returns. The handler's exception,
+        including a :class:`JobControl`, is re-raised after teardown.
+        """
         func = job.func
         reject_request_dependencies(func, self._app.dependency_overrides)
         if not dependency_parameters(func):
@@ -159,6 +174,10 @@ async def _solve(
     request_stack: AsyncExitStack,
     function_stack: AsyncExitStack,
 ) -> dict[str, Any]:
+    """Resolve the handler's dependencies against a synthetic queue job request.
+
+    Raises a :class:`ConfigurationError` if the dependencies cannot be resolved.
+    """
     parameters = dependency_parameters(func)
     scope: dict[str, Any] = {
         "type": "http",
@@ -208,6 +227,7 @@ async def _run_handler(
     context: JobContext,
     solved: Mapping[str, Any],
 ) -> None:
+    """Run the handler, awaiting its result when it is awaitable."""
     result = _call(job, args, kwargs, context, solved)
     if inspect.isawaitable(result):
         await result
@@ -224,6 +244,7 @@ def _call(
 
     Omitted defaults stay omitted, matching dispatch. Plain ``JobContext`` parameters
     receive this delivery's context; FastAPI solves the other injected parameters.
+    Raises a :class:`ConfigurationError` if an injected parameter has no value.
     """
 
     signature = job._signature
@@ -253,11 +274,11 @@ async def _close_dependencies(
 ) -> None:
     """Exit the per-job stacks the way FastAPI exits a request's.
 
-    ``exc`` (the handler's exception or ``JobControl``) is thrown into ``yield``
-    dependencies, so their ``except``/``finally`` blocks see it, exactly as in a request.
-    A dependency re-raising ``exc`` is normal teardown. A dependency suppressing it does
-    not change the job outcome: the caller still raises ``exc`` (FastAPI likewise still
-    fails the request). Any other exception is a teardown error.
+    The handler's exception, or its ``JobControl``, is thrown into ``yield`` dependencies
+    so their ``except`` and ``finally`` blocks see it, exactly as in a request. Re-raising
+    it is normal teardown, and suppressing it does not change the job outcome, since the
+    caller still raises it. Any other exception is a teardown error: it propagates after a
+    success and is logged otherwise.
     """
     try:
         if outcome == "control":
@@ -282,12 +303,12 @@ async def _aexit(
     request_stack: AsyncExitStack,
     exc: BaseException | None,
 ) -> None:
-    """Mirror FastAPI's ``async with request_stack: async with function_stack:`` unwinding.
+    """Unwind the stacks as FastAPI's nested ``async with`` blocks would.
 
-    The inner stack sees ``exc`` first. What it raises (``exc`` itself when a dependency
-    re-raises, or a new exception) is what the outer stack sees; when it suppresses,
-    the outer stack exits cleanly. Returns normally when the exception was suppressed or
-    when nothing was raised; the caller decides what the outcome is.
+    The inner stack sees ``exc`` first. Whatever it raises, ``exc`` itself or a new
+    exception, is what the outer stack sees, and when it suppresses, the outer stack exits
+    cleanly. Returns normally when the exception was suppressed or when nothing was
+    raised, leaving the caller to decide the outcome.
     """
     details = _exc_details(exc)
     if function_stack is not None:
@@ -304,12 +325,14 @@ async def _aexit(
 def _exc_details(
     exc: BaseException | None,
 ) -> tuple[type[BaseException] | None, BaseException | None, TracebackType | None]:
+    """Get the exception details tuple expected by ``__aexit__``."""
     if exc is None:
         return (None, None, None)
     return (type(exc), exc, exc.__traceback__)
 
 
 def _outcome_phrase(outcome: _Outcome) -> str:
+    """Get the log phrase that describes the given outcome."""
     if outcome == "control":
         return "an explicit release or fail"
     if outcome == "pending":
@@ -318,6 +341,7 @@ def _outcome_phrase(outcome: _Outcome) -> str:
 
 
 def _job_label(context: JobContext) -> str:
+    """Get the job name for logging, or ``unknown`` when it is unavailable."""
     try:
         return context.job_name
     except Exception:
@@ -325,6 +349,7 @@ def _job_label(context: JobContext) -> str:
 
 
 def _format_errors(errors: Sequence[Any]) -> str:
+    """Format the dependency validation errors as a single message."""
     parts: list[str] = []
     for error in errors:
         if isinstance(error, Mapping):
@@ -340,4 +365,5 @@ def _format_errors(errors: Sequence[Any]) -> str:
 
 
 def _qualname(func: Callable[..., Any]) -> str:
+    """Get the qualified name of the given handler."""
     return str(getattr(func, "__qualname__", "<job>"))

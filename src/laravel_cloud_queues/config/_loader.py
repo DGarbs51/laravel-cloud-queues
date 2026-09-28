@@ -26,12 +26,14 @@ from ._models import (
 
 
 def _string(value: object, setting: str, *, empty: bool = False) -> str:
+    """Ensure the given setting is a string, and non-empty unless ``empty`` is set."""
     if not isinstance(value, str) or (not value and not empty):
         raise ConfigurationError(f"{setting} must be a {'possibly empty ' if empty else ''}string.")
     return value
 
 
 def _object(value: object, setting: str) -> dict[str, Any]:
+    """Ensure the given setting is an object with string keys."""
     # Any is confined to the forward-compatible, arbitrary JSON configuration document.
     if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
         raise ConfigurationError(f"{setting} must be an object.")
@@ -39,12 +41,14 @@ def _object(value: object, setting: str) -> dict[str, Any]:
 
 
 def _boolean(value: object, setting: str) -> bool:
+    """Ensure the given setting is a boolean."""
     if not isinstance(value, bool):
         raise ConfigurationError(f"{setting} must be a boolean.")
     return value
 
 
 def _invalid_json_constant(value: str) -> NoReturn:
+    """Reject the non-standard ``NaN`` and ``Infinity`` JSON constants."""
     raise ValueError("Non-JSON numeric constant.")
 
 
@@ -65,15 +69,18 @@ def load_config(
     log_socket: str | None = None,
     agent_socket: str | None = None,
 ) -> QueueConfig:
-    """Code settings win over environment settings; managed worker assignment is authoritative.
+    """Load the queue configuration from code and the environment.
 
-    Only an explicit backend or managed configuration selects a mode. Ambient AWS
-    credentials and REDIS_URL never select one. Managed credential providers are
-    explicit (D13.4); no missing/unknown value falls back to the default AWS chain.
+    Code settings win over environment settings, and the managed worker assignment is
+    authoritative. Only an explicit backend or managed configuration selects a mode;
+    ambient AWS credentials and ``REDIS_URL`` never select one. Managed credential
+    providers are explicit, and no missing or unknown value falls back to the default AWS
+    chain. Raises a :class:`ConfigurationError` when the configuration is invalid.
     """
     env = os.environ if env is None else env
 
     def setting(value: str | None, name: str, default: str | None = None) -> str | None:
+        """Get the code value, else the environment variable, else the default."""
         return value if value is not None else env.get(name, default)
 
     document = managed_config

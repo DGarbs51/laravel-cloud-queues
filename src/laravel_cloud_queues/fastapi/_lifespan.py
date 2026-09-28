@@ -1,4 +1,4 @@
-"""Enter the FastAPI app lifespan once per worker process.
+"""The helpers that enter the FastAPI app lifespan once per worker process.
 
 Verified against FastAPI 0.141.1 and Starlette 1.7.0:
 
@@ -21,16 +21,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 _RESERVED_STATE_KEY = "laravel_cloud_queues"
+"""The ``app.state`` key that holds the adapter binding."""
 
 
 @asynccontextmanager
 async def enter_lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Run application startup, yield for jobs, then run shutdown.
+    """Run the application startup, yield for jobs, then run the shutdown.
 
-    ``contextlib.asynccontextmanager`` throws a body error into the ``yield``. That
-    skips the statements after ``yield`` unless the app wrapped them in ``finally``.
-    Catch the error, leave the app lifespan normally so its shutdown still runs, then
-    re-raise. This matches an ASGI server, which sends lifespan shutdown as its own
+    Because ``contextlib.asynccontextmanager`` throws a body error into the ``yield``,
+    which would skip an app's shutdown not wrapped in ``finally``, the error is caught,
+    the app lifespan is left normally so its shutdown still runs, and the error is then
+    re-raised. This matches an ASGI server, which sends lifespan shutdown as its own
     message rather than as an exception.
     """
 
@@ -47,10 +48,10 @@ async def enter_lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def publish_lifespan_state(app: FastAPI, maybe_state: object) -> None:
-    """Copy yielded lifespan state onto ``app.state`` for queue jobs.
+    """Copy the yielded lifespan state onto ``app.state`` for queue jobs.
 
-    Keys that are not identifiers are skipped (``app.state`` is attribute access).
-    ``laravel_cloud_queues`` is left as the adapter binding.
+    Keys that are not identifiers are skipped, since ``app.state`` uses attribute access,
+    and ``laravel_cloud_queues`` is left as the adapter binding.
     """
 
     if not isinstance(maybe_state, Mapping):

@@ -1,5 +1,7 @@
-"""``laravel-cloud-queues`` console entry point.
-See docs/contract/cli.md."""
+"""The ``laravel-cloud-queues`` console entry point.
+
+The commands and exit codes follow the contract in ``docs/contract/cli.md``.
+"""
 
 from __future__ import annotations
 
@@ -23,10 +25,14 @@ from ..jobs.job import AnyJob
 from ..worker import EXIT_CONFIG, EXIT_FATAL, Worker, WorkerOptions, resolve_target
 
 PROG = "laravel-cloud-queues"
+"""The program name shown in usage and error messages."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """``work TARGET``, ``inspect TARGET``, ``conformance ...``. Returns the exit code."""
+    """Run the console application and return its exit code.
+
+    The available commands are ``work TARGET``, ``inspect TARGET`` and ``conformance ...``.
+    """
     args = list(sys.argv[1:] if argv is None else argv)
     try:
         code = cli.main(args, prog_name=PROG, standalone_mode=False)
@@ -38,15 +44,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 @click.group(help="Laravel Cloud queues for Python.")
 def cli() -> None:
-    """Mountable in any click CLI, e.g. Flask: ``app.cli.add_command(cli, "queues")``."""
+    """Get the command group for the queue commands.
+
+    The group may be mounted in any click CLI, e.g. with Flask:
+    ``app.cli.add_command(cli, "queues")``.
+    """
 
 
 def _command(func: Callable[..., int]) -> Callable[..., None]:
-    """Adds ``--debug``, turns failures into one redacted line and exits with the code."""
+    """Wrap the given function as a command that exits with its returned code.
+
+    The wrapper adds a ``--debug`` flag and turns any failure into one redacted error line.
+    """
 
     @click.option("--debug", is_flag=True, help="Show tracebacks on errors.")
     @functools.wraps(func)
     def wrapper(debug: bool, **params: object) -> None:
+        """Run the command and exit with its code, reporting failures on stderr."""
         try:
             code = func(**params)
         except (click.ClickException, click.exceptions.Exit, click.Abort):
@@ -62,15 +76,20 @@ def _command(func: Callable[..., int]) -> Callable[..., None]:
 
 
 def _describe(exc: BaseException) -> str:
+    """Format the given exception as a single redacted error message."""
     return f"{type(exc).__name__}: {_redact(str(exc))} (use --debug for the traceback)"
 
 
 class _Queues(click.ParamType[tuple[str, ...], str]):
+    """The parameter type for a comma-separated list of queue names."""
+
     name = "Q[,Q...]"
+    """The placeholder shown for the parameter in help output."""
 
     def convert(
         self, value: str, param: click.Parameter | None, ctx: click.Context | None
     ) -> tuple[str, ...]:
+        """Parse the given value into a tuple of queue names."""
         queues = tuple(part.strip() for part in value.split(",") if part.strip())
         if not queues:
             self.fail("expected one or more queue names")
@@ -78,13 +97,18 @@ class _Queues(click.ParamType[tuple[str, ...], str]):
 
 
 class _Seconds(click.ParamType[float, "str | float"]):
-    """Finite and non-negative; ``click.FloatRange`` would accept ``nan`` and ``inf``."""
+    """The parameter type for a finite, non-negative number of seconds.
+
+    Unlike ``click.FloatRange``, this type rejects ``nan`` and ``inf``.
+    """
 
     name = "S"
+    """The placeholder shown for the parameter in help output."""
 
     def convert(
         self, value: str | float, param: click.Parameter | None, ctx: click.Context | None
     ) -> float:
+        """Parse the given value into a number of seconds."""
         try:
             number = float(value)
         except ValueError:
@@ -95,10 +119,11 @@ class _Seconds(click.ParamType[float, "str | float"]):
 
 
 SECONDS = _Seconds()
+"""The shared parameter type for options given in seconds."""
 
 
 def _import_path() -> None:
-    """Make the current directory importable, like uvicorn."""
+    """Make the current directory importable, like uvicorn does."""
     cwd = os.getcwd()
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
@@ -166,7 +191,11 @@ def inspect(target: str, as_json: bool) -> int:
 
 
 def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> dict[str, object]:
-    """Built field by field so nothing secret (credentials, Redis passwords) can leak."""
+    """Build the inspection report for the given configuration and jobs.
+
+    The report is built field by field so nothing secret (credentials, Redis passwords)
+    can leak into it.
+    """
     queues: dict[str, object] = {"default": _redact(config.default_queue)}
     settings: dict[str, object] = {}
     if config.managed is not None:
@@ -211,7 +240,10 @@ def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> dict[str, object
 
 
 def _redact(text: str) -> str:
-    """Remove URL userinfo and redact credential query values, including in tracebacks."""
+    """Remove URL userinfo and redact credential query values from the given text.
+
+    This is also applied to tracebacks.
+    """
     text = re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^/\s?#]*@", r"\1", text)
     return re.sub(
         r"([?&]([^=&#\s]+)=)([^&#\s\"'<>]*)",
@@ -231,6 +263,7 @@ def _redact(text: str) -> str:
 
 
 def _render(report: dict[str, object]) -> str:
+    """Format the inspection report as human-readable text."""
     lines = [f"Mode: {report['mode']}", "Queues:"]
     lines += [f"  {key}: {_text(value)}" for key, value in _items(report["queues"])]
     jobs = report["jobs"]
@@ -249,11 +282,13 @@ def _render(report: dict[str, object]) -> str:
 
 
 def _items(value: object) -> list[tuple[str, object]]:
+    """Get the key and value pairs of the given report section."""
     assert isinstance(value, dict)
     return list(value.items())
 
 
 def _text(value: object) -> str:
+    """Format the given report value for display."""
     if isinstance(value, list):
         return ",".join(str(item) for item in value) or "-"
     return "-" if value is None else str(value)
@@ -271,6 +306,11 @@ def conformance(args: tuple[str, ...]) -> None:
 
 
 def _conformance(args: Sequence[str]) -> int:
+    """Run the conformance suite from the repository checkout and return its exit code.
+
+    Outside a checkout, an explanation is written to stderr and the configuration error
+    exit code is returned.
+    """
     root = _checkout_root(Path.cwd())
     if root is None:
         click.echo(
@@ -286,6 +326,7 @@ def _conformance(args: Sequence[str]) -> int:
 
 
 def _checkout_root(start: Path) -> Path | None:
+    """Find the repository checkout that contains the given directory, if any."""
     for directory in (start, *start.parents):
         if (directory / "tests" / "conformance" / "__main__.py").is_file():
             return directory

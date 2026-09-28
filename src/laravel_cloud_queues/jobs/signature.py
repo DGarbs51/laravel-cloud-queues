@@ -11,20 +11,27 @@ from ..codecs import CodecRegistry, JSONValue, default_codecs
 from ..errors import ArgumentError, ArgumentMismatchError, CodecError, ConfigurationError
 
 InjectedPredicate = Callable[[inspect.Parameter], bool]
-"""True when a parameter is supplied at run time (JobContext, FastAPI ``Depends``), never
-from payload data."""
+"""A predicate that determines if a parameter is injected at run time.
+
+Injected parameters, such as a ``JobContext`` or a FastAPI ``Depends``, are never supplied
+from payload data.
+"""
 
 
 @dataclass(frozen=True)
 class JobSignature:
+    """The inspected signature of a job handler."""
+
     func: Callable[..., Any]
+    """The handler function."""
     signature: inspect.Signature
+    """The handler's signature with its annotations resolved."""
     hints: Mapping[str, object]
-    """Resolved annotations (``typing.get_type_hints(include_extras=True)``)."""
+    """The resolved annotations, from ``typing.get_type_hints(include_extras=True)``."""
     serialized: tuple[str, ...]
-    """Parameter names carried in the payload."""
+    """The names of the parameters carried in the payload."""
     injected: tuple[str, ...]
-    """Parameter names supplied at run time."""
+    """The names of the parameters injected at run time."""
 
 
 def inspect_handler(
@@ -33,9 +40,11 @@ def inspect_handler(
     is_injected: InjectedPredicate,
     codecs: CodecRegistry | None = None,
 ) -> JobSignature:
-    """Inspect once at registration. ``*args``/``**kwargs`` handler parameters are rejected
-    with ConfigurationError (they cannot be validated). Annotations use the supplied
-    codec registry, or a fresh default registry when ``codecs`` is None.
+    """Inspect the given handler when it is registered.
+
+    Handlers declaring ``*args`` or ``**kwargs`` cannot be validated, so they raise a
+    :class:`ConfigurationError`, as do unresolvable annotations. Annotations are checked
+    against the given codec registry, or a fresh default registry when none is given.
     """
     try:
         signature = inspect.signature(func)
@@ -75,10 +84,13 @@ def encode_arguments(
     args: Sequence[object],
     kwargs: Mapping[str, object],
 ) -> tuple[tuple[JSONValue, ...], dict[str, JSONValue]]:
-    """Dispatch side: bind to the serialized parameters (injected parameters may not be
-    passed -> ArgumentError), then encode (SerializationError). Positional/keyword shape is
-    preserved as the caller used it. Encoded values are checked with the same annotation
-    decoder as the worker; a mismatch becomes ArgumentError. Defaults stay omitted.
+    """Encode the given arguments for dispatch.
+
+    The arguments are bound to the serialized parameters, and passing an injected parameter
+    raises an :class:`ArgumentError`. Each value is encoded, raising a
+    :class:`SerializationError` on failure, then checked with the worker's annotation
+    decoder, where a mismatch raises an :class:`ArgumentError`. The caller's positional and
+    keyword shape is preserved and defaults stay omitted.
     """
     bound = _bind(sig, args, kwargs, ArgumentError)
     encoded: dict[str, JSONValue] = {}
@@ -103,9 +115,13 @@ def decode_arguments(
     args: Sequence[JSONValue],
     kwargs: Mapping[str, JSONValue],
 ) -> tuple[list[object], dict[str, object]]:
-    """Worker side: bind (ArgumentMismatchError: missing/extra/injected names supplied by the
-    payload), then decode each value against its annotation (CodecError). Validation happens
-    before execution; binding alone is not validation."""
+    """Decode the given payload arguments for execution.
+
+    The arguments are bound first, raising an :class:`ArgumentMismatchError` for missing,
+    extra or injected names in the payload. Each value is then decoded against its
+    annotation, raising a :class:`CodecError` on failure. Validation happens before
+    execution, since binding alone is not validation.
+    """
     bound = _bind(sig, args, kwargs, ArgumentMismatchError)
     decoded = {
         name: codecs.decode(value, sig.hints.get(name, inspect.Parameter.empty))
@@ -124,6 +140,11 @@ def _bind(
     kwargs: Mapping[str, object],
     error: type[ArgumentError | ArgumentMismatchError],
 ) -> inspect.BoundArguments:
+    """Bind the arguments to the serialized parameters of the handler.
+
+    Raises the given error type if an injected parameter is supplied or the arguments do
+    not bind.
+    """
     if any(name in kwargs for name in sig.injected):
         raise error("Injected parameters cannot be supplied in job arguments")
     serialized = sig.signature.replace(

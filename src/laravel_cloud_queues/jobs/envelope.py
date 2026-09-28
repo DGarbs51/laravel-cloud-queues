@@ -1,7 +1,7 @@
-"""Envelope v1.
+"""The version 1 envelope that carries a job over the wire.
 
-Wire shape (one JSON object; keys other than ``uuid``/``displayName`` live under the
-versioned ``laravel_cloud_queues`` section)::
+The envelope is one JSON object. Keys other than ``uuid`` and ``displayName`` live under the
+versioned ``laravel_cloud_queues`` section::
 
     {
       "uuid": "7f0c...-...",                 # unique per logical dispatch (Laravel key)
@@ -18,13 +18,17 @@ versioned ``laravel_cloud_queues`` section)::
       }
     }
 
-Rules: ``policy`` omits fields the job did not declare; reserved (not emitted in v1):
-``retry_until``, ``max_exceptions``. Unknown keys inside the section and at top level are
-preserved on decode (``extra``) and ignored. A re-queued envelope (dashboard retry, D3) is
-decoded identically; attempts come from the transport, never from the body.
-Decoding limits: ``MAX_BODY_BYTES`` total, ``MAX_DEPTH`` nesting; reject NaN/Infinity,
-duplicate keys, non-object top level -> MalformedEnvelopeError. ``{"@pointer": ...}`` ->
-UnsupportedOverflowPayloadError. ``version`` != 1 -> UnsupportedEnvelopeVersionError.
+The ``policy`` object omits any field the job did not declare. The ``retry_until`` and
+``max_exceptions`` keys are reserved and are not emitted in version 1. Unknown keys inside
+the section and at the top level are preserved on decode (as ``extra``) and otherwise
+ignored. An envelope re-queued by a dashboard retry decodes identically, since attempts
+always come from the transport and never from the body.
+
+Decoding is bounded by ``MAX_BODY_BYTES`` in total and ``MAX_DEPTH`` levels of nesting. A
+body over those limits, one containing NaN, Infinity or duplicate keys, or one whose top
+level is not an object raises a :class:`MalformedEnvelopeError`. A Laravel overflow body
+(``{"@pointer": ...}``) raises an :class:`UnsupportedOverflowPayloadError`, and any
+``version`` other than 1 raises an :class:`UnsupportedEnvelopeVersionError`.
 """
 
 from __future__ import annotations
@@ -45,30 +49,51 @@ from ..errors import (
 from .policy import MAX_JOB_TIMEOUT, RetryPolicy
 
 ENVELOPE_KEY = "laravel_cloud_queues"
+"""The key of the versioned section within the envelope."""
 ENVELOPE_VERSION = 1
+"""The envelope version written by this package."""
 MAX_BODY_BYTES = 16 * 1_048_576
+"""The maximum size of an envelope body in UTF-8 bytes."""
 MAX_DEPTH = 64
+"""The maximum nesting depth of an envelope body."""
 
 
 @dataclass(frozen=True)
 class Envelope:
+    """The decoded contents of a job message."""
+
     uuid: str
+    """The unique identifier of the logical dispatch."""
     display_name: str
+    """The wire name of the job, recorded as the failed job's name."""
     job: str
+    """The name used to look the job up in the registry."""
     args: tuple[JSONValue, ...] = ()
+    """The encoded positional arguments."""
     kwargs: Mapping[str, JSONValue] = field(default_factory=dict)
+    """The encoded keyword arguments."""
     policy: RetryPolicy = field(default_factory=RetryPolicy)
+    """The retry policy declared by the job."""
     queue: str | None = None
+    """The logical queue the job was dispatched to, kept for debugging only."""
     dispatched_at: str | None = None
+    """The ISO 8601 time at which the job was dispatched."""
     context: Mapping[str, str] = field(default_factory=dict)
+    """The trace context propagated from the dispatcher."""
     extra: Mapping[str, JSONValue] = field(default_factory=dict)
-    """Namespaced extras: ``top_level``, ``section`` and ``policy`` object maps.
-    Unknown/reserved policy fields are retained but have no runtime effect.
+    """The unknown keys preserved from the body.
+
+    They are grouped into ``top_level``, ``section`` and ``policy`` object maps. Unknown or
+    reserved policy fields are retained but have no runtime effect.
     """
 
 
 def encode_envelope(envelope: Envelope) -> str:
-    """Deterministic compact JSON; omit undeclared policy fields and optional metadata."""
+    """Encode the envelope as deterministic, compact JSON.
+
+    Undeclared policy fields and missing optional metadata are omitted. Raises a
+    :class:`SerializationError` if the envelope cannot be serialized.
+    """
     try:
         top = _extras(envelope, "top_level")
         section = _extras(envelope, "section")
@@ -108,6 +133,7 @@ def encode_envelope(envelope: Envelope) -> str:
 
 
 def _extras(envelope: Envelope, key: str) -> dict[str, JSONValue]:
+    """Get a copy of the given namespace of the envelope's extras."""
     value = envelope.extra.get(key, {})
     if not isinstance(value, dict):
         raise ValueError("Envelope extras must be namespaced objects")
@@ -115,10 +141,12 @@ def _extras(envelope: Envelope, key: str) -> dict[str, JSONValue]:
 
 
 def _reject_constant(value: str) -> NoReturn:
+    """Reject a NaN or Infinity constant in the JSON body."""
     raise ValueError("Non-finite JSON number")
 
 
 def _float(value: str) -> float:
+    """Parse a JSON number as a float, rejecting values that are not finite."""
     result = float(value)
     if not math.isfinite(result):
         raise ValueError("Non-finite JSON number")
@@ -126,6 +154,7 @@ def _float(value: str) -> float:
 
 
 def _pairs(pairs: list[tuple[str, JSONValue]]) -> dict[str, JSONValue]:
+    """Build a JSON object from its pairs, rejecting duplicate keys."""
     result: dict[str, JSONValue] = {}
     for key, value in pairs:
         if key in result:
@@ -135,6 +164,10 @@ def _pairs(pairs: list[tuple[str, JSONValue]]) -> dict[str, JSONValue]:
 
 
 def _parse(body: str) -> dict[str, JSONValue]:
+    """Parse the body into a JSON object within the decoding limits.
+
+    Raises a :class:`MalformedEnvelopeError` if the body is invalid or exceeds a limit.
+    """
     try:
         # Bound bytes before parsing, and nesting before the recursive stdlib parser.
         if len(body) > MAX_BODY_BYTES or len(body.encode("utf-8")) > MAX_BODY_BYTES:
@@ -168,11 +201,15 @@ def _parse(body: str) -> dict[str, JSONValue]:
 
 
 def _number(value: JSONValue) -> bool:
+    """Determine if the value is a non-negative number."""
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
 
 
 def decode_envelope(body: str) -> Envelope:
-    """Strict bounded decode. Unknown/reserved fields are ignored and preserved."""
+    """Decode the given body into an envelope.
+
+    Decoding is strict and bounded. Unknown and reserved fields are preserved but ignored.
+    """
     top = _parse(body)
     if "@pointer" in top:
         raise UnsupportedOverflowPayloadError("Laravel overflow payloads are unsupported")
@@ -253,7 +290,10 @@ def decode_envelope(body: str) -> Envelope:
 
 
 def peek_display_name(body: str) -> str:
-    """Read displayName even from unsupported envelopes, within the same JSON limits."""
+    """Get the display name from the body, even when the envelope is unsupported.
+
+    The same JSON limits apply. An empty string is returned when no name can be read.
+    """
     try:
         name = _parse(body).get("displayName")
     except MalformedEnvelopeError:

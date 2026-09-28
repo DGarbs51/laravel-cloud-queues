@@ -1,4 +1,4 @@
-"""Queue transports: direct SQS, the Laravel Cloud agent, and Redis/Valkey."""
+"""The queue transports for direct SQS, the Laravel Cloud agent, and Redis or Valkey."""
 
 from __future__ import annotations
 
@@ -33,19 +33,34 @@ __all__ = [
 
 
 class ConsumerFactory(Protocol):
-    def __call__(self, *, lease_seconds: int = 60) -> Consumer: ...
+    """A callable that creates the worker's consumer."""
+
+    def __call__(self, *, lease_seconds: int = 60) -> Consumer:
+        """Create a new consumer with the given lease duration."""
+        ...
 
 
 @dataclass(frozen=True)
 class Backend:
+    """The producer and consumer factory for a configured queue mode."""
+
     mode: Mode
+    """The queue mode the backend was built for."""
     producer: Producer
+    """The producer used to send messages."""
     consumer_factory: ConsumerFactory
-    """Creates the worker's consumer lazily (web processes never open one)."""
+    """The factory that lazily creates the worker's consumer.
+
+    Web processes never open a consumer.
+    """
 
 
 def create_backend(config: QueueConfig) -> Backend:
-    """Build the producer now and defer consumer creation until worker startup."""
+    """Create the queue backend for the given configuration.
+
+    The producer is built immediately, while consumer creation is deferred until the
+    worker starts. Raises a ``ConfigurationError`` if the settings for the mode are missing.
+    """
     from ..errors import ConfigurationError
 
     if config.mode == "redis":
@@ -56,6 +71,7 @@ def create_backend(config: QueueConfig) -> Backend:
             raise ConfigurationError("Redis backend requires Redis configuration.")
 
         def redis_consumer(*, lease_seconds: int = 60) -> Consumer:
+            """Create a new Redis consumer."""
             return RedisConsumer(redis_config, lease_seconds=lease_seconds)
 
         return Backend(config.mode, RedisProducer(redis_config), redis_consumer)
@@ -73,11 +89,13 @@ def create_backend(config: QueueConfig) -> Backend:
             from .agent import AgentConsumer
 
             def agent_consumer(*, lease_seconds: int = 60) -> Consumer:
+                """Create a new agent consumer, which ignores the lease duration."""
                 return AgentConsumer(managed)
 
             return Backend(config.mode, SqsProducer(connection), agent_consumer)
 
     def sqs_consumer(*, lease_seconds: int = 60) -> Consumer:
+        """Create a new SQS consumer."""
         return SqsConsumer(connection, lease_seconds=lease_seconds)
 
     return Backend(config.mode, SqsProducer(connection), sqs_consumer)

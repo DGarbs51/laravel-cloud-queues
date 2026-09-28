@@ -1,4 +1,4 @@
-"""Configuration and backend selection (D6a)."""
+"""The queue configuration and backend selection."""
 
 from __future__ import annotations
 
