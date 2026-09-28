@@ -99,6 +99,14 @@ def merge_injected(
         parameters=[p for p in signature.parameters.values() if p.name not in injected]
     )
     arguments = OrderedDict(serialized.bind(*args, **kwargs).arguments)
+    positional = [
+        p for p in signature.parameters.values() if p.kind is inspect.Parameter.POSITIONAL_ONLY
+    ]
+    if any(p.name in injected for p in positional):
+        last_injected = max(i for i, p in enumerate(positional) if p.name in injected)
+        for parameter in positional[:last_injected]:
+            if parameter.name not in arguments and parameter.name not in injected:
+                arguments[parameter.name] = parameter.default
     arguments.update(injected)
     bound = inspect.BoundArguments(signature, arguments)
     return bound.args, bound.kwargs

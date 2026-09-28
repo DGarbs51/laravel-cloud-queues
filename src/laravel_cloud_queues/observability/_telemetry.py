@@ -55,27 +55,34 @@ class Telemetry:
         except Exception:
             log_failure("observability emit failed")
 
-    def log_line(self, record: Mapping[str, object]) -> None:
-        """One JSON line to stdout (flush); never raises."""
+    def log_line(self, record: Mapping[str, object], *, lock_timeout: float | None = None) -> None:
+        """One JSON line to stdout (flush); bounded lock wait, never raises."""
+        from ._guard import raw_diagnostic, raw_write
 
         if not begin_call():
             return
+        diagnostic = log_failure if lock_timeout is None else raw_diagnostic
         acquired = False
         try:
-            acquired = self._lock.acquire(timeout=_STDOUT_LOCK_TIMEOUT_SECONDS)
+            acquired = self._lock.acquire(
+                timeout=_STDOUT_LOCK_TIMEOUT_SECONDS if lock_timeout is None else lock_timeout
+            )
             if not acquired:
-                log_failure("observability stdout lock timed out")
+                diagnostic("observability stdout lock timed out")
                 return
             try:
                 line = encode_event_line(record)
             except Exception:
-                log_failure("observability stdout encoding failed")
+                diagnostic("observability stdout encoding failed")
                 return
             try:
-                sys.stdout.write(line.decode("utf-8"))
-                sys.stdout.flush()
+                if lock_timeout is not None:
+                    raw_write(1, line, timeout=lock_timeout)
+                else:
+                    sys.stdout.write(line.decode("utf-8"))
+                    sys.stdout.flush()
             except Exception:
-                log_failure("observability stdout write failed")
+                diagnostic("observability stdout write failed")
         finally:
             if acquired:
                 self._lock.release()

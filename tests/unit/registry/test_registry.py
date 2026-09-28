@@ -280,3 +280,21 @@ def test_invoke_awaits_async_handler() -> None:
     context = _context()
     anyio.run(registry.invoker.invoke, handler, [5], {}, context)
     assert seen == [context, 5]
+
+
+def test_injected_positional_only_parameter_after_omitted_defaults() -> None:
+    registry = Registry()
+    seen: list[tuple[int, str, int]] = []
+
+    missing = _context()
+
+    @registry.job(name="defaults")
+    def handler(value: int = 7, context: JobContext = missing, /, *, label: str = "ok") -> None:
+        assert context is not missing
+        seen.append((value, label, context.attempt))
+
+    with registry.testing():
+        handler.dispatch()
+        handler.dispatch(label="other")
+        handler.dispatch(9)
+    assert seen == [(7, "ok", 1), (7, "other", 1), (9, "ok", 1)]

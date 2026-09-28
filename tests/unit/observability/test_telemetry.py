@@ -131,3 +131,23 @@ def test_log_line_logging_reentry_does_not_recurse_or_log_the_record(
     assert handler.calls == 1
     assert messages
     assert all("super-secret-payload" not in message for message in messages)
+
+
+def test_log_line_alarm_lock_timeout_never_uses_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from laravel_cloud_queues.observability import _telemetry
+
+    def fail(_: str) -> None:
+        raise AssertionError("alarm fallback must not acquire a logging lock")
+
+    monkeypatch.setattr(_telemetry, "log_failure", fail)
+    telemetry = Telemetry(sink=NullSink(), emits_cloud_events=False)
+    telemetry._lock.acquire()
+    try:
+        started = time.monotonic()
+        telemetry.log_line({"status": "failed"}, lock_timeout=0.01)
+        assert time.monotonic() - started < 0.5
+    finally:
+        telemetry._lock.release()
+    telemetry.log_line({"invalid": object()}, lock_timeout=0.01)

@@ -7,15 +7,16 @@ import argparse
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote_plus
 
 from ..config import QueueConfig, StaticCredentials
-from ..errors import ConfigurationError, LaravelCloudQueuesError
+from ..errors import ConfigurationError
 from ..jobs.job import AnyJob
 from ..worker import EXIT_CONFIG, EXIT_FATAL, Worker, WorkerOptions, resolve_target
 
@@ -34,15 +35,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return command(args)
     except (Exception, KeyboardInterrupt) as exc:
         if args.debug:
-            traceback.print_exc()
+            print(_redact(traceback.format_exc()), file=sys.stderr, end="")
         print(f"{PROG}: error: {_describe(exc)}", file=sys.stderr)
         return EXIT_CONFIG if isinstance(exc, ConfigurationError) else EXIT_FATAL
 
 
 def _describe(exc: BaseException) -> str:
-    if isinstance(exc, LaravelCloudQueuesError):
-        return str(exc)
-    return f"{type(exc).__name__}: {exc} (use --debug for the traceback)"
+    return f"{type(exc).__name__}: {_redact(str(exc))} (use --debug for the traceback)"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -147,28 +146,30 @@ def _inspect(args: argparse.Namespace) -> int:
 
 def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> dict[str, object]:
     """Built field by field so nothing secret (credentials, Redis passwords) can leak."""
-    queues: dict[str, object] = {"default": config.default_queue}
+    queues: dict[str, object] = {"default": _redact(config.default_queue)}
     settings: dict[str, object] = {}
     if config.managed is not None:
-        queues["worker_assignment"] = config.managed.queue
-        queues["managed_inventory"] = list(config.managed.queues)
+        queues["worker_assignment"] = _redact(config.managed.queue)
+        queues["managed_inventory"] = [_redact(queue) for queue in config.managed.queues]
         settings["agent_enabled"] = config.managed.agent.enabled
-        settings["agent_socket"] = config.managed.agent.socket
+        settings["agent_socket"] = _redact(config.managed.agent.socket)
         settings["after_commit"] = config.managed.after_commit
     if config.sqs is not None:
         credentials = config.sqs.credentials
-        settings["sqs_prefix"] = config.sqs.prefix
+        settings["sqs_prefix"] = _redact(config.sqs.prefix)
         settings["sqs_suffix"] = config.sqs.suffix
         settings["sqs_region"] = config.sqs.region
-        settings["sqs_endpoint"] = config.sqs.endpoint_url
+        settings["sqs_endpoint"] = (
+            _redact(config.sqs.endpoint_url) if config.sqs.endpoint_url is not None else None
+        )
         settings["sqs_credentials"] = (
             "static" if isinstance(credentials, StaticCredentials) else credentials
         )
     if config.redis is not None:
-        settings["redis_url"] = _redact_url(config.redis.url)
+        settings["redis_url"] = _redact(config.redis.url)
         settings["redis_prefix"] = config.redis.prefix
     if config.emits_cloud_events:
-        settings["log_socket"] = config.log_socket
+        settings["log_socket"] = _redact(config.log_socket)
     registered = []
     for name, job in sorted(jobs.items()):
         policy = job.policy
@@ -178,7 +179,7 @@ def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> dict[str, object
         registered.append(
             {
                 "name": name,
-                "queue": job.queue,
+                "queue": _redact(job.queue) if job.queue is not None else None,
                 "tries": policy.tries,
                 "backoff": backoff,
                 "timeout": policy.timeout,
@@ -188,13 +189,24 @@ def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> dict[str, object
     return {"mode": config.mode, "queues": queues, "jobs": registered, "settings": settings}
 
 
-def _redact_url(url: str) -> str:
-    parts = urlsplit(url)
-    host = parts.hostname or ""
-    if ":" in host:
-        host = f"[{host}]"
-    port = f":{parts.port}" if parts.port else ""
-    return f"{parts.scheme}://{host}{port}{parts.path}"
+def _redact(text: str) -> str:
+    """Remove URL userinfo and redact credential query values, including in tracebacks."""
+    text = re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^/\s?#]*@", r"\1", text)
+    return re.sub(
+        r"([?&]([^=&#\s]+)=)([^&#\s\"'<>]*)",
+        lambda match: (
+            match[1]
+            + (
+                "[REDACTED]"
+                if any(
+                    key in unquote_plus(match[2]).lower()
+                    for key in ("token", "secret", "password", "key", "signature", "credential")
+                )
+                else match[3]
+            )
+        ),
+        text,
+    )
 
 
 def _render(report: dict[str, object]) -> str:

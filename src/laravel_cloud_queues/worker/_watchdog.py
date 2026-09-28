@@ -12,8 +12,8 @@ from ..transports import Consumer, Delivery
 
 logger = logging.getLogger("laravel_cloud_queues.worker")
 
-JOIN_TIMEOUT = 15.0
-"""Bound on waiting for an in-flight ``renew`` call when the job ends."""
+JOIN_TIMEOUT = 30.0
+"""Minimum bound on waiting for an in-flight renewal; at least one lease window."""
 
 
 class Watchdog:
@@ -43,7 +43,10 @@ class Watchdog:
         holding the GIL starves this thread), confirm ownership once before the worker
         reports: another worker may have received the message meanwhile."""
         self._stop.set()
-        self._thread.join(JOIN_TIMEOUT)
+        self._thread.join(max(self._lease, JOIN_TIMEOUT))
+        if self._thread.is_alive():
+            self._lose("renewal is still in flight after the shutdown deadline")
+            return
         if self.lost or time.monotonic() - self._renewed_at < self._lease:
             return
         try:
@@ -61,6 +64,9 @@ class Watchdog:
                 self._lose("the message is no longer owned by this worker")
                 return
             except Exception as exc:
+                if self._stop.is_set():
+                    self._lose(f"renewal failed during shutdown ({type(exc).__name__})")
+                    return
                 failures += 1
                 # Three failed renewals span a whole lease window: the message may be visible.
                 if failures >= 3:
