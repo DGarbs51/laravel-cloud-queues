@@ -681,7 +681,19 @@ laravel-cloud-queues work TARGET [--queue Q[,Q...]] [--max-jobs N] [--max-time S
 
 `TARGET` is `module:attribute`: a FastAPI app with `LaravelCloudQueues` bound, a plain
 `Registry`, or any object exposing `registry` and `lifespan()`. The current directory is
-put on `sys.path`, like uvicorn.
+put on `sys.path`, like uvicorn. Run `laravel-cloud-queues --help` or
+`laravel-cloud-queues work --help` for the full option reference.
+
+The CLI is built on [click](https://click.palletsprojects.com/). Its command group,
+`laravel_cloud_queues.cli.cli`, can be mounted in any click-based CLI, including Flask's:
+
+```python
+from laravel_cloud_queues.cli import cli
+
+app.cli.add_command(cli, "queues")  # flask queues work myapp:registry
+```
+
+A mounted group keeps the same options, error handling and exit codes.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -949,7 +961,8 @@ deployed to Laravel Cloud to inspect what the platform injects and to run the
 - `laravel_cloud_queues.testing`: `DispatchRecorder`, `RecordedDispatch`.
 - `laravel_cloud_queues.errors`: the full exception hierarchy.
 - `laravel_cloud_queues.config`: configuration models.
-- The `laravel-cloud-queues` console script (`work`, `inspect`, `conformance`).
+- The `laravel-cloud-queues` console script (`work`, `inspect`, `conformance`) and its
+  click command group, `laravel_cloud_queues.cli.cli`.
 
 Everything else, in particular **underscore-prefixed modules and subpackages**
 (`config/_loader`, `observability/_socket`, `fastapi/_invoker`, ...), is internal and may

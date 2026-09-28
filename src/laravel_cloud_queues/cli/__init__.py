@@ -3,7 +3,7 @@ See docs/contract/cli.md."""
 
 from __future__ import annotations
 
-import argparse
+import functools
 import json
 import logging
 import os
@@ -15,6 +15,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from urllib.parse import unquote_plus
 
+import click
+
 from ..config import QueueConfig, StaticCredentials
 from ..errors import ConfigurationError
 from ..jobs.job import AnyJob
@@ -25,82 +27,74 @@ PROG = "laravel-cloud-queues"
 
 def main(argv: Sequence[str] | None = None) -> int:
     """``work TARGET``, ``inspect TARGET``, ``conformance ...``. Returns the exit code."""
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if argv[:1] == ["conformance"]:
-        # Everything after the command belongs to the suite, including its options.
-        return _conformance(argv[1:])
-    args = _parser().parse_args(argv)
-    command: Callable[[argparse.Namespace], int] = args.command
+    args = list(sys.argv[1:] if argv is None else argv)
     try:
-        return command(args)
-    except (Exception, KeyboardInterrupt) as exc:
-        if args.debug:
-            print(_redact(traceback.format_exc()), file=sys.stderr, end="")
-        print(f"{PROG}: error: {_describe(exc)}", file=sys.stderr)
-        return EXIT_CONFIG if isinstance(exc, ConfigurationError) else EXIT_FATAL
+        code = cli.main(args, prog_name=PROG, standalone_mode=False)
+    except click.UsageError as exc:
+        exc.show()
+        raise SystemExit(exc.exit_code) from None
+    return code if isinstance(code, int) else 0
+
+
+@click.group(help="Laravel Cloud queues for Python.")
+def cli() -> None:
+    """Mountable in any click CLI, e.g. Flask: ``app.cli.add_command(cli, "queues")``."""
+
+
+def _command(func: Callable[..., int]) -> Callable[..., None]:
+    """Adds ``--debug``, turns failures into one redacted line and exits with the code."""
+
+    @click.option("--debug", is_flag=True, help="Show tracebacks on errors.")
+    @functools.wraps(func)
+    def wrapper(debug: bool, **params: object) -> None:
+        try:
+            code = func(**params)
+        except (click.ClickException, click.exceptions.Exit, click.Abort):
+            raise
+        except (Exception, KeyboardInterrupt) as exc:
+            if debug:
+                click.echo(_redact(traceback.format_exc()), err=True, nl=False)
+            click.echo(f"{PROG}: error: {_describe(exc)}", err=True)
+            code = EXIT_CONFIG if isinstance(exc, ConfigurationError) else EXIT_FATAL
+        click.get_current_context().exit(code)
+
+    return wrapper
 
 
 def _describe(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {_redact(str(exc))} (use --debug for the traceback)"
 
 
-def _parser() -> argparse.ArgumentParser:
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--debug", action="store_true", help="show tracebacks on errors")
-    parser = argparse.ArgumentParser(prog=PROG, description="Laravel Cloud queues for Python.")
-    commands = parser.add_subparsers(dest="name", required=True, metavar="COMMAND")
+class _Queues(click.ParamType[tuple[str, ...], str]):
+    name = "Q[,Q...]"
 
-    work = commands.add_parser("work", parents=[common], help="run a queue worker")
-    work.add_argument("target", metavar="TARGET", help="module:attribute (registry or app)")
-    work.add_argument("--queue", type=_queues, help="comma-separated priority list")
-    work.add_argument("--max-jobs", type=_positive_int, help="stop after N deliveries")
-    work.add_argument("--max-time", type=_seconds, help="stop after S seconds")
-    work.add_argument("--stop-when-empty", action="store_true", help="stop on an empty poll")
-    work.add_argument(
-        "--stop-when-empty-for", type=_seconds, help="stop after S seconds without a job"
-    )
-    work.add_argument("--timeout", type=_seconds, default=60.0, help="default job timeout")
-    work.add_argument("--sleep", type=_seconds, default=3.0, help="wait after an empty poll")
-    work.add_argument("--rest", type=_seconds, default=0.0, help="pause between jobs")
-    work.set_defaults(command=_work)
-
-    inspect = commands.add_parser("inspect", parents=[common], help="show jobs and settings")
-    inspect.add_argument("target", metavar="TARGET")
-    inspect.add_argument("--json", action="store_true", help="machine-readable output")
-    inspect.set_defaults(command=_inspect)
-
-    # Listed for --help only; ``main`` passes its arguments through verbatim.
-    commands.add_parser("conformance", help="run the repository conformance suite")
-    return parser
+    def convert(
+        self, value: str, param: click.Parameter | None, ctx: click.Context | None
+    ) -> tuple[str, ...]:
+        queues = tuple(part.strip() for part in value.split(",") if part.strip())
+        if not queues:
+            self.fail("expected one or more queue names")
+        return queues
 
 
-def _queues(value: str) -> tuple[str, ...]:
-    queues = tuple(part.strip() for part in value.split(",") if part.strip())
-    if not queues:
-        raise argparse.ArgumentTypeError("expected one or more queue names")
-    return queues
+class _Seconds(click.ParamType[float, "str | float"]):
+    """Finite and non-negative; ``click.FloatRange`` would accept ``nan`` and ``inf``."""
+
+    name = "S"
+
+    def convert(
+        self, value: str | float, param: click.Parameter | None, ctx: click.Context | None
+    ) -> float:
+        try:
+            number = float(value)
+        except ValueError:
+            number = -1.0
+        if not 0 <= number < float("inf"):
+            self.fail(f"expected a non-negative number of seconds, got {value!r}")
+        return number
 
 
-def _positive_int(value: str) -> int:
-    try:
-        number = int(value)
-    except ValueError:
-        number = 0
-    if number < 1:
-        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}")
-    return number
-
-
-def _seconds(value: str) -> float:
-    try:
-        number = float(value)
-    except ValueError:
-        number = -1.0
-    if not 0 <= number < float("inf"):
-        raise argparse.ArgumentTypeError(
-            f"expected a non-negative number of seconds, got {value!r}"
-        )
-    return number
+SECONDS = _Seconds()
 
 
 def _import_path() -> None:
@@ -110,7 +104,33 @@ def _import_path() -> None:
         sys.path.insert(0, cwd)
 
 
-def _work(args: argparse.Namespace) -> int:
+@cli.command(short_help="Run a queue worker.")
+@click.argument("target", metavar="TARGET")
+@click.option("--queue", type=_Queues(), help="Comma-separated priority list.")
+@click.option("--max-jobs", type=click.IntRange(min=1), help="Stop after N deliveries.")
+@click.option("--max-time", type=SECONDS, help="Stop after S seconds.")
+@click.option("--stop-when-empty", is_flag=True, help="Stop on an empty poll.")
+@click.option("--stop-when-empty-for", type=SECONDS, help="Stop after S seconds without a job.")
+@click.option(
+    "--timeout", type=SECONDS, default=60.0, show_default=True, help="Default job timeout."
+)
+@click.option(
+    "--sleep", type=SECONDS, default=3.0, show_default=True, help="Wait after an empty poll."
+)
+@click.option("--rest", type=SECONDS, default=0.0, show_default=True, help="Pause between jobs.")
+@_command
+def work(
+    target: str,
+    queue: tuple[str, ...] | None,
+    max_jobs: int | None,
+    max_time: float | None,
+    stop_when_empty: bool,
+    stop_when_empty_for: float | None,
+    timeout: float,
+    sleep: float,
+    rest: float,
+) -> int:
+    """Run a queue worker for TARGET (module:attribute, a registry or an app)."""
     if not logging.getLogger().handlers:
         logging.basicConfig(
             level=logging.INFO,
@@ -118,29 +138,30 @@ def _work(args: argparse.Namespace) -> int:
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )
     _import_path()
-    target = resolve_target(args.target)
     options = WorkerOptions(
-        queues=args.queue,
-        max_jobs=args.max_jobs,
-        max_time=args.max_time,
-        stop_when_empty=args.stop_when_empty,
-        stop_when_empty_for=args.stop_when_empty_for,
-        timeout=args.timeout,
-        sleep=args.sleep,
-        rest=args.rest,
+        queues=queue,
+        max_jobs=max_jobs,
+        max_time=max_time,
+        stop_when_empty=stop_when_empty,
+        stop_when_empty_for=stop_when_empty_for,
+        timeout=timeout,
+        sleep=sleep,
+        rest=rest,
     )
-    return Worker(target, options).run()
+    return Worker(resolve_target(target), options).run()
 
 
-def _inspect(args: argparse.Namespace) -> int:
+@cli.command(short_help="Show jobs and settings.")
+@click.argument("target", metavar="TARGET")
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable output.")
+@_command
+def inspect(target: str, as_json: bool) -> int:
+    """Show the mode, queues, registered jobs and non-secret settings of TARGET."""
     _import_path()
-    registry = resolve_target(args.target).registry
+    registry = resolve_target(target).registry
     registry.load()
     report = _report(registry.config, registry.jobs())
-    if args.json:
-        print(json.dumps(report, indent=2))
-    else:
-        print(_render(report))
+    click.echo(json.dumps(report, indent=2) if as_json else _render(report))
     return 0
 
 
@@ -238,15 +259,26 @@ def _text(value: object) -> str:
     return "-" if value is None else str(value)
 
 
+@cli.command(
+    short_help="Run the repository conformance suite.",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    add_help_option=False,
+)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def conformance(args: tuple[str, ...]) -> None:
+    """Run the repository conformance suite; every argument passes through to it."""
+    click.get_current_context().exit(_conformance(args))
+
+
 def _conformance(args: Sequence[str]) -> int:
     root = _checkout_root(Path.cwd())
     if root is None:
-        print(
+        click.echo(
             f"{PROG}: error: the conformance suite needs a repository checkout "
             "(demo/conformance and the harness emulators are not installed with the package). "
             "Clone the laravel-cloud-queues repository, run `uv sync` in it and run "
             f"`{PROG} conformance` (or `python -m demo.conformance`) from its root.",
-            file=sys.stderr,
+            err=True,
         )
         return EXIT_CONFIG
     command = [sys.executable, "-m", "demo.conformance", *args]
@@ -260,4 +292,4 @@ def _checkout_root(start: Path) -> Path | None:
     return None
 
 
-__all__ = ["main"]
+__all__ = ["cli", "main"]
