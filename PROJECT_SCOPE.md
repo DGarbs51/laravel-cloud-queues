@@ -198,7 +198,7 @@ Core async orchestration uses AnyIO **on the asyncio backend**. Trio is not supp
 
 ### Typing
 
-`mypy --strict` is a release gate for shipped package code.
+`ty check` (with the strict rule set in `pyproject.toml`) plus Ruff's `ANN`/`PYI` rules is a release gate for shipped package code. ty does not flag missing annotations, so Ruff enforces them.
 
 Requirements:
 
@@ -208,7 +208,7 @@ Requirements:
 - unavoidable `Any` must be localized and justified;
 - include `py.typed`;
 - exported generic types should be useful to downstream applications;
-- public decorator and dispatch typing should give strong IDE/mypy behavior;
+- public decorator and dispatch typing should give strong IDE and type-checker behavior;
 - tests may use narrowly scoped typing relaxations where justified, but production package code must remain strict;
 - downstream typing samples (positive and expected-error) must be type-checked in CI: direct calls, `dispatch`/`dispatch_async` argument checking, `.options(...)` types, handler parameters named `queue`/`delay`/`timeout`, and injected versus serialized parameters.
 
@@ -221,7 +221,7 @@ Use a modern, minimal Python toolchain. Ruff is a suitable default for linting/f
 A release must pass:
 
 - Python 3.10+ matrix;
-- `mypy --strict`;
+- `ty check` and Ruff `ANN`/`PYI`;
 - lint/format checks;
 - unit tests;
 - FastAPI integration tests;
@@ -561,7 +561,7 @@ await send_email.options(queue="priority", delay=30).dispatch_async(user_id=1)
 
 - `.options(...)` returns a typed copy of the job carrying dispatch options: `queue`, `delay`, FIFO `group` and `deduplication_id`, fair-queue `message_group`.
 - `dispatch` and `dispatch_async` keep exactly the job's own parameter signature, so options never collide with handler parameters (a handler may legitimately take `queue`, `delay` or `timeout`).
-- `mypy --strict` checks both the option types and the job's argument types.
+- `ty` checks both the option types and the job's argument types.
 
 ### Delays
 
@@ -1045,7 +1045,7 @@ async def send_email(
     ...
 ```
 
-Do not blindly commit to this exact signature if it creates mypy or parameter-collision problems. The final API must meet the semantics while remaining idiomatic and statically typeable.
+Do not blindly commit to this exact signature if it creates type-checking or parameter-collision problems. The final API must meet the semantics while remaining idiomatic and statically typeable.
 
 ### Supported FastAPI generation
 
@@ -1513,7 +1513,7 @@ Prominent TODOs/roadmap items should include:
 The initial implementation is acceptable when all of the following are true:
 
 1. Package builds and installs cleanly on Python 3.10+.
-2. `mypy --strict` passes for shipped code.
+2. `ty check` passes for shipped code, and Ruff `ANN` finds no missing annotations.
 3. Core can dispatch and consume a versioned typed JSON job envelope.
 4. FastAPI integration supports sync/async jobs, `Depends()`, per-job dependency cleanup, and app lifespan.
 5. Workers are separate processes and one-job-at-a-time.
@@ -1544,7 +1544,7 @@ The initial implementation is acceptable when all of the following are true:
 30. A captured failed payload replays as a fresh first attempt.
 31. `failed_job` events follow the D1 size policy and Laravel's field set and order.
 32. Timeouts exit 124 with the correct lifecycle event and redelivery in real subprocess tests.
-33. Downstream typing samples pass `mypy --strict`, including the `.options(...)` builder.
+33. Downstream typing samples pass `ty check`, including the `.options(...)` builder.
 34. Wheel and sdist install cleanly outside the repository and exclude `demo/`, `probe-app/` and `docs/`.
 35. The conformance report exits non-zero on any missing record or unapproved non-pass status.
 

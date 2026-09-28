@@ -14,6 +14,7 @@ import time
 from collections.abc import Sequence
 from hashlib import sha256
 from threading import Event
+from typing import Any
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -66,9 +67,9 @@ class _RedisTransport:
                 retry_on_error=[],
                 retry_on_timeout=False,
             )
+            reporting_options: dict[str, Any] = {**options, "socket_timeout": 10}
             self._reporting_pool = redis.ConnectionPool(
-                connection_class=self._pool.connection_class,
-                **{**options, "socket_timeout": 10},
+                connection_class=self._pool.connection_class, **reporting_options
             )
         except (ValueError, TypeError, redis.RedisError):
             raise ConfigurationError("Invalid Redis URL or TLS verification settings.") from None
@@ -77,7 +78,7 @@ class _RedisTransport:
         pending = f"{self._prefix}queues:{queue}"
         return pending, f"{pending}:delayed", f"{pending}:reserved", f"{pending}:notify"
 
-    def _command(self, *args: str | int | float, reporting: bool = False) -> object:
+    def _command(self, *args: str | float, reporting: bool = False) -> object:
         # Reporting gets its own pool so watchdog I/O cannot alter polling timeouts.
         pool = self._reporting_pool if reporting else self._pool
         # Acquire/connect before sending so only definitely-unsent commands are retried.
@@ -97,12 +98,14 @@ class _RedisTransport:
                 time.sleep(0.05 * 2**attempt)
             except (ValueError, TypeError, self._redis.RedisError):
                 raise ConfigurationError("Invalid Redis connection settings.") from None
+        else:
+            raise AssertionError("unreachable: the last attempt breaks or raises")
         try:
-            connection.send_command(*args)  # type: ignore[no-untyped-call]  # redis-py API
+            connection.send_command(*args)
             return connection.read_response()
         except (self._redis.RedisError, UnicodeError) as exc:
             # A partial write or lost reply is ambiguous. Do not replay mutations.
-            connection.disconnect()  # type: ignore[no-untyped-call]  # redis-py API
+            connection.disconnect()
             if isinstance(
                 exc,
                 (
@@ -181,6 +184,7 @@ class RedisConsumer(_RedisTransport):
                         except UnicodeEncodeError:
                             # Preserve all bytes as the opaque receipt; core rejects the body.
                             member = [member]
+                    wrapper: dict[str, Any]
                     if isinstance(member, str):
                         wrapper = json.loads(member)
                     elif (

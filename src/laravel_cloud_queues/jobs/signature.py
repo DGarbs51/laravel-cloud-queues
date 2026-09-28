@@ -123,7 +123,7 @@ def _bind(
     sig: JobSignature,
     args: Sequence[object],
     kwargs: Mapping[str, object],
-    error: type[ArgumentError] | type[ArgumentMismatchError],
+    error: type[ArgumentError | ArgumentMismatchError],
 ) -> inspect.BoundArguments:
     if any(name in kwargs for name in sig.injected):
         raise error("Injected parameters cannot be supplied in job arguments")

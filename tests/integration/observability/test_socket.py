@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from contextlib import suppress
 
 import pytest
+from typing_extensions import Self
 
 from laravel_cloud_queues.observability import SocketEventSink, encode_event_line
 
@@ -151,7 +152,7 @@ class LineCollector:
         if owned is not None:
             owned.cleanup()
 
-    def __enter__(self) -> LineCollector:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_exc: object) -> None:

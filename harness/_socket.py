@@ -34,7 +34,7 @@ class UnixServer(socketserver.ThreadingUnixStreamServer):
         client, address = self.socket.accept()
         with self.client_lock:
             self.clients.add(client)
-        return client, address
+        return client, str(address)
 
     def process_request_thread(
         self, request: socket.socket | tuple[bytes, socket.socket], client_address: str

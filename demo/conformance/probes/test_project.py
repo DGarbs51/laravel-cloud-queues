@@ -25,9 +25,13 @@ def test_dashboard_retry_live():
 @pytest.mark.conformance("packaging.typing_strict", tier="emulated")
 def test_typing(evidence):
     result = subprocess.run(
-        [sys.executable, "-m", "mypy"], cwd=ROOT, capture_output=True, text=True, timeout=90
+        [sys.executable, "-m", "ty", "check", "--python", sys.executable],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=90,
     )
-    evidence.record("mypy", result.stdout + result.stderr)
+    evidence.record("ty", result.stdout + result.stderr)
     assert result.returncode == 0, result.stdout + result.stderr
     samples = list((ROOT / "tests/typing").glob("test_*.py"))
     assert samples, "Downstream typing tests have not landed"
@@ -53,7 +57,7 @@ def test_ci_gate(evidence):
         '"3.12"',
         '"3.13"',
         '"3.14"',
-        "uv run mypy",
+        "uv run ty check",
         "ruff check",
         "--sqs localstack",
         "conformance-artifacts",

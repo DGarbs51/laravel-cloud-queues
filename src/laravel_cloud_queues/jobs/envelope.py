@@ -89,7 +89,7 @@ def encode_envelope(envelope: Envelope) -> str:
             args=list(envelope.args),
             kwargs=dict(envelope.kwargs),
             policy=policy,
-            context=dict(envelope.context),
+            context={**envelope.context},
         )
         for key, value in (("queue", envelope.queue), ("dispatched_at", envelope.dispatched_at)):
             if value is not None:
@@ -111,7 +111,7 @@ def _extras(envelope: Envelope, key: str) -> dict[str, JSONValue]:
     value = envelope.extra.get(key, {})
     if not isinstance(value, dict):
         raise ValueError("Envelope extras must be namespaced objects")
-    return dict(value)
+    return value.copy()
 
 
 def _reject_constant(value: str) -> NoReturn:

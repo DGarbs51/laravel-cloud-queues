@@ -58,7 +58,7 @@ On a clean checkout with Laravel Herd's Valkey running at `127.0.0.1:6379`:
 - [ ] Install and run the static checks:
   ```sh
   uv sync
-  uv run ruff check . && uv run ruff format --check . && uv run mypy
+  uv run ruff check . && uv run ruff format --check . && uv run ty check
   ```
 - [ ] Run the full suite. Expect about 1,205 passed. The TLS test needs a TLS server, so it is deselected here; CI covers it.
   ```sh

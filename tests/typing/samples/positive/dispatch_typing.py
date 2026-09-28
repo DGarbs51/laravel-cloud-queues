@@ -1,4 +1,4 @@
-"""Downstream usage that must pass ``mypy --strict`` (PROJECT_SCOPE.md §5, D5)."""
+"""Downstream usage that must pass ``ty`` (PROJECT_SCOPE.md §5, D5)."""
 
 from __future__ import annotations
 

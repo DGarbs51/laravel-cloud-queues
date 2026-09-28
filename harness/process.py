@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
+from typing_extensions import Self
+
 
 @dataclass(frozen=True)
 class ProcessResult:
@@ -83,7 +85,7 @@ class Process:
             self._temporary.cleanup()
         self._closed = True
 
-    def __enter__(self) -> Process:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(

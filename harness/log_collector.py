@@ -14,6 +14,8 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import cast
 
+from typing_extensions import Self
+
 from harness._socket import SocketService, UnixServer
 
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}")
@@ -136,12 +138,12 @@ class LogCollector(SocketService):
         if value:
             self.stop()
 
-    def start(self) -> LogCollector:
+    def start(self) -> Self:
         if self._server is None and not self.refuse:
             self._listen(_CollectorServer(self.socket_path, self))
         return self
 
-    def __enter__(self) -> LogCollector:
+    def __enter__(self) -> Self:
         try:
             return self.start()
         except BaseException:

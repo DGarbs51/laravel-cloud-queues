@@ -615,7 +615,7 @@
         "§30.33"
       ],
       "conflict_rows": [],
-      "expected": ".options(queue=, delay=, group=, deduplication_id=, message_group=) returns a typed copy of the job; dispatch and dispatch_async keep exactly the handler's parameter signature so a handler may take parameters named queue, delay or timeout without collision. mypy --strict accepts the positive typing samples and rejects the expected-error samples for both option types and job argument types.",
+      "expected": ".options(queue=, delay=, group=, deduplication_id=, message_group=) returns a typed copy of the job; dispatch and dispatch_async keep exactly the handler's parameter signature so a handler may take parameters named queue, delay or timeout without collision. ty accepts the positive typing samples and rejects the expected-error samples for both option types and job argument types.",
       "tier": "unit",
       "required": true,
       "laravel_source": [],
@@ -2820,7 +2820,7 @@
     },
     {
       "id": "packaging.typing_strict",
-      "title": "mypy --strict and downstream typing samples",
+      "title": "ty and downstream typing samples",
       "scope_refs": [
         "§5",
         "§30.2",
@@ -2831,7 +2831,7 @@
         "§30.33"
       ],
       "conflict_rows": [],
-      "expected": "mypy --strict passes on the shipped package and on the positive downstream typing samples (direct calls, dispatch/dispatch_async argument checking, .options(...) types, handler parameters named queue/delay/timeout, injected vs serialized parameters); the expected-error samples fail type checking.",
+      "expected": "ty check passes on the shipped package and on the positive downstream typing samples (direct calls, dispatch/dispatch_async argument checking, .options(...) types, handler parameters named queue/delay/timeout, injected vs serialized parameters); the expected-error samples fail type checking.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [],
@@ -2851,7 +2851,7 @@
         "§30.24"
       ],
       "conflict_rows": [],
-      "expected": "GitHub Actions runs on every push to main and on pull requests: the 3.10-3.14 Linux matrix, mypy --strict, lint/format, unit, FastAPI, LocalStack SQS, Valkey and Redis, agent emulator, socket, conformance, typing samples and packaging jobs, with LocalStack and Valkey/Redis image versions pinned; a missing service fails the gate; conformance JSON and logs are uploaded on failure; the weekly upstream-drift job is advisory and never moves the pin.",
+      "expected": "GitHub Actions runs on every push to main and on pull requests: the 3.10-3.14 Linux matrix, ty, lint/format, unit, FastAPI, LocalStack SQS, Valkey and Redis, agent emulator, socket, conformance, typing samples and packaging jobs, with LocalStack and Valkey/Redis image versions pinned; a missing service fails the gate; conformance JSON and logs are uploaded on failure; the weekly upstream-drift job is advisory and never moves the pin.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [],

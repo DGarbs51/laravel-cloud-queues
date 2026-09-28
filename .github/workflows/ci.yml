@@ -46,9 +46,9 @@ jobs:
         with:
           python-version: "3.10"
       - run: uv sync --locked
-      # mypy --strict on src (pyproject.toml [tool.mypy]); the downstream typing
+      # ty on src and harness (pyproject.toml [tool.ty]); the downstream typing
       # samples (tests/typing/) are exercised inside the `test` job's pytest run.
-      - run: uv run mypy
+      - run: uv run ty check
 
   test:
     runs-on: ubuntu-latest

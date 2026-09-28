@@ -22,6 +22,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     Generic,
@@ -39,10 +40,13 @@ from uuid import UUID
 
 from ..errors import CodecError, ConfigurationError, SerializationError
 
-try:
+if TYPE_CHECKING:
     from pydantic import BaseModel
-except ImportError:  # Optional dependency; never imported based on payload content.
-    BaseModel = None  # type: ignore[assignment,misc]
+else:
+    try:
+        from pydantic import BaseModel
+    except ImportError:  # Optional dependency; never imported based on payload content.
+        BaseModel = None
 
 JSONValue: TypeAlias = bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"] | None
 T = TypeVar("T")
@@ -208,7 +212,9 @@ class CodecRegistry:
         if isinstance(value, dict):
             if not all(isinstance(k, str) for k in value):
                 raise ValueError("Dictionary keys must be strings")
-            encoded = {k: self._encode(v, depth + 1) for k, v in value.items()}
+            encoded: dict[str, JSONValue] = {
+                k: self._encode(v, depth + 1) for k, v in value.items()
+            }
             return {TYPE_TAG_KEY: "dict", "value": encoded} if TYPE_TAG_KEY in value else encoded
         if isinstance(value, list):
             return [self._encode(v, depth + 1) for v in value]

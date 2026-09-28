@@ -1,4 +1,4 @@
-"""Downstream typing samples checked with ``mypy --strict`` (PROJECT_SCOPE.md §5, D5).
+"""Downstream typing samples checked with ``ty`` (PROJECT_SCOPE.md §5, D5).
 
 ``samples/positive`` must type-check cleanly. In ``samples/negative`` every line carrying a
 ``# E: code[, code...]`` marker must produce exactly those error codes, and no other line
@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = Path(__file__).resolve().parent / "samples"
 MARKER = re.compile(r"#\s*E:\s*(?P<codes>[\w-]+(?:\s*,\s*[\w-]+)*)\s*$")
-ERROR = re.compile(r"^(?P<path>[^:]+):(?P<line>\d+): error: .*\[(?P<code>[\w-]+)\]$")
+ERROR = re.compile(r"^(?P<path>[^:]+):(?P<line>\d+):\d+: error\[(?P<code>[\w-]+)\] ")
 
 
 def expected_errors() -> Counter[tuple[str, int, str]]:
@@ -38,13 +38,14 @@ def test_samples_type_check() -> None:
         [
             sys.executable,
             "-m",
-            "mypy",
-            "--strict",
-            "--no-error-summary",
-            "--hide-error-context",
-            "--no-pretty",
-            "--show-error-codes",
-            "--no-color-output",
+            "ty",
+            "check",
+            "--python",
+            sys.executable,
+            "--output-format",
+            "concise",
+            "--color",
+            "never",
             *files,
         ],
         cwd=ROOT,

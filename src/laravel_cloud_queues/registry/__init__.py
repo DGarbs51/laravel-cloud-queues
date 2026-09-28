@@ -239,7 +239,13 @@ class Registry:
         )
 
         def register(handler: Callable[..., Any]) -> AnyJob:
-            job_name = f"{handler.__module__}.{handler.__qualname__}" if name is None else name
+            if name is None:
+                qualname = getattr(handler, "__qualname__", None)
+                if qualname is None:
+                    raise ConfigurationError("Callable objects need an explicit job name.")
+                job_name = f"{handler.__module__}.{qualname}"
+            else:
+                job_name = name
             if not job_name:
                 raise ConfigurationError("Job names must be non-empty.")
             with self._lock:

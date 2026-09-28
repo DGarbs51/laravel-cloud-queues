@@ -47,7 +47,7 @@ await send_email.options(queue="priority", delay=30).dispatch_async(user_id=1)
 
 - `.options(...)` returns a typed copy of the job carrying dispatch options: queue, delay, FIFO group and dedup ID, fair-queue group.
 - `dispatch` and `dispatch_async` keep exactly the job's own parameter signature, so options never collide with job parameters.
-- `mypy --strict` must check both the option types and the job's argument types, with downstream typing samples in the test suite.
+- `ty` must check both the option types and the job's argument types, with downstream typing samples in the test suite.
 
 ## D6 — Worker-cluster backends: SQS and Redis/Valkey in v1 (2026-09-27)
 

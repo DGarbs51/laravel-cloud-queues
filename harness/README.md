@@ -14,7 +14,7 @@ uv run --no-project --python 3.10 --with pytest --with httpx --with 'moto[server
 Load fixtures with `-p harness.pytest_plugin` or register `harness.pytest_plugin` in the root
 `conftest.py`. The plugin registers `agent`, `sqs`, `redis`, `socket`, and `subprocess` markers.
 Dev dependencies: `pytest`, `httpx`, `moto[server]>=5`, `boto3`, and `redis`. Type/lint checks also
-use `mypy`, `boto3-stubs[sqs]`, `types-redis`, and `ruff`. No product-package dependency is needed.
+use `ty`, `boto3-stubs[sqs]`, `types-redis`, and `ruff`. No product-package dependency is needed.
 
 ## Agent
 

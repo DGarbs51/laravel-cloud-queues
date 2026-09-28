@@ -97,7 +97,7 @@ async def signup(user_id: int) -> dict[str, str]:
 - `job.dispatch(...)` is the blocking form for scripts, sync code and tests. Inside a
   running event loop it still works (it never starts a nested loop) but it blocks that
   loop; async code should use `dispatch_async`.
-- Both take **exactly the handler's parameters**, so `mypy --strict` checks your arguments.
+- Both take **exactly the handler's parameters**, so your type checker checks your arguments.
   Prefer keyword arguments: they survive signature changes better than positional ones.
 - Both return a `DispatchReceipt(message_id, queue, uuid)`. Jobs are fire-and-forget:
   there is no result handle, and handler return values are ignored.
@@ -936,7 +936,7 @@ deployed to Laravel Cloud to inspect what the platform injects and to run the
 | Frameworks | FastAPI >= 0.121 (Pydantic v2) via `laravel_cloud_queues.fastapi`; plain Python via `Registry`. Django and Flask adapters are planned, not shipped, and have no extras yet |
 | Async | AnyIO on the asyncio backend. Trio is not supported |
 | Brokers | Laravel Cloud managed queues (pending platform support for Python), SQS (including LocalStack/moto), Redis/Valkey via `redis-py` 5+ |
-| Typing | `py.typed`; the package passes `mypy --strict`, and dispatch/`.options()` are checked against your handler signatures |
+| Typing | `py.typed`; the package passes `ty check`, and dispatch/`.options()` are checked against your handler signatures |
 
 **Public import surface**, stable within the 0.x line as far as practical:
 

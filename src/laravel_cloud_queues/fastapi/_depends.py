@@ -252,7 +252,7 @@ def _signature_call(signature: inspect.Signature) -> Callable[..., None]:
     def dependency_call(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("queue job dependencies are solved, not called")
 
-    dependency_call.__signature__ = signature  # type: ignore[attr-defined]
+    dependency_call.__signature__ = signature  # ty: ignore[unresolved-attribute]
     return dependency_call
 
 
@@ -386,7 +386,7 @@ def _scopes(dependant: Dependant) -> list[object]:
     if not own:
         own = getattr(dependant, "security_scopes", None)
     if isinstance(own, list):
-        return own
+        return [*own]
     return []
 
 
@@ -423,4 +423,4 @@ def _http_error(func: Callable[..., Any], detail: str) -> ConfigurationError:
 
 
 def _qualname(func: Callable[..., Any]) -> str:
-    return getattr(func, "__qualname__", "<job>")
+    return str(getattr(func, "__qualname__", "<job>"))

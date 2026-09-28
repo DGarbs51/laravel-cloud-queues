@@ -340,4 +340,4 @@ def _format_errors(errors: Sequence[Any]) -> str:
 
 
 def _qualname(func: Callable[..., Any]) -> str:
-    return getattr(func, "__qualname__", "<job>")
+    return str(getattr(func, "__qualname__", "<job>"))

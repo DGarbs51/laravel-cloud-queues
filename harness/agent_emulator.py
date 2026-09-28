@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler
 from typing import Literal, cast
 
+from typing_extensions import Self
+
 from harness._socket import SocketService, UnixServer
 
 DEFAULT_QUEUE_URL = "https://sqs.us-east-1.amazonaws.com/123456789012/default"
@@ -107,7 +109,7 @@ class AgentEmulator(SocketService):
         )
         return emulator.__enter__()
 
-    def __enter__(self) -> AgentEmulator:
+    def __enter__(self) -> Self:
         if self._server is None:
             self._stopped.clear()
             try:

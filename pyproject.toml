@@ -48,7 +48,6 @@ dev = [
     "boto3-stubs[sqs]>=1.35",
     "fastapi>=0.121",
     "moto[server]>=5.0",
-    "mypy>=1.13",
     "opentelemetry-api>=1.27",
     "opentelemetry-sdk>=1.27",
     "pydantic>=2.7",
@@ -56,6 +55,7 @@ dev = [
     "pytest-timeout>=2.3",
     "redis>=5.0",
     "ruff>=0.8",
+    "ty>=0.0.84",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -71,24 +71,35 @@ src = ["src", "."]
 extend-exclude = ["probe-app", ".worktrees", "*.md"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT", "PGH"]
-ignore = ["RUF001", "RUF002", "RUF003"]
+# ANN and PYI stand in for mypy --strict's annotation checks, which ty does not do
+# (https://docs.astral.sh/ty/coming-from-mypy-or-pyright/).
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT", "PGH", "ANN", "PYI"]
+ignore = ["RUF001", "RUF002", "RUF003", "ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B011", "PT011", "PT018"]
+# Only shipped code (src/) and harness/ require full annotations.
+"tests/**" = ["B011", "PT011", "PT018", "ANN"]
+"demo/**" = ["ANN"]
+".github/scripts/**" = ["ANN"]
 # Proof worker deliberately blocks inside async code and polls; keep the scenarios literal.
 "tests/runtime_proof/**" = ["ASYNC", "RUF046", "SIM105"]
 
-[tool.mypy]
-python_version = "3.10"
-strict = true
-files = ["src", "harness"]
-warn_unreachable = true
-enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+[tool.ty.environment]
+python-version = "3.10"
 
-[[tool.mypy.overrides]]
-module = ["moto.*"]
-ignore_missing_imports = true
+[tool.ty.src]
+include = ["src", "harness"]
+
+[tool.ty.terminal]
+error-on-warning = true
+
+[tool.ty.rules]
+# Strict set recommended in https://docs.astral.sh/ty/coming-from-mypy-or-pyright/.
+dynamic-function-decorator-return = "error"
+missing-type-argument = "error"
+possibly-unresolved-reference = "warn"
+unsound-return-statement = "error"
+unused-ignore-comment = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

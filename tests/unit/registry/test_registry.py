@@ -72,6 +72,15 @@ def test_nested_function_default_name() -> None:
     assert inner.name == f"{__name__}.test_nested_function_default_name.<locals>.inner"
 
 
+def test_callable_object_needs_explicit_name() -> None:
+    class Handler:
+        def __call__(self, order_id: int) -> None: ...
+
+    registry = Registry()
+    with pytest.raises(ConfigurationError, match="explicit job name"):
+        registry.job(Handler())
+
+
 def test_shorthand_overrides_policy_fields() -> None:
     registry = Registry()
     base = RetryPolicy(tries=5, backoff=10, timeout=20, fail_on_timeout=True)

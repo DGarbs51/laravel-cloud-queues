@@ -69,8 +69,9 @@ def _build_client(connection: SqsConnectionConfig) -> SQSClient:
         "sqs",
         endpoint_url=connection.endpoint_url,
         verify=True,
-        config=Config(  # type: ignore[call-arg]  # botocore-stubs omits this supported option.
-            ignore_configured_endpoint_urls=True,
+        config=Config(
+            # botocore-stubs omits this supported option.
+            ignore_configured_endpoint_urls=True,  # ty: ignore[unknown-argument]
             connect_timeout=5,
             read_timeout=25,
             retries={"mode": "standard", "total_max_attempts": 3},
