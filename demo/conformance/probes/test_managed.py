@@ -328,6 +328,9 @@ def test_ambiguous_ack(run_process, artifacts, agent_emulator, log_collector, ev
     first = agent_emulator.enqueue(envelope())
     second = agent_emulator.enqueue(envelope())
     agent_emulator.inject("result", "apply_then_disconnect")
+    # Exhaust the two connection retries too. A subsequent 404 instead exercises
+    # the deliberately nonfatal acknowledgement-rejection path.
+    agent_emulator.inject("result", "disconnect", times=2)
     result = worker(
         run_process,
         artifacts,
@@ -340,7 +343,11 @@ def test_ambiguous_ack(run_process, artifacts, agent_emulator, log_collector, ev
     assert result.returncode == 0, result.stderr
     assert agent_emulator.message(first).status == "processed"
     assert agent_emulator.message(second).receive_count == 0
-    assert len(agent_emulator.results) == 1
+    assert len(agent_emulator.results) == 3
+    assert all(r.body["messageId"] == first for r in agent_emulator.results)
+    assert all(r.body["status"] == "processed" for r in agent_emulator.results)
+    assert all(r.response_code is None for r in agent_emulator.results)
+    assert sum(r.applied_code == 200 for r in agent_emulator.results) == 1
     evidence.observed("Agent lost acknowledgement stops fetching without a contradictory report")
 
 
