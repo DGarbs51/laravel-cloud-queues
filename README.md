@@ -125,6 +125,8 @@ The full variable tables are under [Configuration](#configuration).
 laravel-cloud-queues work myapp.main:app
 ```
 
+`lcq` is a short alias for the same command (`lcq work myapp.main:app`).
+
 `myapp.main:app` is the same `module:attribute` target you give uvicorn. The worker
 imports it, finds the bound `LaravelCloudQueues`, enters your app's lifespan once, then
 processes one job at a time until it is told to stop. Run it as a separate process; on
@@ -998,7 +1000,7 @@ deployed to Laravel Cloud to inspect what the platform injects and to run the
 - `laravel_cloud_queues.testing`: `DispatchRecorder`, `RecordedDispatch`.
 - `laravel_cloud_queues.errors`: the full exception hierarchy.
 - `laravel_cloud_queues.config`: configuration models.
-- The `laravel-cloud-queues` console script (`work`, `inspect`, `conformance`) and its
+- The `laravel-cloud-queues` console script (alias `lcq`; `work`, `inspect`, `conformance`) and its
   click command group, `laravel_cloud_queues.cli.cli`.
 
 Everything else, in particular **underscore-prefixed modules and subpackages**

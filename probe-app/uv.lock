@@ -152,11 +152,12 @@ wheels = [
 
 [[package]]
 name = "laravel-cloud-queues"
-version = "0.1.0"
+version = "0.1.1"
 source = { directory = "../" }
 dependencies = [
     { name = "anyio" },
     { name = "boto3" },
+    { name = "click" },
     { name = "httpx" },
     { name = "typing-extensions" },
 ]
@@ -173,6 +174,7 @@ redis = [
 requires-dist = [
     { name = "anyio", specifier = ">=4.4" },
     { name = "boto3", specifier = ">=1.35" },
+    { name = "click", specifier = ">=8.2" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.121" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.27" },
@@ -186,7 +188,6 @@ dev = [
     { name = "boto3-stubs", extras = ["sqs"], specifier = ">=1.35" },
     { name = "fastapi", specifier = ">=0.121" },
     { name = "moto", extras = ["server"], specifier = ">=5.0" },
-    { name = "mypy", specifier = ">=1.13" },
     { name = "opentelemetry-api", specifier = ">=1.27" },
     { name = "opentelemetry-sdk", specifier = ">=1.27" },
     { name = "pydantic", specifier = ">=2.7" },
@@ -194,6 +195,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.3" },
     { name = "redis", specifier = ">=5.0" },
     { name = "ruff", specifier = ">=0.8" },
+    { name = "ty", specifier = ">=0.0.84" },
 ]
 
 [[package]]

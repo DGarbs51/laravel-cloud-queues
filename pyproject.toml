@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "laravel-cloud-queues"
-version = "0.1.0"
+version = "0.1.1"
 description = "Laravel Cloud queues for Python: managed queues, plus SQS and Redis/Valkey on worker clusters, with a FastAPI adapter."
 readme = "README.md"
 license = "MIT"
@@ -49,6 +49,7 @@ otel = ["opentelemetry-api>=1.27"]
 
 [project.scripts]
 laravel-cloud-queues = "laravel_cloud_queues.cli:main"
+lcq = "laravel_cloud_queues.cli:main"
 
 [dependency-groups]
 dev = [
