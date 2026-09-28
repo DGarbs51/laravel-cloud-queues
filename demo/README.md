@@ -8,6 +8,10 @@ uv sync
 uv run python -m demo.conformance --sqs moto --report compatibility-report.json
 ```
 
+The installed command `uv run laravel-cloud-queues conformance` delegates to the same
+runner, forwarding its arguments and gate exit code. It locates the checkout from the
+current directory or a parent; outside a checkout it explains the requirement and exits 2.
+
 Moto runs an isolated HTTP SQS server without Docker. Redis probes use Laravel Herd's
 Valkey at `redis://127.0.0.1:6379/15`, unique key prefixes, and prefix-scoped cleanup;
 they never flush a database. To use another service:

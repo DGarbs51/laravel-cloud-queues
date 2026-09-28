@@ -129,13 +129,24 @@ def test_unknown_selection_and_collection_failure_fail():
     assert not build_report(catalog(), recorder)["gate"]["passed"]
 
 
-def test_only_smoke(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("entrypoint", "selection", "passes"),
+    [
+        ([sys.executable, "-m", "demo.conformance"], [], True),
+        ([str(Path(sys.executable).with_name("laravel-cloud-queues")), "conformance"], [], True),
+        (
+            [str(Path(sys.executable).with_name("laravel-cloud-queues")), "conformance"],
+            ["-k", "no_such_conformance_case"],
+            False,
+        ),
+    ],
+    ids=["module", "console", "console-failed-gate"],
+)
+def test_only_smoke(tmp_path: Path, entrypoint, selection, passes):
     report = tmp_path / "report.json"
     run = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "demo.conformance",
+            *entrypoint,
             "--report",
             str(report),
             "--only",
@@ -143,19 +154,25 @@ def test_only_smoke(tmp_path: Path):
             "envelope.codecs",
             "agent.receive_count_default",
             "-q",
+            *selection,
         ],
         cwd=ROOT,
         capture_output=True,
         text=True,
         timeout=90,
     )
-    assert run.returncode == 0, run.stdout + run.stderr
+    assert run.returncode == (0 if passes else 1), run.stdout + run.stderr
     data = json.loads(report.read_text())
-    assert data["gate"]["passed"]
+    assert data["gate"]["passed"] == passes
     assert len(data["features"]) == 3
-    assert all(f["status"] == "pass" for f in data["features"])
+    assert all(f["status"] == ("pass" if passes else "missing") for f in data["features"])
+    assert data["selection"] == [
+        "agent.receive_count_default",
+        "envelope.codecs",
+        "envelope.v1_shape",
+    ]
     assert data["run"]["revision"]
-    assert "PASS" in run.stdout
+    assert ("Gate: PASS" if passes else "Gate: FAIL") in run.stdout
 
 
 @pytest.mark.parametrize("selection", [[], ["-k", "one"]])

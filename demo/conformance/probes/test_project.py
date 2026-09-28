@@ -121,7 +121,12 @@ def test_readme():
 
 
 @pytest.mark.conformance("cli.commands_and_exit_codes", tier="emulated")
-def test_cli(run_process, artifacts, evidence):
+@pytest.mark.parametrize(
+    ("target", "job"),
+    [("tests.integration.worker.apps.basic:registry", "sync_ok"), ("demo.app:app", "demo.sync")],
+    ids=["registry", "fastapi"],
+)
+def test_cli(run_process, artifacts, evidence, target, job):
     from .support import environment
 
     env = environment(artifacts)
@@ -131,15 +136,15 @@ def test_cli(run_process, artifacts, evidence):
     )
     # A dead broker endpoint proves inspect does not open connections.
     result = run_process(
-        [sys.executable, "-m", "laravel_cloud_queues.cli", "inspect", "demo.app:app", "--json"],
+        [sys.executable, "-m", "laravel_cloud_queues.cli", "inspect", target, "--json"],
         env=env,
         cwd=ROOT,
         output_dir=artifacts,
     ).wait(10)
     assert result.returncode == 0, result.stderr
-    assert "demo.sync" in result.stdout
+    assert job in result.stdout
     invalid = run_process(
-        [sys.executable, "-m", "laravel_cloud_queues.cli", "work", "demo.app:app"],
+        [sys.executable, "-m", "laravel_cloud_queues.cli", "work", target],
         env=environment(artifacts),
         cwd=ROOT,
         output_dir=artifacts,
