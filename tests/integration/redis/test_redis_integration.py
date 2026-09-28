@@ -21,7 +21,7 @@ pytestmark = pytest.mark.redis
 
 
 def unavailable(reason):
-    if os.environ.get("LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES") == "1":
+    if os.environ.get("LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES", "").lower() in {"1", "true", "yes"}:
         pytest.fail(reason)
     pytest.skip(reason)
 
@@ -350,3 +350,56 @@ def test_tls_roundtrip(broker):
     assert delivery is not None
     assert delivery.message_id == sent.message_id
     consumer.complete(delivery)
+
+
+@pytest.mark.parametrize("attempts", [10**14 - 1, 10**14, 123456789012345])
+def test_attempts_cjson_precision_boundary(broker, attempts):
+    config, client, _, consumer = broker
+    member = json.dumps({"id": "boundary", "body": "opaque", "attempts": attempts})
+    client.rpush(f"{config.prefix}queues:precision", member)
+    delivery = consumer.receive(["precision"], 0)
+    assert delivery is not None
+    assert type(delivery.attempt) is int
+    if attempts >= 10**14:
+        assert delivery.message_id.startswith("malformed-")
+        assert delivery.body == delivery.receipt == member
+        assert delivery.attempt == 1
+    else:
+        assert delivery.message_id == "boundary"
+        assert delivery.attempt == attempts + 1
+    consumer.complete(delivery)
+
+
+@pytest.mark.parametrize("member", [b"not UTF-8: \xff", b'{"id":"x","attempts":0,"body":"\xff"}'])
+def test_non_utf8_reservations_reach_terminal_failure_and_keep_exact_receipts(broker, member):
+    from laravel_cloud_queues.errors import MalformedEnvelopeError
+    from laravel_cloud_queues.jobs.envelope import decode_envelope
+
+    config, client, _, consumer = broker
+    pending = f"{config.prefix}queues:nonutf8"
+    client.rpush(pending, member)
+    delivery = consumer.receive(["nonutf8"], 0)
+    assert delivery is not None
+    with pytest.raises(MalformedEnvelopeError):
+        decode_envelope(delivery.body)
+    receipt = delivery.receipt.encode("utf-8", errors="surrogateescape")
+    assert client.zscore(pending + ":reserved", receipt) is not None
+    consumer.renew(delivery, 60)
+    consumer.release(delivery, 0)
+    assert client.zscore(pending + ":delayed", receipt) is not None
+    redelivered = consumer.receive(["nonutf8"], 0)
+    assert redelivered is not None
+    with pytest.raises(MalformedEnvelopeError):
+        decode_envelope(redelivered.body)
+    consumer.complete(redelivered)
+    assert client.zcard(pending + ":reserved") == client.zcard(pending + ":delayed") == 0
+
+
+@pytest.mark.parametrize("required", ["1", "true", "TRUE", "yes", "YeS"])
+def test_required_service_gate_accepts_truthy_values(monkeypatch, required):
+    monkeypatch.setenv("LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES", required)
+    try:
+        with pytest.raises(pytest.fail.Exception):
+            unavailable("missing service")
+    except pytest.skip.Exception as exc:
+        raise AssertionError("Required service must fail instead of skipping") from exc

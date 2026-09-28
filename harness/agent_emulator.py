@@ -260,7 +260,14 @@ class AgentEmulator(SocketService):
             or not isinstance(body.get("messageId"), str)
             or body.get("status") not in ("processed", "released")
             or ("receiptHandle" in body and not isinstance(body["receiptHandle"], str))
-            or ("delay" in body and (type(body["delay"]) is not int or body["delay"] < 0))
+            or (
+                "delay" in body
+                and (
+                    body["status"] != "released"
+                    or type(body["delay"]) is not int
+                    or not 0 <= body["delay"] <= 43200
+                )
+            )
         ):
             return 422
         with self._condition:
@@ -269,7 +276,7 @@ class AgentEmulator(SocketService):
             if message is None or message.status == "processed":
                 return self.unknown_message_status
             if message.status != "in_flight" or (
-                "receiptHandle" in body and body["receiptHandle"] != message.receipt_handle
+                body.get("receiptHandle") != message.receipt_handle
             ):
                 return self.stale_receipt_status
             message.history.append(body["status"])

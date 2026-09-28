@@ -37,13 +37,12 @@ from typing import NoReturn, cast
 
 from ..codecs import JSONValue
 from ..errors import (
-    ConfigurationError,
     MalformedEnvelopeError,
     SerializationError,
     UnsupportedEnvelopeVersionError,
     UnsupportedOverflowPayloadError,
 )
-from .policy import RetryPolicy
+from .policy import MAX_JOB_TIMEOUT, RetryPolicy
 
 ENVELOPE_KEY = "laravel_cloud_queues"
 ENVELOPE_VERSION = 1
@@ -99,9 +98,11 @@ def encode_envelope(envelope: Envelope) -> str:
                 section.pop(key, None)
         top.update(uuid=envelope.uuid, displayName=envelope.display_name)
         top[ENVELOPE_KEY] = section
-        return json.dumps(
+        body = json.dumps(
             top, separators=(",", ":"), ensure_ascii=False, allow_nan=False, sort_keys=True
         )
+        body.encode("utf-8")
+        return body
     except (ValueError, TypeError, RecursionError):
         raise SerializationError("Envelope cannot be serialized") from None
 
@@ -203,7 +204,7 @@ def decode_envelope(body: str) -> Envelope:
         if key == "tries":
             valid = type(value) is int and _number(value)
         elif key == "timeout":
-            valid = _number(value)
+            valid = _number(value) and cast(float, value) <= MAX_JOB_TIMEOUT
         elif key == "backoff":
             valid = all(_number(v) for v in value) if isinstance(value, list) else _number(value)
         elif key == "fail_on_timeout":
@@ -235,7 +236,7 @@ def decode_envelope(body: str) -> Envelope:
             timeout=cast(float | None, policy.get("timeout")),
             fail_on_timeout=cast(bool | None, policy.get("fail_on_timeout")),
         )
-    except (ConfigurationError, ValueError, TypeError, OverflowError):
+    except Exception:
         raise MalformedEnvelopeError("Envelope policy is invalid") from None
     return Envelope(
         uuid=cast(str, top["uuid"]),

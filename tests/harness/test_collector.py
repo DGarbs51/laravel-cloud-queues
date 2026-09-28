@@ -168,3 +168,26 @@ def test_failed_event_and_sequence() -> None:
 )
 def test_failed_validator_rejects(change: dict[str, object]) -> None:
     assert validate_failed_job_event(failed() | change)
+
+
+@pytest.mark.parametrize("length", [16384, 16385])
+def test_collector_line_limit_includes_newline_and_counts_bytes(length):
+    line = b'{"payload":"' + "é".encode() * 8000
+    line += b"x" * (length - len(line) - 3) + b'"}\n'
+    assert len(line) == length
+    with LogCollector() as collector, connect(collector) as stream:
+        stream.sendall(line)
+        collector.wait_for(lambda _: len(collector.raw_lines) == 1)
+        assert collector.raw_lines == [line]
+        assert bool(collector.errors) == (length > 16384)
+
+
+@pytest.mark.parametrize("value", ["2026-13-45 99:00:00.123456", "2026-02-29 12:00:00.123456"])
+def test_validators_reject_noncalendar_timestamps(value):
+    assert validate_lifecycle_event(lifecycle() | {"timestamp": value})
+    assert validate_failed_job_event(failed() | {"started_at": value})
+
+
+def test_validators_reject_unknown_keys():
+    assert validate_lifecycle_event(lifecycle() | {"unexpected": True})
+    assert validate_failed_job_event(failed() | {"unexpected": True})

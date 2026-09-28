@@ -59,12 +59,16 @@ class _RedisTransport:
             options.update(
                 decode_responses=True,
                 encoding="utf-8",
-                encoding_errors="strict",
+                encoding_errors="surrogateescape",
                 socket_connect_timeout=2,
                 socket_timeout=2,
                 retry=Retry(NoBackoff(), 0),
                 retry_on_error=[],
                 retry_on_timeout=False,
+            )
+            self._reporting_pool = redis.ConnectionPool(
+                connection_class=self._pool.connection_class,
+                **{**options, "socket_timeout": 10},
             )
         except (ValueError, TypeError, redis.RedisError):
             raise ConfigurationError("Invalid Redis URL or TLS verification settings.") from None
@@ -74,14 +78,18 @@ class _RedisTransport:
         return pending, f"{pending}:delayed", f"{pending}:reserved", f"{pending}:notify"
 
     def _command(self, *args: str | int | float, reporting: bool = False) -> object:
+        # Reporting gets its own pool so watchdog I/O cannot alter polling timeouts.
+        pool = self._reporting_pool if reporting else self._pool
         # Acquire/connect before sending so only definitely-unsent commands are retried.
         for attempt in range(3):
             try:
                 if self._redis.VERSION < (5, 3):
-                    connection = self._pool.get_connection(str(args[0]))
+                    connection = pool.get_connection(str(args[0]))
                 else:
-                    connection = self._pool.get_connection()
+                    connection = pool.get_connection()
                 break
+            except self._redis.AuthenticationError:
+                raise ConfigurationError("Redis authentication failed.") from None
             except (self._redis.ConnectionError, self._redis.TimeoutError):
                 if attempt == 2:
                     error = BrokerConnectionError if reporting else TransportError
@@ -92,16 +100,28 @@ class _RedisTransport:
         try:
             connection.send_command(*args)  # type: ignore[no-untyped-call]  # redis-py API
             return connection.read_response()
-        except (self._redis.RedisError, UnicodeError):
+        except (self._redis.RedisError, UnicodeError) as exc:
             # A partial write or lost reply is ambiguous. Do not replay mutations.
             connection.disconnect()  # type: ignore[no-untyped-call]  # redis-py API
+            if isinstance(
+                exc,
+                (
+                    self._redis.AuthenticationError,
+                    self._redis.exceptions.AuthenticationWrongNumberOfArgsError,
+                ),
+            ) or (
+                isinstance(exc, self._redis.ResponseError)
+                and str(exc).split(" ", 1)[0] in {"NOAUTH", "WRONGPASS"}
+            ):
+                raise ConfigurationError("Redis authentication failed.") from None
             outcome_error = AmbiguousAcknowledgementError if reporting else TransportError
             raise outcome_error("Redis command failed; its outcome may be unknown.") from None
         finally:
-            self._pool.release(connection)
+            pool.release(connection)
 
     def close(self) -> None:
         self._pool.disconnect()
+        self._reporting_pool.disconnect()
 
 
 class RedisProducer(_RedisTransport):
@@ -156,6 +176,12 @@ class RedisConsumer(_RedisTransport):
                 )
                 if member is not None:
                     if isinstance(member, str):
+                        try:
+                            member.encode("utf-8")
+                        except UnicodeEncodeError:
+                            # Preserve all bytes as the opaque receipt; core rejects the body.
+                            member = [member]
+                    if isinstance(member, str):
                         wrapper = json.loads(member)
                     elif (
                         isinstance(member, list) and len(member) == 1 and isinstance(member[0], str)
@@ -163,7 +189,8 @@ class RedisConsumer(_RedisTransport):
                         # Malformed wrappers retain their raw receipt so core can fail/delete them.
                         member = member[0]
                         wrapper = {
-                            "id": "malformed-" + sha256(member.encode("utf-8")).hexdigest(),
+                            "id": "malformed-"
+                            + sha256(member.encode("utf-8", errors="surrogateescape")).hexdigest(),
                             "body": member,
                             "attempts": 1,
                         }
@@ -173,7 +200,7 @@ class RedisConsumer(_RedisTransport):
                         message_id=wrapper["id"],
                         queue=queue,
                         body=wrapper["body"],
-                        attempt=wrapper["attempts"],
+                        attempt=int(wrapper["attempts"]),
                         receipt=member,
                         received_at=time.monotonic(),
                     )
