@@ -1,13 +1,26 @@
-# Multi-Agent Build Prompt — `laravel-cloud-queues`
+# Build Prompt — `laravel-cloud-queues`
 
-You are an orchestrated engineering team (Claude Code, Codex, Grok 4.7). Build a production-quality Python package, **`laravel-cloud-queues`**, that lets Python applications use Laravel Cloud queues: Laravel Cloud Managed Queues, plus self-managed SQS and Redis/Valkey for Laravel Cloud worker clusters.
+This is the hand-off for the **lead orchestrator: Claude Opus 5.5 running the `solo-orchestrator` skill inside Solo**. The lead owns the plan, lane routing, integration and the final report, and delegates bounded lanes to worker agents across any configured CLIs and model labs, following the skill.
 
-You are not brainstorming. Research the pinned contracts, implement the package and its FastAPI adapter, build the local compatibility infrastructure and `demo/`, run the tests, review each other's work, and leave the repository in a release-quality `0.x` state.
+Build a production-quality Python package, **`laravel-cloud-queues`**, that lets Python applications use Laravel Cloud queues: Laravel Cloud Managed Queues, plus self-managed SQS and Redis/Valkey for Laravel Cloud worker clusters.
+
+You are not brainstorming. Research the pinned contracts, implement the package and its FastAPI adapter, build the local compatibility infrastructure and `demo/`, run the tests, review each lane independently, and leave the repository in a release-quality `0.x` state.
+
+## Answers for the skill's interview
+
+These are settled; the lead's interview only needs to cover anything not listed here.
+
+- **Goal and acceptance:** this prompt's release gate (scope §30 and §5).
+- **Branching: explicit stay-on-main run.** Lanes still get their own worktrees and branches, but the lead integrates accepted lanes directly into `main` and pushes. There is no final PR; the final report lists the pushed commits.
+- **Every push to `main` deploys `probe-app/` to Laravel Cloud** (Laravel GTM org, app `laravel-cloud-queues`, environment `production`). This is intentional: use it to test the production deploy continually. Keep `main` deployable: run the lane's checks before each push, and never push a commit that breaks `probe-app/`. Once the package can dispatch and consume, switch `probe-app/`'s worker processes from the prototype `worker.py` to `laravel-cloud-queues work` so each push exercises the real package (the D6c live smoke test).
+- **Local test infrastructure:** SQS via `moto` locally, LocalStack in CI (D9); Redis via Laravel Herd's Valkey on `127.0.0.1:6379` locally, containers in CI. Docker is not installed on the development machine.
+- **Paid usage:** follow the skill; extra charges need the user's approval.
+- **Private Laravel repositories:** reachable with the user's `gh` login for verification; cite by name only (this repository is public).
 
 ## Authority
 
 1. **`PROJECT_SCOPE.md` is authoritative.** This prompt defines execution, ownership and gates. It does not restate the scope; when it cites a section (§), read that section. Nothing here is a substitute for the scope.
-2. **`docs/decisions.md` (D1–D6)** records resolved decisions. The scope incorporates them; if the two disagree, the decision record wins and the scope must be corrected.
+2. **`docs/decisions.md` (D1–D9)** records resolved decisions. The scope incorporates them; if the two disagree, the decision record wins and the scope must be corrected.
 3. **`docs/references.md`** lists what to verify against: pinned public sources, Laravel Cloud docs, and private Laravel repositories (cite by name only).
 4. **`docs/audits/2026-09-27/`** explains why the scope says what it says, including `platform-findings.md` (live Laravel Cloud evidence).
 
@@ -54,9 +67,9 @@ Where Laravel and Symfony disagree, or the project deliberately deviates, the sc
 | Queue URL | Full-URL pass-through; suffix once | Literal concatenation | Laravel (§6) |
 | Agent socket fallback | Config, else default | Config, `LARAVEL_CLOUD_AGENT_SOCKET`, default | Symfony (§6) |
 
-## Contract pack — freeze before parallel work
+## Contract pack — freeze before parallel lanes
 
-Step 2 below produces these files. After review, they are the shared interfaces every agent builds against; changes need the owner plus one reviewer.
+The first lanes produce these files. After the lead accepts them, they are the shared interfaces every later lane builds against; changing one needs the lead's approval and a review.
 
 1. Configuration models and backend selection (§6, D6a).
 2. Envelope v1 schema, including `uuid`, `displayName` and the retry policy (§8).
@@ -69,41 +82,37 @@ Step 2 below produces these files. After review, they are the shared interfaces 
 9. CLI commands, options and exit codes (§13, §23).
 10. Conformance catalog with feature IDs, one per §21 and §30 item (§22).
 
-## Ownership
+## Suggested lanes
 
-One writer per artifact. Reviewers propose changes; they do not rewrite an owner's files.
+A starting split for the lead's plan. The lead may merge, split or reorder lanes, and chooses models per lane under the skill's routing rules. Each lane owns its paths; other lanes report needed changes instead of editing them.
 
-| Area | Owner | Required reviewer |
-|---|---|---|
-| Contract matrix, conformance catalog of record, public API design | Claude | Grok |
-| Core: config, envelope/codecs, registry, dispatch, policies | Codex | Claude |
-| Transports: agent, direct SQS, Redis/Valkey | Codex | Grok |
-| Worker runtime, timeouts, shutdown | Codex | Grok |
-| FastAPI adapter | Codex | Claude |
-| Observability and tracing | Codex | Claude |
-| Agent emulator, log collector, LocalStack and Valkey harnesses | Grok | Codex |
-| Conformance scenarios, `demo/`, report generator | Grok | Claude |
-| CLI | Codex | Grok |
-| Packaging, CI, drift check | Codex | Grok |
-| `README.md` | Claude | Codex |
+| Lane | Owns | Depends on | Review focus |
+|---|---|---|---|
+| L0 Research and contract pack | `docs/contract/`, catalog of record | — | Every conflicts-table row traced to source |
+| L1 Scaffold and CI | `pyproject.toml`, CI workflows, packaging tests, lint/mypy config | L0 | Isolated wheel/sdist installs; exclusions |
+| L2 Runtime proof | `tests/runtime_proof/` | L0 | D2 timeouts and watchdog renewal in real subprocesses |
+| L3 Core | config, envelope/codecs, registry, dispatch, policies, errors | L0, L1 | Trust boundary; typing samples |
+| L4 SQS and agent transports | `transports/sqs`, `transports/agent` | L3 | Agent protocol fixtures; `AWS_*` isolation |
+| L5 Redis transport | `transports/redis` | L3 | Lua atomicity under concurrent workers |
+| L6 Worker and CLI | `worker/`, `cli/` | L3, L2 | State machine; shutdown races; exit codes |
+| L7 Observability and tracing | `observability/`, tracing | L3 | Event fixtures; D1 size policy; socket framing |
+| L8 FastAPI adapter | `fastapi/` | L3, L6 | Teardown before acknowledgement; lifespan once |
+| L9 Local platform | agent emulator, log collector, test harnesses | L0 | Stateful emulator; fault injection |
+| L10 Demo and conformance | `demo/`, report generator | L4–L9 | Every §21 probe; report exit status |
+| L11 Cloud smoke test | `probe-app/` switched to the real package | L5, L6, L8 | Live worker-cluster run after each push |
+| L12 README and docs | `README.md`, architecture notes | all | Matches behavior; §25 checklist |
 
-**Integration owner:** Codex merges to the integration branch and runs the full gate.
+Reviews preferably come from a different model lab than the author, per the skill.
 
 **Disagreements:**
 1. Settle them with source evidence (Laravel canonical).
 2. If evidence cannot settle it, record the question in `docs/decisions.md` and ask the user.
-3. Never resolve a disagreement by editing the other agent's tests.
-
-**Mechanics:**
-- Each agent works on its own branch or git worktree.
-- Commit small, reviewable changes.
-- The contract pack merges first.
-- Do not push to `main` unless instructed: every push to `main` redeploys `probe-app/` on Laravel Cloud.
+3. Never resolve a disagreement by editing another lane's tests.
 
 ## Execution sequence
 
 1. **Research.** Read the pinned sources and `docs/audits/2026-09-27/`. Confirm the resolved-conflicts table against source. Report any row that is wrong, with evidence, before building on it.
-2. **Contract pack.** Produce and review the ten artifacts above.
+2. **Contract pack.** Produce and review the ten artifacts above (lane L0).
 3. **Runtime proof.** Before building the worker:
    - Prove the D2 timeout mechanism in real subprocesses: exit 124, correct event, redelivery, terminal failure on the last attempt, for async, sync-loop and native-blocking handlers.
    - Prove visibility/reservation renewal runs while a sync handler blocks the loop.
@@ -115,7 +124,7 @@ One writer per artifact. Reviewers propose changes; they do not rewrite an owner
 8. **Local platform.** Stateful agent emulator with fault injection, log collector, LocalStack, Valkey/Redis (Laravel Herd's Valkey on `127.0.0.1:6379` locally; containers in CI).
 9. **Demo and conformance.** Every §21 probe, the catalog, and the human-readable and JSON reports with evidence tiers and deviation labels.
 10. **Docs.** README per §25, architecture notes, deviations, roadmap.
-11. **Independent review.** Each agent reviews areas it did not author, tracing high-risk expectations back to source. Then one clean full-gate run on the integration branch, and building the wheel and sdist and inspecting their contents.
+11. **Independent review.** Each lane is reviewed by an agent that did not author it, tracing high-risk expectations back to source. Then one clean full-gate run on `main`, building the wheel and sdist, inspecting their contents, and confirming the live Cloud smoke test.
 12. **Final report** (below).
 
 ## Release gate
