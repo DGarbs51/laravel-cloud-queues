@@ -1,6 +1,7 @@
 # CLI contract
 
-One entry point: `laravel-cloud-queues` (`laravel_cloud_queues.cli:main`), built on `click`.
+One entry point: `laravel-cloud-queues` (short alias `lcq`, same `laravel_cloud_queues.cli:main`),
+built on `click`.
 The command group `laravel_cloud_queues.cli:cli` can be mounted in any click CLI, for example
 Flask's: `app.cli.add_command(cli, "queues")` gives `flask queues work ...`. A mounted group
 keeps the same error handling and exit codes.
