@@ -120,3 +120,19 @@ Other observations:
 | `timeout_then_terminal` (`tries` 2, timeout 3 s) | Attempt 1: "exceeded its 3 s timeout; it will be retried", worker exited 124 and was restarted by Cloud 0.8 s later; the reservation lease (60 s) expired and the job was redelivered; attempt 2 timed out and was failed as the last attempt (`failed_job` line, `status: failed`), exit 124, restarted again |
 
 Confirmed in addition to the prototype run: **Laravel Cloud restarts a background process after it exits 124** (the gap noted above), the package's Redis lease expiry redelivers a timed-out job with an incremented attempt, and D6b failure records and per-outcome JSON lines appear in `environment:logs`.
+
+## When Laravel Cloud enables managed queues for Python
+
+Managed mode cannot be verified live yet. When the platform supports it:
+
+- [ ] Confirm the platform changes listed above:
+  - FastAPI is allowed in managed-queue validation;
+  - `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` and ECS credentials are injected into Python containers;
+  - a Python worker command is allowed;
+  - the agent sidecar serves `/tmp/cloud-agent.sock`.
+- [ ] Run a managed-mode probe:
+  - unset `LARAVEL_CLOUD_QUEUES_BACKEND`;
+  - check `laravel-cloud-queues inspect main:app` (mode `managed`);
+  - dispatch jobs and confirm they appear in Laravel Cloud's Queues dashboard, including lifecycle events and `failed_job` records;
+  - retry a failed job from the dashboard and confirm it runs as a fresh attempt 1.
+- [ ] Then turn `cloud.live_managed` and `cloud.dashboard_retry_live` into live probes and remove them from the catalog's exception list.

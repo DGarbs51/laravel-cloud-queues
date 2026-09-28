@@ -1,6 +1,6 @@
 # Project decisions
 
-Decisions that resolve open questions from `docs/audits/2026-09-27/README.md`. They take precedence over conflicting wording in `PROJECT_SCOPE.md` and `AGENT_BUILD_PROMPT.md` until those documents are updated. See `docs/references.md` for where to verify each one.
+Decisions that resolve open questions from the 2026-09-27 audits (see git history). They take precedence over conflicting wording in `PROJECT_SCOPE.md` and `AGENT_BUILD_PROMPT.md` until those documents are updated. See `docs/references.md` for where to verify each one.
 
 ## D1 — Failed-job events: hybrid size policy (2026-09-27)
 
