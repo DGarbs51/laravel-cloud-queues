@@ -1,0 +1,238 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  UV_LOCKED: "1"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - name: ruff check / format --check
+        run: |
+          set -euo pipefail
+          # Code roots only (matches [tool.ruff] src in pyproject.toml), not
+          # docs/PROJECT_SCOPE.md/audits: ruff >=0.16 also formats fenced ```python
+          # blocks inside Markdown, and pre-existing prose in those files trips it.
+          # harness/ and demo/ don't exist yet on every lane's branch; skip if absent.
+          targets=()
+          for dir in src tests harness demo .github/scripts; do
+            [ -d "$dir" ] && targets+=("$dir")
+          done
+          uv run ruff check "${targets[@]}"
+          uv run ruff format --check "${targets[@]}"
+      # actionlint via the PyPI wrapper (downloads the Go binary from its GitHub
+      # release at build time) rather than a system/brew install.
+      - run: uvx --from actionlint-py actionlint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+      - run: uv sync --locked
+      # mypy --strict on src (pyproject.toml [tool.mypy]); the downstream typing
+      # samples (tests/typing/) are exercised inside the `test` job's pytest run.
+      - run: uv run mypy
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    env:
+      LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES: "1"
+      LARAVEL_CLOUD_QUEUES_TEST_SQS: localstack
+      LARAVEL_CLOUD_QUEUES_TEST_SQS_ENDPOINT: http://localhost:4566
+      LARAVEL_CLOUD_QUEUES_TEST_REDIS_URL: redis://localhost:6379/15
+      LARAVEL_CLOUD_QUEUES_TEST_REDIS_TLS_URL: >-
+        rediss://localhost:6380/0?ssl_ca_certs=${{ github.workspace }}/.ci-tls/ca.crt
+    services:
+      # Pinned to 4.14.0: the last LocalStack image that starts SQS without a
+      # LOCALSTACK_AUTH_TOKEN. Starting with the 2026.03.0 (2026-03-23) release,
+      # LocalStack switched to calendar versioning and unified the community/Pro
+      # images, and an auth token (or CI auth token) became required just to start
+      # the container at all — see
+      # https://blog.localstack.cloud/localstack-for-aws-release-2026-03-0/ and
+      # https://github.com/testcontainers/testcontainers-java/issues/11568. 4.14.0
+      # (2026-02-26) is the last semver release before that cutover and is still
+      # published on Docker Hub. Revisit via .github/workflows/drift.yml / the
+      # upstream-drift policy (PROJECT_SCOPE.md §2) if this stops working.
+      localstack:
+        image: localstack/localstack:4.14.0
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: sqs
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/_localstack/health"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      # Laravel Herd's local Valkey (used by contributors developing this repo) is
+      # 8.1.8 (docs/references.md); pin CI to the same minor line.
+      valkey:
+        image: valkey/valkey:8.1.8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # A second, separate server so the redis-marked suite also runs against real
+      # Redis (not just Valkey). Exposed on 6390 to avoid clashing with valkey/6379.
+      redis:
+        image: redis:8.10.2
+        ports:
+          - 6390:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+
+      - name: Generate self-signed TLS certs for the TLS Valkey container
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-tls
+          printf "subjectAltName=DNS:localhost,IP:127.0.0.1\n" > .ci-tls/server.ext
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout .ci-tls/ca.key -out .ci-tls/ca.crt \
+            -subj "/CN=laravel-cloud-queues-test-ca"
+          openssl req -newkey rsa:2048 -nodes \
+            -keyout .ci-tls/server.key -out .ci-tls/server.csr \
+            -subj "/CN=localhost"
+          # -extfile adds a SAN: redis-py's default SSL context verifies the
+          # hostname against SAN, not the legacy CN (unsupported since Python 3.7+).
+          openssl x509 -req -in .ci-tls/server.csr -CA .ci-tls/ca.crt -CAkey .ci-tls/ca.key \
+            -CAcreateserial -out .ci-tls/server.crt -days 1 -extfile .ci-tls/server.ext
+
+      - name: Start a TLS-only Valkey container
+        run: |
+          set -euo pipefail
+          # Deliberately no --tls-ca-cert-file: Valkey/Redis append it to the
+          # certificate chain they present to every client (verified locally with
+          # `openssl s_client`), which trips strict OpenSSL 3.x chain validation
+          # with "self-signed certificate in certificate chain" (verify code 19) in
+          # redis-py. --tls-auth-clients no means the server never verifies client
+          # certs, so it has no need for the CA file itself.
+          docker run -d --name valkey-tls \
+            -p 6380:6380 \
+            -v "$PWD/.ci-tls:/tls:ro" \
+            valkey/valkey:8.1.8 \
+            --tls-port 6380 --port 0 \
+            --tls-cert-file /tls/server.crt \
+            --tls-key-file /tls/server.key \
+            --tls-auth-clients no
+
+      - name: Wait for the TLS Valkey container to accept connections
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            if docker exec valkey-tls valkey-cli --tls --cacert /tls/ca.crt \
+                -p 6380 ping 2>/dev/null | grep -q PONG; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "TLS Valkey never became healthy" >&2
+          docker logs valkey-tls >&2 || true
+          exit 1
+
+      # LocalStack, Valkey and Redis above are `services:` containers, so GitHub
+      # Actions already blocks job startup until their healthchecks pass
+      # (PROJECT_SCOPE.md §5 "Required integration services ... must run in CI").
+
+      - name: Run the test suite (Valkey on 6379)
+        run: >-
+          uv run pytest -m "not packaging"
+          --junitxml=test-results/junit-${{ matrix.python-version }}.xml
+
+      - name: Re-run redis-marked tests against real Redis (6390)
+        env:
+          LARAVEL_CLOUD_QUEUES_TEST_REDIS_URL: redis://localhost:6390/15
+        run: |
+          set +e
+          uv run pytest -m redis \
+            --junitxml=test-results/junit-${{ matrix.python-version }}-redis.xml
+          status=$?
+          # Exit code 5 = no tests collected. Tolerated only until the redis
+          # transport (lane L5) lands its `redis`-marked suite; a real failure
+          # (any other nonzero code) still fails the job.
+          if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then
+            exit "$status"
+          fi
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ matrix.python-version }}
+          if-no-files-found: ignore
+          path: |
+            test-results/**
+            conformance-artifacts/**
+            compatibility-report.json
+            **/*.log
+
+  packaging:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - run: >-
+          uv run pytest -m packaging
+          --junitxml=test-results/junit-packaging-${{ matrix.python-version }}.xml
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaging-artifacts-${{ matrix.python-version }}
+          if-no-files-found: ignore
+          path: test-results/**
+
+  # PLACEHOLDER (lane L10): the `conformance` job (running the demo/conformance
+  # harness and uploading its JSON report + logs) lands with `demo/`. Do not remove
+  # this marker when adding it — CI is expected to grow a `conformance` job here.
+
+  ci:
+    if: always()
+    needs: [lint, typecheck, test, packaging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all gates to pass
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more required jobs failed." >&2
+            exit 1
+          fi
