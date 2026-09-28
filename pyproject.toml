@@ -36,6 +36,12 @@ dependencies = [
     "typing-extensions>=4.12",
 ]
 
+[project.urls]
+Homepage = "https://github.com/DGarbs51/laravel-cloud-queues"
+Documentation = "https://github.com/DGarbs51/laravel-cloud-queues#readme"
+Source = "https://github.com/DGarbs51/laravel-cloud-queues"
+Issues = "https://github.com/DGarbs51/laravel-cloud-queues/issues"
+
 [project.optional-dependencies]
 fastapi = ["fastapi>=0.121"]
 redis = ["redis>=5.0"]
