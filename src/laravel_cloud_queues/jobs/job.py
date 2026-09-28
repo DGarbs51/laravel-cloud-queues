@@ -66,7 +66,9 @@ class Job(Generic[P, R]):
         self._policy = policy
         self._options = options or DispatchOptions()
         # Inspected once; ``.options()`` copies share it.
-        self._signature = inspect_handler(func, is_injected=registry.invoker.is_injected)
+        self._signature = inspect_handler(
+            func, is_injected=registry.invoker.is_injected, codecs=registry.codecs
+        )
         functools.update_wrapper(self, func)
 
     def __repr__(self) -> str:
