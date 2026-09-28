@@ -75,7 +75,7 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
   - TLS via `rediss://`.
 - D1–D5 apply to every mode. Retry policy stays in the message, and timeouts exit 124. Custom worker processes are restarted by Cloud when they exit.
 - Worker clusters scale on CPU, memory or a fixed count, not on queue depth. Document this.
-- Laravel Cloud's Queues dashboard covers managed queues only. Whether lifecycle events from worker clusters appear anywhere is unverified.
+- Laravel Cloud's Queues dashboard and lifecycle events cover managed queues only (confirmed; see D12).
 
 - **Terminal failures outside managed mode (D6b):** log only.
   1. Write the full failure record as one structured JSON line to the worker's log output (visible in Cloud's Logs tab).
