@@ -11,7 +11,9 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI
 
 from laravel_cloud_queues.fastapi import LaravelCloudQueues
+from laravel_cloud_queues.fastapi._depends import parameter_is_injected
 from laravel_cloud_queues.fastapi._invoker import FastAPIInvoker
+from laravel_cloud_queues.jobs.signature import inspect_handler
 
 
 class _Registry:
@@ -27,6 +29,7 @@ class _Registry:
 class _Job:
     def __init__(self, func: Callable[..., Any]) -> None:
         self.func = func
+        self._signature = inspect_handler(func, is_injected=parameter_is_injected)
 
 
 def _run(func: Callable[..., Any], *args: Any) -> Any:

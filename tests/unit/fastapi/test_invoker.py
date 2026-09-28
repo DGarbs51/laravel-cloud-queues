@@ -10,15 +10,21 @@ from typing import Any
 import anyio
 import pytest
 from fastapi import Depends, FastAPI
+from starlette.requests import Request
 
 from laravel_cloud_queues.errors import ConfigurationError
+from laravel_cloud_queues.fastapi._depends import parameter_is_injected
 from laravel_cloud_queues.fastapi._invoker import TEARDOWN_DEADLINE_SECONDS, FastAPIInvoker
 from laravel_cloud_queues.jobs.context import JobContext, JobControl, current_job
+from laravel_cloud_queues.jobs.signature import inspect_handler
 
 
 class _Job:
+    """A job the invoker can call. The signature is inspected the same way ``Job`` does."""
+
     def __init__(self, func: Callable[..., Any]) -> None:
         self.func = func
+        self._signature = inspect_handler(func, is_injected=parameter_is_injected)
 
 
 class _Context:
@@ -281,9 +287,18 @@ def test_job_context_by_annotation_and_by_current_job() -> None:
     assert seen == [("one", "one"), ("two", "two")]
 
 
-def test_request_dependency_fails_at_invoke() -> None:
-    from starlette.requests import Request
+def test_positional_only_context_keeps_the_payload_shape() -> None:
+    app = FastAPI()
+    seen: list[tuple[int, str, str]] = []
 
+    def send(user_id: int, job: JobContext, /, label: str) -> None:
+        seen.append((user_id, job.job_name, label))
+
+    _run(FastAPIInvoker(app).invoke, _Job(send), (3, "hi"), {}, _Context("shaped"))
+    assert seen == [(3, "shaped", "hi")]
+
+
+def test_request_dependency_fails_at_invoke() -> None:
     app = FastAPI()
 
     def send(request: Request) -> None:

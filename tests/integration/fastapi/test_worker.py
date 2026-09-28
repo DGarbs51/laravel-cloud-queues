@@ -1,7 +1,7 @@
 """Worker subprocess: lifespan once, teardown before ack, SIGTERM shutdown.
 
-Requires the redis transport (L5), registry/dispatch (L3c), and the worker CLI (L6).
-Until those land the test fails; it is not skipped when Valkey is up.
+Redis and the registry are on main. These tests invoke ``laravel-cloud-queues work``
+and fail until the worker CLI lands. They are not skipped when Valkey is up.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+WORKER = Path(sys.executable).with_name("laravel-cloud-queues")
 
 
 def _events(path: Path) -> list[str]:
@@ -47,9 +48,7 @@ def test_teardown_runs_before_ack_and_lifespan_once(
 
     process = run_process(  # type: ignore[operator]
         [
-            sys.executable,
-            "-m",
-            "laravel_cloud_queues",
+            str(WORKER),
             "work",
             "tests.integration.fastapi.apps.main:app",
             "--max-jobs",
@@ -94,9 +93,7 @@ def test_sigterm_runs_lifespan_shutdown(
     _prepare_env(monkeypatch, redis_url, redis_prefix, events_path)
     process = run_process(  # type: ignore[operator]
         [
-            sys.executable,
-            "-m",
-            "laravel_cloud_queues",
+            str(WORKER),
             "work",
             "tests.integration.fastapi.apps.main:app",
             "--sleep",
@@ -105,16 +102,25 @@ def test_sigterm_runs_lifespan_shutdown(
         env=_child_env(redis_url, redis_prefix, events_path),
         cwd=REPO_ROOT,
     )
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline and "lifespan-start" not in _events(events_path):
-        time.sleep(0.05)
-    assert "lifespan-start" in _events(events_path), process.stderr_path.read_text(errors="replace")
+    _wait_for_event(process, events_path, "lifespan-start", timeout=15)
     process.send_signal(signal.SIGTERM)
     result = process.wait(timeout=20)
     assert result.returncode == 0, result.stderr
     lines = _events(events_path)
     assert lines.count("lifespan-start") == 1
     assert lines.count("lifespan-stop") == 1
+
+
+def _wait_for_event(process: object, events_path: Path, needle: str, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if needle in _events(events_path):
+            return
+        if process.process.poll() is not None:  # type: ignore[attr-defined]
+            result = process.wait(timeout=1)  # type: ignore[attr-defined]
+            pytest.fail(result.stderr or result.stdout)
+        time.sleep(0.05)
+    pytest.fail(process.stderr_path.read_text(errors="replace"))  # type: ignore[attr-defined]
 
 
 def _prepare_env(

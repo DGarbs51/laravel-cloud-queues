@@ -35,11 +35,11 @@ from starlette.requests import Request
 from ..errors import ConfigurationError
 from ..jobs.context import JobContext, JobControl, current_job
 from ..jobs.job import AnyJob
+from ..registry import merge_injected
 from ._depends import (
     QUEUE_JOB_PATH,
     _signature_call,
     dependency_parameters,
-    evaluated_parameters,
     parameter_is_injected,
     plain_job_context_parameters,
     reject_request_dependencies,
@@ -105,7 +105,7 @@ class FastAPIInvoker:
         func = job.func
         reject_request_dependencies(func, self._app.dependency_overrides)
         if not dependency_parameters(func):
-            await _run_handler(func, args, kwargs, context, {})
+            await _run_handler(job, args, kwargs, context, {})
             return
 
         request_stack = AsyncExitStack()
@@ -119,7 +119,7 @@ class FastAPIInvoker:
             function_entered = True
             try:
                 solved = await _solve(self._app, func, context, request_stack, function_stack)
-                await _run_handler(func, args, kwargs, context, solved)
+                await _run_handler(job, args, kwargs, context, solved)
             except JobControl as exc:
                 outcome = "control"
                 caught = exc
@@ -195,49 +195,45 @@ async def _solve(
 
 
 async def _run_handler(
-    func: Callable[..., Any],
+    job: AnyJob,
     args: Sequence[object],
     kwargs: Mapping[str, object],
     context: JobContext,
     solved: Mapping[str, Any],
 ) -> None:
-    result = _call(func, args, kwargs, context, solved)
+    result = _call(job, args, kwargs, context, solved)
     if inspect.isawaitable(result):
         await result
 
 
 def _call(
-    func: Callable[..., Any],
+    job: AnyJob,
     args: Sequence[object],
     kwargs: Mapping[str, object],
     context: JobContext,
     solved: Mapping[str, Any],
 ) -> Any:
-    parameters = evaluated_parameters(func)
-    injected = {parameter.name for parameter in parameters if parameter_is_injected(parameter)}
-    serial = [parameter for parameter in parameters if parameter.name not in injected]
-    arguments: dict[str, Any] = {}
-    if serial or args or kwargs:
-        bound = inspect.Signature(serial).bind(*args, **dict(kwargs))
-        bound.apply_defaults()
-        arguments.update(bound.arguments)
-    for parameter in plain_job_context_parameters(func):
-        arguments[parameter.name] = context
-    arguments.update(solved)
-    positional: list[Any] = []
-    keywords: dict[str, Any] = {}
-    for parameter in parameters:
-        if parameter.name not in arguments:
+    """Call the handler through :func:`merge_injected` and the inspected signature.
+
+    Omitted defaults stay omitted, matching dispatch. Plain ``JobContext`` parameters
+    receive this delivery's context; FastAPI solves the other injected parameters.
+    """
+
+    signature = job._signature
+    plain = {parameter.name for parameter in plain_job_context_parameters(job.func)}
+    injected: dict[str, object] = {}
+    for name in signature.injected:
+        if name in solved:
+            injected[name] = solved[name]
+        elif name in plain:
+            injected[name] = context
+        else:
             raise ConfigurationError(
-                f"Job [{_qualname(func)}] parameter {parameter.name!r} "
+                f"Job [{_qualname(job.func)}] parameter {name!r} "
                 "was not provided by the payload or by a dependency."
             )
-        value = arguments[parameter.name]
-        if parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
-            positional.append(value)
-        else:
-            keywords[parameter.name] = value
-    return func(*positional, **keywords)
+    call_args, call_kwargs = merge_injected(signature.signature, args, kwargs, injected)
+    return job.func(*call_args, **call_kwargs)
 
 
 async def _close_dependencies(
