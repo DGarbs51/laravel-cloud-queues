@@ -98,7 +98,12 @@ Smaller choices made when applying D1–D6 and the audit fixes to `PROJECT_SCOPE
 - Fresh delays accept `int` or `timedelta`; positive fractions round up; >900 s, negative and non-finite values are rejected (§10).
 - The Redis backend has no package-imposed payload size limit (revised 2026-09-28); it keeps the 900-second delay cap, and FIFO and fair-queue options are rejected in `redis` mode (§8, §10).
 - Self-managed SQS requires explicit credentials unless `LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS=default` opts into boto3's default chain (§6).
-- Direct SQS and Redis run a watchdog thread that renews visibility or reservations during a job (§11).
+- Direct SQS and Redis run a watchdog thread that renews visibility or reservations during a job (§11). Confirmed 2026-09-28:
+  - lease window 60 s by default;
+  - renewal every third of the window;
+  - the thread starts with the job and stops before the outcome is reported;
+  - a failed renewal (message deleted or reassigned) is a lost lease: never report success for a job the worker no longer owns;
+  - `timeout=0` (unlimited) is allowed because the lease keeps renewing.
 - AnyIO on the asyncio backend only (§5).
 - Packaging: `hatchling`; extras `fastapi`, `redis`, `otel`; Pydantic support activates when installed (§4).
 - CI: CPython 3.10–3.14 on Linux; macOS not required (§5).
