@@ -15,7 +15,6 @@ from typing import Any
 import anyio
 import anyio.lowlevel
 import pytest
-from tests.unit.jobs.fakes import make_registry
 
 from laravel_cloud_queues import JobContext, Registry, current_job
 from laravel_cloud_queues.errors import (
@@ -37,6 +36,7 @@ from laravel_cloud_queues.jobs.execution import (
 )
 from laravel_cloud_queues.jobs.job import AnyJob
 from laravel_cloud_queues.jobs.policy import ResolvedPolicy, WorkerDefaults
+from tests.unit.jobs.fakes import make_registry
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,6 @@ from typing import Any
 import anyio
 import anyio.lowlevel
 import pytest
-from tests.unit.jobs.fakes import make_registry
 
 from laravel_cloud_queues import JobContext, Registry, current_job
 from laravel_cloud_queues import registry as registry_module
@@ -22,6 +21,7 @@ from laravel_cloud_queues.errors import (
     PayloadTooLargeError,
 )
 from laravel_cloud_queues.testing import DispatchRecorder, RecordedDispatch
+from tests.unit.jobs.fakes import make_registry
 
 
 @pytest.fixture

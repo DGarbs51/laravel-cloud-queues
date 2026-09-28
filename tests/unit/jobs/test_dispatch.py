@@ -11,7 +11,6 @@ from typing import Any
 
 import anyio
 import pytest
-from tests.unit.jobs.fakes import FakeProducer, RecordingTelemetry, make_registry
 
 from laravel_cloud_queues import JobContext
 from laravel_cloud_queues.config import QueueConfig, SqsConnectionConfig
@@ -26,6 +25,7 @@ from laravel_cloud_queues.jobs.dispatch import prepare_dispatch, send_prepared
 from laravel_cloud_queues.jobs.envelope import ENVELOPE_KEY, decode_envelope
 from laravel_cloud_queues.jobs.job import DispatchOptions, DispatchReceipt
 from laravel_cloud_queues.transports import Backend
+from tests.unit.jobs.fakes import FakeProducer, RecordingTelemetry, make_registry
 
 
 def section(body: str) -> dict[str, Any]:
