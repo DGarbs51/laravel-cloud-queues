@@ -1,0 +1,105 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "laravel-cloud-queues"
+version = "0.1.0"
+description = "Laravel Cloud queues for Python: managed queues, plus SQS and Redis/Valkey on worker clusters, with a FastAPI adapter."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+keywords = ["laravel", "laravel-cloud", "queue", "sqs", "redis", "valkey", "fastapi", "worker"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AnyIO",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Distributed Computing",
+    "Typing :: Typed",
+]
+dependencies = [
+    "anyio>=4.4",
+    "boto3>=1.35",
+    "httpx>=0.27",
+    "typing-extensions>=4.12",
+]
+
+[project.optional-dependencies]
+fastapi = ["fastapi>=0.115"]
+redis = ["redis>=5.0"]
+otel = ["opentelemetry-api>=1.27"]
+
+[project.scripts]
+laravel-cloud-queues = "laravel_cloud_queues.cli:main"
+
+[dependency-groups]
+dev = [
+    "boto3-stubs[sqs]>=1.35",
+    "fastapi>=0.115",
+    "moto[server]>=5.0",
+    "mypy>=1.13",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "pydantic>=2.7",
+    "pytest>=8.3",
+    "pytest-timeout>=2.3",
+    "redis>=5.0",
+    "ruff>=0.8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/laravel_cloud_queues"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/laravel_cloud_queues", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests", "harness", "demo"]
+extend-exclude = ["probe-app", ".worktrees"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT", "PGH"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011", "PT011"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src"]
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+[[tool.mypy.overrides]]
+module = ["moto.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["-ra", "--strict-markers"]
+timeout = 120
+markers = [
+    "agent: needs the local Laravel Cloud agent emulator",
+    "sqs: needs an SQS endpoint (moto locally, LocalStack in CI)",
+    "redis: needs a Redis/Valkey server",
+    "socket: observability Unix socket tests",
+    "subprocess: spawns real worker subprocesses",
+    "runtime_proof: D2 timeout / watchdog runtime proofs",
+    "packaging: builds and installs the wheel and sdist",
+    "conformance: conformance catalog probes",
+]
