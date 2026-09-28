@@ -5,6 +5,12 @@ received -> [decode: defect => terminal] -> [pre-run attempt check] -> running
 -> outcome chosen (success | release | fail | error->retry/terminal | timeout)
 -> reporting (transport complete/release) -> completed | ambiguous(stop).
 See docs/contract/worker.md.
+
+Shutdown while idle: SIGTERM/SIGINT call ``consumer.interrupt()``; the agent and Redis
+receives return promptly. A single-queue SQS long poll (``WaitTimeSeconds=20``) is not
+aborted, because an aborted ReceiveMessage may still dequeue a message and burn an attempt:
+the worker waits for the current poll (at most ~20 s), runs any message it hands over, then
+stops.
 """
 
 from __future__ import annotations

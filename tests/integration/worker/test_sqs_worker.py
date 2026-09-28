@@ -186,13 +186,14 @@ def test_sigterm_mid_job_finishes_reports_and_exits_0(sqs: Sqs) -> None:
     assert sqs.depth() == 0
 
 
-def test_sigterm_while_idle_exits_promptly(sqs: Sqs) -> None:
+def test_sigterm_while_idle_waits_at_most_for_the_current_long_poll(sqs: Sqs) -> None:
+    """An in-flight ReceiveMessage is not aborted (it may dequeue a message): <= 20 s poll."""
     process = sqs.workers.start()
     sqs.workers.wait_until_idle(process)
     signalled = sqs.workers.terminate(process)
-    run = sqs.workers.wait(process, timeout=30)
+    run = sqs.workers.wait(process, timeout=40)
     assert run.code == 0, run.describe()
-    assert time.monotonic() - signalled < 5
+    assert time.monotonic() - signalled <= 25
 
 
 def test_lost_lease_reports_nothing_and_exits_1(sqs: Sqs) -> None:
