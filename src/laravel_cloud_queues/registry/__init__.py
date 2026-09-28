@@ -3,24 +3,29 @@ CONTRACT — implemented by lane L3c."""
 
 from __future__ import annotations
 
+import importlib
 import inspect
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import AbstractAsyncContextManager, AbstractContextManager
-from types import ModuleType
+import pkgutil
+import threading
+from collections import OrderedDict
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, AbstractContextManager, asynccontextmanager
+from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, overload, runtime_checkable
 
 from typing_extensions import ParamSpec
 
-from ..codecs import CodecRegistry
-from ..config import QueueConfig
+from ..codecs import CodecRegistry, default_codecs
+from ..config import DEFAULT_QUEUE, QueueConfig, load_config
+from ..errors import ConfigurationError, UnknownJobError
+from ..jobs.context import JobContext
 from ..jobs.job import AnyJob, Job
 from ..jobs.policy import RetryPolicy
-from ..observability import Telemetry
-from ..transports import Backend
+from ..observability import NullSink, SocketEventSink, Telemetry
+from ..transports import SQS_MAX_PAYLOAD_BYTES, Backend, create_backend
 
 if TYPE_CHECKING:
-    from ..jobs.context import JobContext
-    from ..testing import DispatchRecorder
+    from ..testing import DispatchRecorder, _TestingSession
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -58,6 +63,48 @@ class WorkerTarget(Protocol):
         ...
 
 
+class DefaultInvoker:
+    """Core invoker: parameters annotated exactly ``JobContext`` receive the delivery's
+    context; the handler is called on the current thread and awaited if it returns an
+    awaitable (async handlers)."""
+
+    def is_injected(self, parameter: inspect.Parameter) -> bool:
+        # String form covers annotations left unevaluated by ``from __future__ import
+        # annotations``.
+        return parameter.annotation is JobContext or parameter.annotation == "JobContext"
+
+    async def invoke(
+        self,
+        job: AnyJob,
+        args: Sequence[object],
+        kwargs: Mapping[str, object],
+        context: JobContext,
+    ) -> None:
+        signature = job._signature
+        injected = {name: context for name in signature.injected}
+        call_args, call_kwargs = merge_injected(signature.signature, args, kwargs, injected)
+        result = job.func(*call_args, **call_kwargs)
+        if inspect.isawaitable(result):
+            await result
+
+
+def merge_injected(
+    signature: inspect.Signature,
+    args: Sequence[object],
+    kwargs: Mapping[str, object],
+    injected: Mapping[str, object],
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """Combine payload arguments (bound against the serialized parameters only) with
+    injected values into ``(args, kwargs)`` for the full handler signature."""
+    serialized = signature.replace(
+        parameters=[p for p in signature.parameters.values() if p.name not in injected]
+    )
+    arguments = OrderedDict(serialized.bind(*args, **kwargs).arguments)
+    arguments.update(injected)
+    bound = inspect.BoundArguments(signature, arguments)
+    return bound.args, bound.kwargs
+
+
 class Registry:
     """Standalone registry for plain Python apps; the core of every framework adapter."""
 
@@ -76,7 +123,17 @@ class Registry:
         worker start. ``include``: modules imported by the worker at start (canonical).
         ``discover``: packages walked for job modules (opt-in convenience). ``backend`` /
         ``telemetry`` override the ones built from ``config`` (tests, harnesses)."""
-        raise NotImplementedError
+        self._config = config
+        self._codecs = codecs
+        self._invoker: Invoker = invoker or DefaultInvoker()
+        self._include = tuple(include)
+        self._discover = tuple(discover)
+        self._backend = backend
+        self._telemetry = telemetry
+        self._jobs: dict[str, AnyJob] = {}
+        self._loaded = False
+        self._lock = threading.RLock()
+        self._testing_session: _TestingSession | None = None
 
     @property
     def registry(self) -> Registry:
@@ -84,26 +141,48 @@ class Registry:
 
     @property
     def config(self) -> QueueConfig:
-        raise NotImplementedError
+        if self._config is None:
+            with self._lock:
+                if self._config is None:
+                    self._config = load_config()
+        return self._config
 
     @property
     def codecs(self) -> CodecRegistry:
-        raise NotImplementedError
+        if self._codecs is None:
+            with self._lock:
+                if self._codecs is None:
+                    self._codecs = default_codecs()
+        return self._codecs
 
     @property
     def backend(self) -> Backend:
         """Lazily ``create_backend(self.config)`` (thread-safe, once per process)."""
-        raise NotImplementedError
+        if self._backend is None:
+            with self._lock:
+                if self._backend is None:
+                    self._backend = create_backend(self.config)
+        return self._backend
 
     @property
     def telemetry(self) -> Telemetry:
         """Lazily built: socket sink on ``config.log_socket`` in managed mode, else a no-op
         sink (D12). Stdout failure lines are written in every mode."""
-        raise NotImplementedError
+        if self._telemetry is None:
+            with self._lock:
+                if self._telemetry is None:
+                    config = self.config
+                    if config.emits_cloud_events:
+                        self._telemetry = Telemetry(
+                            sink=SocketEventSink(config.log_socket), emits_cloud_events=True
+                        )
+                    else:
+                        self._telemetry = Telemetry(sink=NullSink(), emits_cloud_events=False)
+        return self._telemetry
 
     @property
     def invoker(self) -> Invoker:
-        raise NotImplementedError
+        return self._invoker
 
     @overload
     def job(self, func: Callable[P, R], /) -> Job[P, R]: ...
@@ -139,29 +218,86 @@ class Registry:
         """Register a handler. Default wire name: ``module.qualname`` (explicit ``name``
         preferred for refactor safety). Duplicate names -> ConfigurationError. Shorthand
         fields override ``policy`` fields."""
-        raise NotImplementedError
+        base = policy or RetryPolicy()
+        effective = RetryPolicy(
+            tries=base.tries if tries is None else tries,
+            backoff=base.backoff if backoff is None else backoff,
+            timeout=base.timeout if timeout is None else timeout,
+            fail_on_timeout=base.fail_on_timeout if fail_on_timeout is None else fail_on_timeout,
+        )
+
+        def register(handler: Callable[..., Any]) -> AnyJob:
+            job_name = f"{handler.__module__}.{handler.__qualname__}" if name is None else name
+            if not job_name:
+                raise ConfigurationError("Job names must be non-empty.")
+            with self._lock:
+                if job_name in self._jobs:
+                    raise ConfigurationError(f"A job named [{job_name}] is already registered.")
+                job = Job(handler, registry=self, name=job_name, queue=queue, policy=effective)
+                self._jobs[job_name] = job
+            return job
+
+        return register if func is None else register(func)
 
     def get(self, name: str) -> AnyJob:
         """Registry lookup only; unknown -> UnknownJobError. Never imports anything."""
-        raise NotImplementedError
+        try:
+            return self._jobs[name]
+        except KeyError:
+            raise UnknownJobError(name) from None
 
     def jobs(self) -> Mapping[str, AnyJob]:
-        raise NotImplementedError
+        return MappingProxyType(self._jobs)
 
     def load(self) -> None:
         """Import configured ``include`` modules and walk ``discover`` packages (idempotent).
         Driven only by application configuration, never by message content."""
-        raise NotImplementedError
+        with self._lock:
+            if self._loaded:
+                return
+            for module in self._include:
+                if isinstance(module, str):
+                    importlib.import_module(module)
+            for package_name in self._discover:
+                package = importlib.import_module(package_name)
+                for info in pkgutil.walk_packages(
+                    getattr(package, "__path__", ()), prefix=f"{package.__name__}."
+                ):
+                    importlib.import_module(info.name)
+            self._loaded = True
 
     def lifespan(self) -> AbstractAsyncContextManager[None]:
         """No-op for plain registries."""
-        raise NotImplementedError
+        return _noop_lifespan()
 
     def testing(self, *, eager: bool = True) -> AbstractContextManager[DispatchRecorder]:
         """Swap dispatch for the test double. ``eager=True`` runs each dispatched job
         immediately through the worker's execution path (encode -> decode -> validate ->
         invoke), surfacing handler exceptions; ``eager=False`` only records."""
-        raise NotImplementedError
+        from ..testing import _testing_session
+
+        return _testing_session(self, eager=eager)
+
+    def _default_queue(self) -> str:
+        """Dispatch fallback queue. The test double never loads configuration implicitly."""
+        if self._testing_session is not None and self._config is None:
+            return DEFAULT_QUEUE
+        return self.config.default_queue
+
+    def _producer_capabilities(self) -> tuple[bool, int | None]:
+        """``(supports_fifo, max_payload_bytes)`` of the dispatch producer. The test double
+        never builds a backend implicitly: it follows the configured mode, else SQS rules."""
+        if self._testing_session is None or self._backend is not None:
+            producer = self.backend.producer
+            return producer.supports_fifo, producer.max_payload_bytes
+        if self._config is not None and self._config.mode == "redis":
+            return False, None
+        return True, SQS_MAX_PAYLOAD_BYTES
 
 
-__all__ = ["Invoker", "Registry", "WorkerTarget"]
+@asynccontextmanager
+async def _noop_lifespan() -> AsyncIterator[None]:
+    yield
+
+
+__all__ = ["DefaultInvoker", "Invoker", "Registry", "WorkerTarget"]
