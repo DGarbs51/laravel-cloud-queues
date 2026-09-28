@@ -9,6 +9,7 @@ See docs/contract/worker.md.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 import os
@@ -22,8 +23,6 @@ from typing import Literal
 
 import anyio
 import anyio.to_thread
-from anyio import TASK_STATUS_IGNORED
-from anyio.abc import TaskStatus
 
 from ..config import QueueConfig
 from ..errors import (
@@ -139,16 +138,18 @@ class Worker:
         self._wake = anyio.Event()
         previous = signal.signal(signal.SIGALRM, self._on_alarm)
         try:
-            async with self._target.lifespan(), anyio.create_task_group() as tasks:
-                await tasks.start(self._watch_signals, runtime.consumer)
+            self._watch_signals(runtime.consumer)
+            async with self._target.lifespan():
                 code = await self._loop(runtime)
-                tasks.cancel_scope.cancel()
         except ConfigurationError as exc:
             logger.error("Configuration error: %s", exc)
             return EXIT_CONFIG
         finally:
             signal.setitimer(signal.ITIMER_REAL, 0)
             signal.signal(signal.SIGALRM, previous)
+            loop = asyncio.get_running_loop()
+            for signum in (signal.SIGTERM, signal.SIGINT):
+                loop.remove_signal_handler(signum)
             try:
                 runtime.consumer.close()
             except Exception as exc:
@@ -202,21 +203,20 @@ class Worker:
             return (assigned,)
         return requested or (config.default_queue,)
 
-    async def _watch_signals(
-        self, consumer: Consumer, *, task_status: TaskStatus[None] = TASK_STATUS_IGNORED
-    ) -> None:
-        # Asyncio signal handling: a signal that arrives while a sync handler blocks the loop
-        # is handled once it returns, so the current job still completes and reports.
-        with anyio.open_signal_receiver(signal.SIGTERM, signal.SIGINT) as signals:
-            task_status.started()
-            async for signum in signals:
-                logger.info(
-                    "Received %s; stopping after the current job.", signal.Signals(signum).name
-                )
-                self._stopping.set()
-                if self._wake is not None:
-                    self._wake.set()
-                consumer.interrupt()
+    def _watch_signals(self, consumer: Consumer) -> None:
+        # Loop signal handlers (the asyncio backend is fixed): a signal that arrives while a
+        # sync handler blocks the loop is handled once it returns, so the current job still
+        # completes and reports. Repeated signals only repeat the request.
+        def stop(signum: signal.Signals) -> None:
+            logger.info("Received %s; stopping after the current job.", signum.name)
+            self._stopping.set()
+            if self._wake is not None:
+                self._wake.set()
+            consumer.interrupt()
+
+        loop = asyncio.get_running_loop()
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(signum, stop, signum)
 
     async def _pause(self, seconds: float) -> None:
         """Sleep, waking early on a stop signal."""

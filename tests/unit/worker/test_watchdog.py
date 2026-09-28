@@ -69,3 +69,23 @@ def test_three_consecutive_failures_lose_the_lease() -> None:
     time.sleep(0.25)
     watchdog.stop()
     assert watchdog.lost
+
+
+def test_starved_watchdog_confirms_ownership_before_reporting() -> None:
+    """FINDINGS.md: a GIL-holding call starves renewal; the lease may have lapsed."""
+    renewer = Renewer(LeaseLostError("re-received elsewhere"))
+    watchdog = Watchdog(cast(Any, renewer), DELIVERY, cast(int, 0.2))
+    watchdog.start()
+    watchdog._stop.set()  # the thread never renews, as if starved
+    time.sleep(0.25)
+    watchdog.stop()
+    assert watchdog.lost
+    assert len(renewer.calls) == 1
+
+
+def test_recent_renewal_skips_the_final_check() -> None:
+    renewer = Renewer()
+    watchdog = start(renewer, 30)
+    watchdog.stop()
+    assert renewer.calls == []
+    assert not watchdog.lost

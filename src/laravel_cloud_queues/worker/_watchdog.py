@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 
 from ..errors import LeaseLostError
 from ..transports import Consumer, Delivery
@@ -27,8 +28,10 @@ class Watchdog:
         self._thread = threading.Thread(target=self._run, name="lcq-lease-watchdog", daemon=True)
         self.lost = False
         self.renewals = 0
+        self._renewed_at = time.monotonic()
 
     def start(self) -> None:
+        self._renewed_at = time.monotonic()
         self._thread.start()
 
     def signal_stop(self) -> None:
@@ -36,8 +39,17 @@ class Watchdog:
         self._stop.set()
 
     def stop(self) -> None:
+        """Stop and join. If no renewal landed within the last lease window (native code
+        holding the GIL starves this thread), confirm ownership once before the worker
+        reports: another worker may have received the message meanwhile."""
         self._stop.set()
         self._thread.join(JOIN_TIMEOUT)
+        if self.lost or time.monotonic() - self._renewed_at < self._lease:
+            return
+        try:
+            self._consumer.renew(self._delivery, self._lease)
+        except Exception as exc:
+            self._lose(f"the lease lapsed while the job ran ({type(exc).__name__})")
 
     def _run(self) -> None:
         interval = self._lease / 3
@@ -62,6 +74,7 @@ class Watchdog:
             else:
                 failures = 0
                 self.renewals += 1
+                self._renewed_at = time.monotonic()
 
     def _lose(self, reason: str) -> None:
         self.lost = True
