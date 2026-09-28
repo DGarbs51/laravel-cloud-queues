@@ -15,6 +15,7 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -40,6 +41,7 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -55,6 +57,7 @@ jobs:
     # /usr/local, i.e. the python:<version>-slim-bookworm lineage. Test steps run in
     # that public image on an arm64 runner (.github/scripts/cloud-python.sh).
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -114,6 +117,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          # Without python-version the cache key has no Python version; key it per image.
+          cache-suffix: ${{ env.CLOUD_PYTHON_IMAGE }}
+      - name: Pull the Cloud runtime image
+        run: |
+          for attempt in 1 2 3; do
+            docker pull --quiet "$CLOUD_PYTHON_IMAGE" && exit 0
+            echo "docker pull failed (attempt $attempt)" >&2
+            sleep $((attempt * 10))
+          done
+          exit 1
       - name: Show the runtime fingerprint
         run: >-
           .github/scripts/cloud-python.sh sh -c
@@ -210,6 +224,7 @@ jobs:
 
   packaging:
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -219,6 +234,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          # Without python-version the cache key has no Python version; key it per image.
+          cache-suffix: ${{ env.CLOUD_PYTHON_IMAGE }}
+      - name: Pull the Cloud runtime image
+        run: |
+          for attempt in 1 2 3; do
+            docker pull --quiet "$CLOUD_PYTHON_IMAGE" && exit 0
+            echo "docker pull failed (attempt $attempt)" >&2
+            sleep $((attempt * 10))
+          done
+          exit 1
       - name: Show the runtime fingerprint
         run: >-
           .github/scripts/cloud-python.sh sh -c
@@ -238,6 +264,7 @@ jobs:
   conformance:
     # Cloud's default Python version.
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     env:
       CLOUD_PYTHON_IMAGE: python:3.12-slim-bookworm
       LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES: "1"
@@ -293,6 +320,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          # Without python-version the cache key has no Python version; key it per image.
+          cache-suffix: ${{ env.CLOUD_PYTHON_IMAGE }}
+      - name: Pull the Cloud runtime image
+        run: |
+          for attempt in 1 2 3; do
+            docker pull --quiet "$CLOUD_PYTHON_IMAGE" && exit 0
+            echo "docker pull failed (attempt $attempt)" >&2
+            sleep $((attempt * 10))
+          done
+          exit 1
       - name: Show the runtime fingerprint
         run: >-
           .github/scripts/cloud-python.sh sh -c
@@ -376,6 +414,7 @@ jobs:
     if: always()
     needs: [lint, typecheck, test, packaging, conformance]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require all gates to pass
         run: |
