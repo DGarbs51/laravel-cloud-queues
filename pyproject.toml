@@ -75,9 +75,9 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT", "PGH"]
 ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B011", "PT011"]
+"tests/**" = ["B011", "PT011", "PT018"]
 # Proof worker deliberately blocks inside async code and polls; keep the scenarios literal.
-"tests/runtime_proof/**" = ["ASYNC", "RUF046", "SIM105", "PT018"]
+"tests/runtime_proof/**" = ["ASYNC", "RUF046", "SIM105"]
 
 [tool.mypy]
 python_version = "3.10"

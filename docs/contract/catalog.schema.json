@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/laravel/laravel-cloud-queues/docs/contract/catalog.schema.json",
+  "title": "laravel-cloud-queues conformance catalog",
+  "description": "Catalog of record for the conformance suite (PROJECT_SCOPE.md §22). Expectations only; results live in the compatibility report.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "baseline", "exception_list", "features"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["laravel/framework", "laravel/symfony-on-cloud"],
+      "properties": {
+        "laravel/framework": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "commit"],
+          "properties": {
+            "version": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+            "commit": { "$ref": "#/$defs/sha" }
+          }
+        },
+        "laravel/symfony-on-cloud": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit"],
+          "properties": { "commit": { "$ref": "#/$defs/sha" } }
+        }
+      }
+    },
+    "exception_list": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "allowed_statuses", "reason", "approval"],
+        "properties": {
+          "id": { "$ref": "#/$defs/featureId", "pattern": "^cloud\\." },
+          "allowed_statuses": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["skipped", "partial", "unsupported"] }
+          },
+          "reason": { "type": "string", "minLength": 1 },
+          "approval": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/feature" }
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "featureId": {
+      "type": "string",
+      "description": "Dotted, stable, lowercase identifier, e.g. dispatch.standard",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "scopeRef": { "type": "string", "pattern": "^§\\d+[a-z]?(\\.\\d+)?$" },
+    "decision": { "type": "string", "pattern": "^D\\d+[a-z]?$" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "lines", "symbol"],
+      "properties": {
+        "path": { "type": "string", "description": "Repository-relative path in the pinned upstream checkout" },
+        "lines": { "type": "string", "pattern": "^\\d+(-\\d+)?$" },
+        "symbol": { "type": "string" }
+      }
+    },
+    "deviation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["label", "follows", "summary", "decision"],
+      "properties": {
+        "label": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "follows": { "enum": ["symfony", "project"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "decision": { "oneOf": [{ "$ref": "#/$defs/decision" }, { "type": "null" }] }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "title", "scope_refs", "covers", "conflict_rows", "expected", "tier", "required",
+        "laravel_source", "symfony_source", "deviation", "project_decision", "probe"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/featureId" },
+        "title": { "type": "string", "minLength": 1 },
+        "scope_refs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/scopeRef" } },
+        "covers": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Literal PROJECT_SCOPE §21 bullet texts and §30 criteria (\"§30.N\") this record is the owner of",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "conflict_rows": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Literal Topic cells of the AGENT_BUILD_PROMPT resolved-conflicts table this record encodes",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "expected": { "type": "string", "minLength": 1, "description": "Precise, testable behaviour" },
+        "tier": { "enum": ["unit", "socket", "emulated", "live"] },
+        "required": { "type": "boolean" },
+        "laravel_source": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+        "symfony_source": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+        "deviation": { "$ref": "#/$defs/deviation" },
+        "project_decision": {
+          "type": ["string", "null"],
+          "pattern": "^(D\\d+[a-z]?|§\\d+[a-z]?)(, (D\\d+[a-z]?|§\\d+[a-z]?))*$",
+          "description": "Decision record(s) (D4) or, for Python-only behaviour, the scope section(s) defining it (§17). Required when laravel_source is empty and no deviation is recorded."
+        },
+        "probe": {
+          "type": "null",
+          "description": "Reserved for lane L10: test/probe references. Must be null in the catalog of record."
+        }
+      }
+    }
+  }
+}
