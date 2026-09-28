@@ -23,7 +23,7 @@ An unavailable service is a pytest skip locally, **but still fails the conforman
 only the catalog's two approved live Cloud checks may skip. Set
 `LARAVEL_CLOUD_QUEUES_REQUIRE_SERVICES=1` to fail immediately on fixture setup instead.
 A full local run also executes packaging and typing checks, so it needs the development
- dependencies and access to the package cache/index used by the existing packaging suite.
+dependencies and access to the package cache/index used by the existing packaging suite.
 
 A quick, service-free check and a focused product check:
 

@@ -104,9 +104,18 @@ def test_outcomes(
     kwargs,
     attempts,
     outcomes,
+    monkeypatch,
 ):
     agent_emulator.poll_wait = 0.02
     message_id = agent_emulator.enqueue(envelope(job, kwargs=kwargs, policy=policy))
+    cleanup_at_ack = []
+    apply_outcome = agent_emulator._apply
+
+    def inspect_cleanup(body):
+        cleanup_at_ack.append(len(rows(artifacts, "dependency_stop")))
+        return apply_outcome(body)
+
+    monkeypatch.setattr(agent_emulator, "_apply", inspect_cleanup)
     process = worker(
         run_process,
         artifacts,
@@ -137,6 +146,9 @@ def test_outcomes(
         assert handlers[1]["time"] - handlers[0]["time"] >= 0.9
     evidence.record("original_message_id", message_id)
     evidence.record("retried_message_ids", [row["message_id"] for row in handlers[1:]])
+    if job in {"demo.retry", "demo.release", "demo.fail"}:
+        assert cleanup_at_ack == list(range(1, len(attempts) + 1))
+    evidence.record("cleanup_count_at_each_ack", cleanup_at_ack)
     evidence.record("attempts", attempts)
 
 

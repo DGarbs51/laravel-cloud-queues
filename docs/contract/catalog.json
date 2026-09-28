@@ -53,7 +53,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6a",
-      "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
+      "probe": ["tests/unit/config/test_loader.py::test_backend_must_be_explicit", "tests/unit/config/test_loader.py::test_redis_precedence", "tests/unit/config/test_loader.py::test_sqs_settings_and_code_overrides"]
     },
     {
       "id": "config.managed_parse",
@@ -104,7 +104,7 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
+      "probe": ["tests/unit/config/test_loader.py::test_managed_strict_shape", "tests/unit/config/test_loader.py::test_managed_inventory_defaults_and_preservation", "tests/unit/config/test_loader.py::test_invalid_managed_field_types"]
     },
     {
       "id": "config.credentials_explicit",
@@ -144,7 +144,7 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["demo/conformance/probes/test_contracts.py::test_config"]
+      "probe": ["tests/unit/config/test_loader.py::test_managed_strict_shape", "tests/unit/config/test_loader.py::test_required_sqs_settings", "tests/unit/config/test_loader.py::test_default_credentials_are_opt_in", "tests/unit/sqs/test_client.py::test_selected_provider_is_refreshable_and_exclusive", "tests/unit/sqs/test_client.py::test_no_provider_credentials_never_falls_back", "tests/unit/sqs/test_client.py::test_default_chain_requires_explicit_opt_in_and_ignores_endpoint"]
     },
     {
       "id": "config.agent_socket_resolution",
@@ -195,7 +195,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_agent_socket_precedence"]
+      "probe": ["tests/unit/config/test_loader.py::test_code_and_socket_precedence"]
     },
     {
       "id": "config.sqs_isolated_aws",
@@ -266,7 +266,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_queue_names"]
+      "probe": ["tests/unit/sqs/test_naming.py::test_queue_names", "tests/unit/sqs/test_naming.py::test_normalization_chops_suffix_once"]
     },
     {
       "id": "sqs.queue_not_found",
@@ -300,7 +300,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_broker_errors"]
+      "probe": ["tests/integration/sqs/test_sqs.py::test_queue_not_found_and_lower_size_limit"]
     },
     {
       "id": "envelope.v1_shape",
@@ -476,7 +476,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_oversized_payload"]
+      "probe": ["tests/unit/jobs/test_dispatch.py::test_payload_size_is_measured_in_utf8_bytes", "tests/unit/jobs/test_dispatch.py::test_redis_is_bounded_only_by_the_decode_ceiling"]
     },
     {
       "id": "sqs.max_message_size_mapping",
@@ -496,7 +496,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7",
-      "probe": ["demo/conformance/probes/test_contracts.py::test_broker_errors"]
+      "probe": ["tests/integration/sqs/test_sqs.py::test_queue_not_found_and_lower_size_limit"]
     },
     {
       "id": "registry.job_declaration",
@@ -518,7 +518,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["demo/conformance/probes/test_contracts.py::test_declaration_builder_eager"]
+      "probe": ["tests/unit/registry/test_registry.py::test_construction_is_lazy", "tests/unit/registry/test_registry.py::test_bare_decorator_uses_module_qualname", "tests/unit/registry/test_registry.py::test_decorator_with_arguments", "tests/unit/registry/test_registry.py::test_nested_function_default_name", "tests/unit/registry/test_registry.py::test_shorthand_overrides_policy_fields", "tests/unit/registry/test_registry.py::test_invalid_policy_fails_at_declaration", "tests/unit/registry/test_registry.py::test_duplicate_name_is_a_configuration_error", "tests/unit/registry/test_registry.py::test_same_name_in_separate_registries_is_fine", "tests/unit/registry/test_registry.py::test_get_unknown_job", "tests/unit/registry/test_registry.py::test_get_never_imports", "tests/unit/registry/test_registry.py::test_jobs_view_is_read_only", "tests/unit/registry/test_registry.py::test_varargs_handler_rejected", "tests/unit/registry/test_registry.py::test_load_imports_include_and_discover", "tests/unit/registry/test_registry.py::test_load_is_idempotent", "tests/unit/registry/test_registry.py::test_load_surfaces_import_errors", "tests/unit/registry/test_registry.py::test_lifespan_is_a_noop", "tests/unit/registry/test_registry.py::test_telemetry_is_noop_outside_managed_mode", "tests/unit/registry/test_registry.py::test_is_injected", "tests/unit/registry/test_registry.py::test_postponed_annotations_are_resolved_before_injection", "tests/unit/registry/test_registry.py::test_merge_injected_keeps_positional_shape", "tests/unit/registry/test_registry.py::test_invoke_sync_handler_on_calling_thread_with_injection", "tests/unit/registry/test_registry.py::test_invoke_awaits_async_handler"]
     },
     {
       "id": "dispatch.standard",
@@ -622,7 +622,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["demo/conformance/probes/test_contracts.py::test_declaration_builder_eager"]
+      "probe": ["tests/unit/jobs/test_dispatch.py::test_handler_parameters_named_like_options", "tests/unit/jobs/test_dispatch.py::test_prepare_dispatch_accepts_explicit_options", "tests/unit/jobs/test_dispatch.py::test_queue_resolution_order"]
     },
     {
       "id": "dispatch.delay_standard",
@@ -704,7 +704,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_policy"]
+      "probe": ["tests/unit/jobs/test_policy.py::test_normalize_delay", "tests/unit/jobs/test_policy.py::test_normalize_delay_rejects"]
     },
     {
       "id": "dispatch.fifo_defaults",
@@ -779,7 +779,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_invalid_options"]
+      "probe": ["tests/unit/jobs/test_dispatch.py::test_sqs_options_rejected"]
     },
     {
       "id": "dispatch.fair_queue_group",
@@ -852,7 +852,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_invalid_options"]
+      "probe": ["tests/unit/jobs/test_dispatch.py::test_sqs_options_rejected", "tests/unit/jobs/test_dispatch.py::test_redis_options_rejected"]
     },
     {
       "id": "agent.receive_selection",
@@ -1626,7 +1626,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_policy"]
+      "probe": ["tests/unit/jobs/test_policy.py::test_attempt_checks", "tests/unit/jobs/test_policy.py::test_declared_fields_win_over_worker_defaults", "tests/unit/jobs/test_policy.py::test_worker_defaults_match_laravel"]
     },
     {
       "id": "retry.exhaustion",
@@ -1707,7 +1707,7 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_policy"]
+      "probe": ["tests/unit/jobs/test_policy.py::test_retry_delay", "tests/unit/jobs/test_policy.py::test_normalize_release_delay", "tests/unit/jobs/test_policy.py::test_normalize_release_delay_rejects"]
     },
     {
       "id": "retry.explicit_release",
@@ -2684,7 +2684,7 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["demo/conformance/probes/test_contracts.py::test_socket_writer"]
+      "probe": ["tests/integration/observability/test_socket.py::test_reuses_one_connection", "tests/integration/observability/test_socket.py::test_accepts_unix_scheme_and_bare_path", "tests/integration/observability/test_socket.py::test_reconnects_after_peer_close", "tests/integration/observability/test_socket.py::test_outage_returns_false_quickly_and_recovers_after_restart", "tests/integration/observability/test_socket.py::test_partial_writes_are_reassembled", "tests/integration/observability/test_socket.py::test_five_consecutive_zero_byte_writes_disconnect", "tests/integration/observability/test_socket.py::test_zero_byte_counter_resets_after_progress", "tests/integration/observability/test_socket.py::test_lock_timeout_while_a_write_blocks", "tests/integration/observability/test_socket.py::test_concurrent_emits_do_not_interleave_lines", "tests/integration/observability/test_socket.py::test_logging_handler_reentry_does_not_recurse"]
     },
     {
       "id": "observability.outage_nonfatal",
@@ -2759,7 +2759,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§20",
-      "probe": ["demo/conformance/probes/test_fastapi.py::test_depends_and_eager", "demo/conformance/probes/test_contracts.py::test_declaration_builder_eager"]
+      "probe": ["tests/unit/testing/test_eager.py::test_records_every_dispatch_without_running", "tests/unit/testing/test_eager.py::test_records_fifo_and_fair_options", "tests/unit/testing/test_eager.py::test_dispatch_validation_still_applies", "tests/unit/testing/test_eager.py::test_follows_configured_redis_mode", "tests/unit/testing/test_eager.py::test_uses_given_backend_capabilities", "tests/unit/testing/test_eager.py::test_session_is_restored_on_exit", "tests/unit/testing/test_eager.py::test_eager_runs_sync_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_runs_async_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_arguments_round_trip_through_the_payload", "tests/unit/testing/test_eager.py::test_eager_reraises_handler_exceptions", "tests/unit/testing/test_eager.py::test_eager_explicit_fail_raises", "tests/unit/testing/test_eager.py::test_eager_release_is_recorded_not_rerun", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_awaits_in_the_running_loop", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_reraises", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_uses_a_helper_thread", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_reraises", "tests/unit/testing/test_eager.py::test_eager_nested_dispatch", "demo/conformance/probes/test_fastapi.py::test_depends_and_eager"]
     },
     {
       "id": "cli.commands_and_exit_codes",
@@ -2905,7 +2905,7 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "§22",
-      "probe": ["tests/conformance/test_runner.py::test_missing_record_fails", "tests/conformance/test_runner.py::test_removed_catalog_record_fails_scope_coverage", "tests/conformance/test_runner.py::test_unapproved_nonpass_fails", "tests/conformance/test_runner.py::test_approved_skip_passes", "tests/conformance/test_runner.py::test_duplicate_id_fails", "tests/conformance/test_runner.py::test_evidence_tier_and_error_are_preserved", "tests/conformance/test_runner.py::test_partial_explicit_and_incomplete_run", "tests/conformance/test_runner.py::test_report_redacts_sensitive_fields_and_endpoint", "tests/conformance/test_runner.py::test_unknown_selection_and_collection_failure_fail", "tests/conformance/test_runner.py::test_only_smoke"]
+      "probe": ["tests/conformance/test_runner.py::test_missing_record_fails", "tests/conformance/test_runner.py::test_removed_catalog_record_fails_scope_coverage", "tests/conformance/test_runner.py::test_unapproved_nonpass_fails", "tests/conformance/test_runner.py::test_approved_skip_passes", "tests/conformance/test_runner.py::test_duplicate_id_fails", "tests/conformance/test_runner.py::test_evidence_tier_and_error_are_preserved", "tests/conformance/test_runner.py::test_partial_explicit_and_incomplete_run", "tests/conformance/test_runner.py::test_report_redacts_sensitive_fields_and_endpoint", "tests/conformance/test_runner.py::test_unknown_selection_and_collection_failure_fail", "tests/conformance/test_runner.py::test_only_smoke", "tests/conformance/test_runner.py::test_parameter_deselection_cannot_pass", "tests/conformance/test_runner.py::test_explicit_nonpass_is_not_overwritten_by_passing_call", "tests/conformance/test_runner.py::test_all_catalog_nodes_resolve"]
     },
     {
       "id": "cloud.live_managed",

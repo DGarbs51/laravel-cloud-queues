@@ -291,7 +291,9 @@ jobs:
           printf "subjectAltName=DNS:localhost,IP:127.0.0.1\n" > .ci-tls/server.ext
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
             -keyout .ci-tls/ca.key -out .ci-tls/ca.crt \
-            -subj "/CN=laravel-cloud-queues-test-ca"
+            -subj "/CN=laravel-cloud-queues-test-ca" \
+            -addext "basicConstraints=critical,CA:TRUE" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign"
           openssl req -newkey rsa:2048 -nodes \
             -keyout .ci-tls/server.key -out .ci-tls/server.csr \
             -subj "/CN=localhost"

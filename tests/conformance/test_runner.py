@@ -209,3 +209,19 @@ def test_explicit_nonpass_is_not_overwritten_by_passing_call():
     recorder.pytest_runtest_logreport(report)
     assert result.status == "fail"
     assert result.error == "cleanup"
+
+
+def test_all_catalog_nodes_resolve(tmp_path):
+    report = tmp_path / "collection.json"
+    result = subprocess.run(
+        [sys.executable, "-m", "demo.conformance", "--collect-only", "-q", "--report", str(report)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    # Collection alone cannot pass a conformance gate, but every reference must resolve.
+    assert result.returncode == 1, result.stdout + result.stderr
+    data = json.loads(report.read_text())
+    assert all(not feature["unresolved_probes"] for feature in data["features"])
+    assert not any("Collection failed" in error for error in data["gate"]["errors"])

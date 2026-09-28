@@ -83,6 +83,16 @@ from laravel_cloud_queues.observability import inject_trace_context, activate_tr
 assert inject_trace_context() == {}
 with activate_trace_context({"traceparent": "invalid"}):
     assert inject_trace_context() == {}
+from laravel_cloud_queues import Registry
+from laravel_cloud_queues.config import QueueConfig, RedisConfig
+registry = Registry(config=QueueConfig(mode="redis", redis=RedisConfig(url="redis://unused/15")))
+calls = []
+@registry.job
+def job(value: int) -> None:
+    calls.append(value)
+with registry.testing(eager=True):
+    job.dispatch(7)
+assert calls == [7]
 """
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=10
