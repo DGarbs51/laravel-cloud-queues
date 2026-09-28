@@ -223,6 +223,17 @@ as a **long-lived service and restarts it whenever it exits**, for any reason. C
   runtime at 90 seconds; **Pro** workers have no fixed runtime limit and one hour to finish.
   Keep job timeouts inside those limits.
 
+### Live smoke test on Laravel Cloud
+
+[`probe-app/`](probe-app/README.md) is a repository-only FastAPI probe that runs the real
+package on Laravel Cloud today: its App and worker clusters run
+`python -m laravel_cloud_queues.cli work main:app` as background processes in `redis` mode
+against the environment's Laravel Valkey, and its routes dispatch one job per case (success,
+delay, retry, terminal failure, timeout, bursts) and report what the workers recorded. Use
+it as the template for a live check of your own deployment. It is not shipped in the
+package, and its `/verify` route dumps the container environment, so deploy it only to a
+throwaway environment.
+
 ### Managed queues (when Laravel Cloud enables them for Python)
 
 In managed mode the platform injects `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG`; the package
