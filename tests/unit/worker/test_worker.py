@@ -181,7 +181,61 @@ def test_direct_modes_emit_no_events_and_log_failure_record(make: Any, mode: str
     assert record["payload"] == d.body
     assert record["message_id"] == d.message_id
     assert job_line["status"] == "failed"
-    assert h.env.names() == ["complete", "line", "line"]
+    assert h.env.names() == ["line", "complete", "line"]
+
+
+TERMINAL = {
+    "handler error on last attempt": {"do": "raise"},
+    "explicit fail": {"do": "fail", "tries": 5},
+    "pre-run exceeded": {"do": "succeed", "attempt": 3, "tries": 2},
+    "job defect": {"do": "defect"},
+}
+
+
+def _terminal(case: str) -> Any:
+    spec = dict(TERMINAL[case])
+    return delivery(spec.pop("do"), attempt=spec.pop("attempt", 1), **spec)
+
+
+def _order(h: Harness) -> list[str]:
+    """Call order: transport calls, socket events by type, stdout lines by kind."""
+    order = []
+    for name, value in h.env.journal:
+        if name == "event":
+            order.append(str(value.get("type", value["_cloud_event"])))
+        elif name == "line":
+            order.append(f"line:{value['laravel_cloud_queues']}")
+        else:
+            order.append(name)
+    return order
+
+
+@pytest.mark.parametrize("mode", ["sqs", "redis"])
+@pytest.mark.parametrize("case", list(TERMINAL))
+def test_self_managed_terminal_failure_logs_record_before_complete(
+    make: Any, mode: str, case: str
+) -> None:
+    """D6b / D13.1 (revised): the stdout record is the only record, so it precedes the delete."""
+    h = make([_terminal(case)], mode=mode)
+    assert h.run() == EXIT_OK
+    assert _order(h) == ["line:failed_job", "complete", "line:job"]
+
+
+@pytest.mark.parametrize("case", list(TERMINAL))
+def test_managed_terminal_failure_completes_before_failed_job(make: Any, case: str) -> None:
+    """Laravel order: complete, then failed_job, then failed (``Job::fail``)."""
+    h = make([_terminal(case)], mode="managed")
+    assert h.run() == EXIT_OK
+    assert _order(h) == ["started", "complete", "failed_job", "failed", "line:job"]
+
+
+@pytest.mark.parametrize("mode", ["sqs", "redis"])
+def test_self_managed_record_is_written_even_when_complete_raises(make: Any, mode: str) -> None:
+    d = delivery("raise")
+    h = make([d, delivery()], mode=mode, complete_error=AmbiguousAcknowledgementError("maybe"))
+    assert h.run() == EXIT_FATAL
+    assert _order(h) == ["line:failed_job", "complete"]
+    assert h.lines()[0]["payload"] == d.body
 
 
 def test_managed_mode_does_not_log_failure_record(make: Any) -> None:
@@ -355,10 +409,23 @@ def test_timeout_on_last_attempt_completes_then_failed_job_then_failed(make: Any
 def test_fail_on_timeout_is_terminal_with_attempts_left(make: Any) -> None:
     h = make([delivery("sleep:5", tries=4, timeout=0.2, fail_on_timeout=True)], mode="sqs")
     assert exit_code(h) == EXIT_TIMEOUT
-    assert len(h.env.of("complete")) == 1
+    assert _order(h) == ["line:failed_job", "complete", "line:job"]
     record, job_line = h.lines()
     assert isinstance(record["exception"], JobTimeoutError)
     assert job_line["status"] == "failed"
+
+
+@pytest.mark.parametrize("mode", ["sqs", "redis"])
+def test_terminal_timeout_self_managed_record_survives_failed_complete(
+    make: Any, mode: str
+) -> None:
+    h = make(
+        [delivery("sleep:5", timeout=0.2)],
+        mode=mode,
+        complete_error=AmbiguousAcknowledgementError("maybe"),
+    )
+    assert exit_code(h) == EXIT_TIMEOUT
+    assert _order(h) == ["line:failed_job", "complete", "line:job"]
 
 
 def test_worker_default_timeout_applies_when_message_omits_it(make: Any) -> None:

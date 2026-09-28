@@ -355,8 +355,12 @@ class Worker:
         job_name: str | None,
     ) -> int | None:
         """One transport call, then the completion records. Acknowledgement failures are
-        never handler errors and never lead to a second outcome."""
+        never handler errors and never lead to a second outcome. Self-managed terminal
+        failures log their record first (D6b): it is the only record, so it must not be lost
+        if the delete succeeds and the process then dies."""
         code: int | None = None
+        if outcome.kind == "fail" and outcome.exception is not None:
+            self._log_failure(runtime, delivery, outcome.exception, started_at)
         try:
             if outcome.kind == "release":
                 await anyio.to_thread.run_sync(runtime.consumer.release, delivery, outcome.delay)
@@ -398,33 +402,21 @@ class Worker:
         *,
         lock_timeout: float | None = None,
     ) -> None:
-        """Completion records: ``failed_job`` (managed) or the D6b failure line (``sqs`` /
-        ``redis``) for terminal failures, then the lifecycle event and the job log line."""
+        """Completion records after reporting: ``failed_job`` for managed terminal failures
+        (same timestamp as ``failed``), then the lifecycle event and the job log line."""
         now = _utcnow()
         duration = max(0, int((now - started_at) / timedelta(milliseconds=1)))
         telemetry = runtime.telemetry
-        if status == "failed" and exception is not None:
-            if runtime.config.emits_cloud_events:
-                event = failed_job_event(
-                    queue=delivery.queue,
-                    payload=delivery.body,
-                    exception=exception,
-                    attempts=delivery.attempt,
-                    started_at=started_at,
-                    timestamp=now,
-                )
-                telemetry.emit(event, lock_timeout=lock_timeout)
-            else:
-                record = failure_log_record(
-                    queue=delivery.queue,
-                    payload=delivery.body,
-                    exception=exception,
-                    attempts=delivery.attempt,
-                    message_id=delivery.message_id,
-                    started_at=started_at,
-                    timestamp=now,
-                )
-                telemetry.log_line(record)
+        if status == "failed" and exception is not None and runtime.config.emits_cloud_events:
+            event = failed_job_event(
+                queue=delivery.queue,
+                payload=delivery.body,
+                exception=exception,
+                attempts=delivery.attempt,
+                started_at=started_at,
+                timestamp=now,
+            )
+            telemetry.emit(event, lock_timeout=lock_timeout)
         telemetry.emit(
             lifecycle_event(status, delivery.queue, timestamp=now, duration_ms=duration),
             lock_timeout=lock_timeout,
@@ -441,6 +433,27 @@ class Worker:
             }
         )
 
+    def _log_failure(
+        self,
+        runtime: _Runtime,
+        delivery: Delivery,
+        exception: BaseException,
+        started_at: datetime,
+    ) -> None:
+        """D6b failure record on stdout, written before ``complete`` (``sqs`` / ``redis``)."""
+        if runtime.config.emits_cloud_events:
+            return
+        record = failure_log_record(
+            queue=delivery.queue,
+            payload=delivery.body,
+            exception=exception,
+            attempts=delivery.attempt,
+            message_id=delivery.message_id,
+            started_at=started_at,
+            timestamp=_utcnow(),
+        )
+        runtime.telemetry.log_line(record)
+
     # --- timeout (SIGALRM, D2) -----------------------------------------------------------
 
     def _on_alarm(self, signum: int, frame: types.FrameType | None) -> None:
@@ -455,8 +468,8 @@ class Worker:
     def _timed_out(
         self, runtime: _Runtime, running: _Running, frame: types.FrameType | None
     ) -> None:
-        """Terminal check -> (terminal: complete + failure record) -> lifecycle event. No
-        release and no backoff: visibility / reservation expiry redelivers the message."""
+        """Terminal check -> (terminal: [D6b record] -> complete -> [failed_job]) -> lifecycle
+        event. No release and no backoff: visibility / reservation expiry redelivers."""
         if running.watchdog is not None:
             running.watchdog.signal_stop()
         delivery, policy = running.delivery, running.policy
@@ -471,6 +484,9 @@ class Worker:
         )
         exception = None
         if terminal:
+            exception = JobTimeoutError(f"{running.job_name} has timed out.")
+            exception.__traceback__ = _traceback(frame)
+            self._log_failure(runtime, delivery, exception, running.started_at)
             try:
                 runtime.consumer.complete(delivery)
             except Exception as exc:
@@ -479,8 +495,6 @@ class Worker:
                     delivery.message_id,
                     type(exc).__name__,
                 )
-            exception = JobTimeoutError(f"{running.job_name} has timed out.")
-            exception.__traceback__ = _traceback(frame)
         self._record(
             runtime,
             delivery,
