@@ -48,3 +48,30 @@ await send_email.options(queue="priority", delay=30).dispatch_async(user_id=1)
 - `.options(...)` returns a typed copy of the job carrying dispatch options: queue, delay, FIFO group and dedup ID, fair-queue group.
 - `dispatch` and `dispatch_async` keep exactly the job's own parameter signature, so options never collide with job parameters.
 - `mypy --strict` must check both the option types and the job's argument types, with downstream typing samples in the test suite.
+
+## D6 — Worker-cluster backends: SQS and Redis/Valkey in v1 (2026-09-27)
+
+Laravel Cloud worker clusters run Python today but get no managed queue (see `docs/audits/2026-09-27/platform-findings.md`). v1 supports three modes:
+
+| Mode | Selected when | Broker | Receive |
+|---|---|---|---|
+| Managed | `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` is present | Laravel Cloud SQS | Agent when `agent.enabled`, else direct SQS |
+| Self-managed SQS | Package SQS settings are present | Customer's own SQS | Direct SQS |
+| Redis/Valkey | Package Redis settings are present (defaulting to `REDIS_URL`) | Laravel Valkey or any Redis | Redis transport |
+
+- Mode selection is explicit and deterministic. When the settings are ambiguous or missing, fail with a configuration error.
+- **Self-managed SQS** uses package-specific settings passed explicitly to the boto3 client. It must not read the standard `AWS_*` variables or boto3's default endpoint settings, because Cloud object storage occupies `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL` and `AWS_REGION`.
+- **The worker must extend visibility itself** on self-managed SQS, or require a queue visibility timeout longer than the maximum job timeout. No agent heartbeat exists outside managed mode.
+- **Redis/Valkey** follows Laravel's `RedisQueue` semantics:
+  - pending list, delayed and reserved sorted sets, and atomic Lua scripts;
+  - attempts counted per reservation;
+  - retry as a delayed re-release of the same job ID, never a duplicate;
+  - TLS via `rediss://`.
+- D1–D5 apply to every mode. Retry policy stays in the message, and timeouts exit 124. Custom worker processes are restarted by Cloud when they exit.
+- Worker clusters scale on CPU, memory or a fixed count, not on queue depth. Document this.
+- Laravel Cloud's Queues dashboard covers managed queues only. Whether lifecycle events from worker clusters appear anywhere is unverified.
+
+Open follow-ups:
+- package environment variable names;
+- terminal-failure handling outside managed mode (no Cloud failed-job store);
+- a Redis conformance suite and a live worker-cluster smoke test.
