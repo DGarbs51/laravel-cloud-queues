@@ -93,10 +93,10 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
 
 Smaller choices made when applying D1–D6 and the audit fixes to `PROJECT_SCOPE.md`. Review and override as needed.
 
-- `/result` 4xx is fatal and raises `AgentProtocolError`; both upstreams treat it as non-fatal (§11).
-- Worker exit codes: 0 clean stop, 1 agent unhealthy or other fatal transport error, 2 configuration error, 124 timeout. Laravel exits 0 on agent loss (§11, §23).
+- ~~`/result` 4xx is fatal~~ Revised 2026-09-28: 4xx is logged as `AgentProtocolError` and the worker continues, matching Laravel and Symfony (§11).
+- Worker exit codes: 0 clean stop or agent unhealthy (revised 2026-09-28 to match Laravel), 1 other fatal transport error, 2 configuration error, 124 timeout (§11, §23).
 - Fresh delays accept `int` or `timedelta`; positive fractions round up; >900 s, negative and non-finite values are rejected (§10).
-- The Redis backend applies the same 1 MiB payload limit and 900-second delay cap as SQS, so payloads and behavior stay portable; FIFO and fair-queue options are rejected in `redis` mode (§8, §10).
+- The Redis backend has no package-imposed payload size limit (revised 2026-09-28); it keeps the 900-second delay cap, and FIFO and fair-queue options are rejected in `redis` mode (§8, §10).
 - Self-managed SQS requires explicit credentials unless `LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS=default` opts into boto3's default chain (§6).
 - Direct SQS and Redis run a watchdog thread that renews visibility or reservations during a job (§11).
 - AnyIO on the asyncio backend only (§5).

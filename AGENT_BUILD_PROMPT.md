@@ -36,8 +36,8 @@ Where Laravel and Symfony disagree, or the project deliberately deviates, the sc
 | Agent receive selection | Agent only when requested queue matches worker queue; otherwise direct SQS | Agent whenever enabled; ignores requested queues | Symfony rule; conflicting CLI queue is a startup error (§11) |
 | `GET /next` retries | 3 attempts (retry after 0 ms, 500 ms) | 1 attempt | Laravel (§11) |
 | 200 without `messageId` | Empty poll | Empty poll | Empty poll (§11) |
-| `/result` 4xx | Non-fatal `RequestException` | Non-fatal `RuntimeException` | Fatal, typed `AgentProtocolError` — deviation (§11) |
-| Agent-loss exit status | 0 | Consumer exits | 1 — deviation (§11, §23) |
+| `/result` 4xx | Non-fatal `RequestException` | Non-fatal `RuntimeException` | Non-fatal: log `AgentProtocolError`, continue (§11) |
+| Agent-loss exit status | 0 | Consumer exits | 0 (§11, §23) |
 | Timeout | `SIGALRM`, failure checks, `released`/`failed` event, exit 124, no release | Not implemented | Laravel parity (§14, D2) |
 | Retry delay rounding | Truncates | Rounds sub-second up; clamps 43,200 | Symfony (§12) |
 | Fresh delay > 900 s | Forwards to SQS | Rejects | Reject (§10) |

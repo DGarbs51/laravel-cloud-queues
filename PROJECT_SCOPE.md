@@ -486,7 +486,7 @@ The envelope must be designed so future payload migrations/version adapters can 
 
 ### Payload size
 
-Before sending, measure the fully encoded message body in UTF-8 bytes against the transport limit: **1,048,576 bytes** for SQS (Laravel's `SqsQueue::MAX_SQS_PAYLOAD_SIZE`, and Laravel Cloud's documented job payload limit). Redis uses the same limit so payloads stay portable between backends.
+Before sending, measure the fully encoded message body in UTF-8 bytes against the transport limit: **1,048,576 bytes** for SQS (Laravel's `SqsQueue::MAX_SQS_PAYLOAD_SIZE`, and Laravel Cloud's documented job payload limit). The Redis backend has **no package-imposed size limit**; only Redis/Valkey server limits apply. Document that moving a Redis-backed application to SQS or managed queues reintroduces the 1 MiB limit.
 
 If oversized, raise a stable typed `PayloadTooLargeError` containing useful size/limit information. A queue can have a lower `MaximumMessageSize`; map that SQS rejection to `PayloadTooLargeError` too, without classifying unrelated `InvalidParameterValue` errors as size errors.
 
@@ -635,10 +635,10 @@ The agent owns the SQS operation for agent-delivered messages.
 - Body: `messageId`, `receiptHandle` (omitted when null), `status` (`processed` or `released`), `delay` (seconds; omitted when null; `0` is kept). There is no `queueUrl` and no `failed` status: a terminal failure reports `processed`.
 - Timeout **10 seconds** per attempt; up to **3 attempts**, 100 ms apart, on connection errors only.
 - **5xx, or connection failure after retries:** the agent is unhealthy. Do not fetch another job, do not assume acknowledgement, exit the worker, and let agent/SQS visibility redeliver.
-- **4xx:** the agent rejected this outcome. Log it as a typed `AgentProtocolError`, do not assume acknowledgement, and exit the worker. (Stricter than both upstreams, which treat 4xx as non-fatal. Labeled deviation.)
+- **4xx:** the agent rejected this outcome for this message. Log it as a typed `AgentProtocolError`, do not assume acknowledgement, do not report a second outcome, and continue with the next job (Laravel and Symfony behavior). The agent remains authoritative for that message.
 - Treat a repeated POST after a lost response as possibly already applied; never report a contradictory second outcome.
 
-Exit status when the worker stops because the agent is unhealthy: **1**, logged as agent loss. (Laravel exits 0 through its lost-connection path. Labeled deviation: a non-zero status keeps the event visible.)
+Exit status when the worker stops because the agent is unhealthy: **0**, matching Laravel's lost-connection path, so the platform treats a Python worker exactly like a PHP one. Log the agent loss clearly before exiting.
 
 The agent extends visibility in three-minute increments while a job runs (Laravel Cloud docs). Its source is not available to this project (see `docs/references.md`); treat its behavior beyond the documented protocol as unverified.
 
@@ -871,7 +871,7 @@ Memory-limit worker recycling (Laravel `--memory`, exit 12) is deferred from v1;
 
 Process lifecycle differs by mode:
 
-- **Worker clusters and App-cluster background processes (`sqs`, `redis`):** the worker runs as a long-lived service that Laravel Cloud supervises and restarts whenever it exits, for any reason. Exit codes (124 timeout, 1 fatal transport, 2 configuration) are diagnostic; every exit leads to a restart, including the app lifespan. Consequences:
+- **Worker clusters and App-cluster background processes (`sqs`, `redis`):** the worker runs as a long-lived service that Laravel Cloud supervises and restarts whenever it exits, for any reason. Exit codes (124 timeout, 1 fatal transport, 2 configuration, 0 agent loss or clean stop) are diagnostic; every exit leads to a restart, including the app lifespan. Consequences:
   - `--stop-when-empty` and `--stop-when-empty-for` default to off and the docs warn against them here: a supervised worker that exits on an empty queue is restarted immediately, in a loop.
   - `--max-jobs` and `--max-time` remain useful for recycling the process.
   - A configuration error (exit 2) restart-loops; log it clearly on every start.
@@ -1328,8 +1328,8 @@ Worker exit codes:
 
 | Code | Meaning |
 |---|---|
-| 0 | Clean stop (signal, `--max-jobs`, `--max-time`, `--stop-when-empty`) |
-| 1 | Agent unhealthy or other fatal transport error |
+| 0 | Clean stop (signal, `--max-jobs`, `--max-time`, `--stop-when-empty`) or agent unhealthy (matches Laravel) |
+| 1 | Other fatal transport error (lost SQS lease, Redis connection loss after retries, ambiguous acknowledgement) |
 | 2 | Configuration error at startup |
 | 124 | Job timeout (§14) |
 
