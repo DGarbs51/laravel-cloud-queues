@@ -77,6 +77,11 @@ Laravel Cloud worker clusters run Python today but get no managed queue (see `do
 - Worker clusters scale on CPU, memory or a fixed count, not on queue depth. Document this.
 - Laravel Cloud's Queues dashboard covers managed queues only. Whether lifecycle events from worker clusters appear anywhere is unverified.
 
+- **Terminal failures outside managed mode (D6b):** log only.
+  1. Write the full failure record as one structured JSON line to the worker's log output (visible in Cloud's Logs tab).
+  2. Also emit the D1 `failed_job` event to the log socket when it exists; best-effort, and unverified whether it surfaces anywhere.
+  3. Delete the message.
+  - No failed-job store, dead-letter queue or retry command in v1. Re-running a failed job means dispatching it again.
+
 Open follow-ups:
-- terminal-failure handling outside managed mode (no Cloud failed-job store);
 - a Redis conformance suite and a live worker-cluster smoke test.
