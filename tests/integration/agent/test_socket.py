@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.agent_emulator import DEFAULT_QUEUE_URL, status
+from harness.agent_emulator import DEFAULT_QUEUE_URL, delay, status
 from laravel_cloud_queues.config import AgentConfig, ManagedQueuesConfig, SqsConnectionConfig
 from laravel_cloud_queues.errors import AgentProtocolError, AgentUnavailableError
 from laravel_cloud_queues.transports import agent
@@ -214,28 +214,27 @@ def test_apply_then_disconnect_never_sends_second_outcome(agent_emulator, consum
     assert len(agent_emulator.results) == 2
 
 
-@pytest.mark.parametrize("reconnect_result", [False, True])
-def test_hang_interrupt_returns_promptly(agent_emulator, consumer, reconnect_result):
-    """PROJECT_SCOPE §13: wake idle GET, including a socket reconnected by POST."""
-    if reconnect_result:
-        agent_emulator.enqueue("payload")
-        delivery = consumer.receive([], 0)
-        agent_emulator.inject("result", "disconnect")
-        consumer.complete(delivery)
-    agent_emulator.inject("next", "hang")
+def test_interrupt_waits_for_the_in_flight_poll_and_keeps_the_handover(agent_emulator, consumer):
+    """PROJECT_SCOPE §13 / Laravel parity: a stop signal during an idle GET /next never
+    aborts the poll. The message the agent hands over afterwards is returned, and only
+    the next receive returns None promptly."""
+    message_id = agent_emulator.enqueue("payload")
+    agent_emulator.inject("next", delay(0.3))
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(consumer.receive, [], 0)
-        wait_until(lambda: any(f.kind == "hang" for _, f in agent_emulator.faults_fired))
+        wait_until(lambda: any(f.kind == "delay" for _, f in agent_emulator.faults_fired))
         start = time.monotonic()
         consumer.interrupt()
         consumer.interrupt()
-        try:
-            assert future.result(timeout=1) is None
-            assert time.monotonic() - start < 1
-        finally:
-            # A regression should fail promptly instead of waiting the 65s poll timeout.
-            agent_emulator.stop()
+        delivery = future.result(timeout=5)
+    assert delivery is not None and delivery.message_id == message_id
+    assert time.monotonic() - start >= 0.2
+    assert agent_emulator.message(message_id).status == "in_flight"
+    start = time.monotonic()
     assert consumer.receive([], 0) is None
+    assert time.monotonic() - start < 0.5
+    consumer.complete(delivery)
+    assert agent_emulator.message(message_id).status == "processed"
 
 
 def test_interrupt_does_not_cancel_result(agent_emulator, consumer):

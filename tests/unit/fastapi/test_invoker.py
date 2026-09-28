@@ -82,15 +82,21 @@ def test_sync_handler_runs_on_the_calling_thread_and_sync_deps_use_the_threadpoo
 def test_yield_teardown_order_on_success_failure_and_release() -> None:
     order: list[str] = []
 
+    # ``finally`` so teardown runs on failure and release too: as in FastAPI, the
+    # handler's exception is thrown into the ``yield``.
     def outer() -> Iterator[str]:
         order.append("outer-enter")
-        yield "outer"
-        order.append("outer-exit")
+        try:
+            yield "outer"
+        finally:
+            order.append("outer-exit")
 
     def inner() -> Iterator[str]:
         order.append("inner-enter")
-        yield "inner"
-        order.append("inner-exit")
+        try:
+            yield "inner"
+        finally:
+            order.append("inner-exit")
 
     app = FastAPI()
     invoker = FastAPIInvoker(app)
@@ -130,8 +136,10 @@ def test_yield_teardown_order_on_success_failure_and_release() -> None:
 
 def test_teardown_exception_after_success_propagates() -> None:
     def resource() -> Iterator[int]:
-        yield 1
-        raise RuntimeError("teardown boom")
+        try:
+            yield 1
+        finally:
+            raise RuntimeError("teardown boom")
 
     app = FastAPI()
 
@@ -147,8 +155,10 @@ def test_teardown_exception_after_job_control_is_logged_not_raised(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def resource() -> Iterator[int]:
-        yield 1
-        raise RuntimeError("teardown boom")
+        try:
+            yield 1
+        finally:
+            raise RuntimeError("teardown boom")
 
     app = FastAPI()
 
@@ -171,8 +181,10 @@ def test_teardown_exception_after_handler_error_keeps_the_handler_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     def resource() -> Iterator[int]:
-        yield 1
-        raise RuntimeError("teardown boom")
+        try:
+            yield 1
+        finally:
+            raise RuntimeError("teardown boom")
 
     app = FastAPI()
 
@@ -209,6 +221,118 @@ def test_release_teardown_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(JobControl, match="release"):
         _run(FastAPIInvoker(app).invoke, _Job(send), (), {}, _Context())
     assert events == ["teardown-start"]
+
+
+def _transactional_dependencies(log: list[str]) -> tuple[Callable[..., Any], Callable[..., Any]]:
+    """The FastAPI docs' commit-on-success / rollback-on-error pattern, async and sync."""
+
+    async def async_db() -> AsyncIterator[str]:
+        try:
+            yield "db"
+            log.append("commit")
+        except Exception as exc:
+            log.append(f"rollback:{type(exc).__name__}")
+            raise
+
+    def sync_db() -> Iterator[str]:
+        try:
+            yield "sdb"
+            log.append("sync-commit")
+        except Exception as exc:
+            log.append(f"sync-rollback:{type(exc).__name__}")
+            raise
+
+    return async_db, sync_db
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (None, {"commit", "sync-commit"}),
+        (RuntimeError("boom"), {"rollback:RuntimeError", "sync-rollback:RuntimeError"}),
+        (JobControl("release"), {"rollback:JobControl", "sync-rollback:JobControl"}),
+    ],
+    ids=["success-commits", "error-rolls-back", "release-rolls-back"],
+)
+def test_yield_dependencies_observe_the_handler_exception_like_fastapi(
+    failure: BaseException | None, expected: set[str]
+) -> None:
+    """PROJECT_SCOPE §13/§17: a yield dependency's ``except`` runs on failure and release,
+    exactly as FastAPI throws a route's exception into request-scoped dependencies."""
+    log: list[str] = []
+    async_db, sync_db = _transactional_dependencies(log)
+
+    async def send(db: str = Depends(async_db), sdb: str = Depends(sync_db)) -> None:
+        if failure is not None:
+            raise failure
+
+    if failure is None:
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    else:
+        with pytest.raises(type(failure)):
+            _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert set(log) == expected
+
+
+def test_yield_dependency_matches_fastapi_request_semantics() -> None:
+    """Reference check: the same dependency behaves identically under a FastAPI route."""
+    from fastapi.testclient import TestClient
+
+    log: list[str] = []
+    async_db, _ = _transactional_dependencies(log)
+    app = FastAPI()
+
+    @app.get("/x")
+    async def route(db: str = Depends(async_db)) -> None:
+        raise RuntimeError("boom")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        assert client.get("/x").status_code == 500
+    reference = list(log)
+    log.clear()
+
+    async def send(db: str = Depends(async_db)) -> None:
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert log == reference == ["rollback:RuntimeError"]
+
+
+def test_dependency_suppressing_the_handler_exception_does_not_change_the_outcome() -> None:
+    """A dependency that swallows the exception cannot turn a failed job into a success
+    (FastAPI still fails the request in that case)."""
+    log: list[str] = []
+
+    async def swallow() -> AsyncIterator[int]:
+        try:
+            yield 1
+        except RuntimeError:
+            log.append("swallowed")
+
+    async def send(value: int = Depends(swallow)) -> None:
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert log == ["swallowed"]
+
+
+def test_dependency_raising_a_new_exception_during_error_teardown_is_a_teardown_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def wrap() -> AsyncIterator[int]:
+        try:
+            yield 1
+        except RuntimeError as exc:
+            raise ValueError("rollback failed") from exc
+
+    async def send(value: int = Depends(wrap)) -> None:
+        raise RuntimeError("handler boom")
+
+    with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError, match="handler boom"):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert "rollback failed" in caplog.text
 
 
 def test_dependency_overrides_and_per_job_cache() -> None:

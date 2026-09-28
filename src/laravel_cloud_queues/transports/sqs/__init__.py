@@ -57,6 +57,18 @@ def normalize_queue(connection: SqsConnectionConfig, queue_or_url: str) -> str:
     return base.removesuffix(connection.suffix) + fifo
 
 
+def receive_count(value: object) -> int:
+    """``ApproximateReceiveCount`` as an attempt number; missing or non-numeric is 1.
+
+    Labeled deviation ``missing-receive-count-is-one`` (D13.5, Symfony parity), shared
+    with the agent path so both consumers count attempts identically.
+    """
+    try:
+        return max(1, int(value)) if isinstance(value, (str, int, float)) else 1
+    except (ValueError, OverflowError):
+        return 1
+
+
 class SqsProducer(SqsTransport):
     """Send using explicit settings; client/credentials are resolved on first use."""
 
@@ -143,14 +155,14 @@ class SqsConsumer(SqsTransport):
                         message_id=message["MessageId"],
                         queue=normalize_queue(self._connection, url),
                         body=message["Body"],
-                        attempt=int(
-                            message.get("Attributes", {}).get("ApproximateReceiveCount", "1")
+                        attempt=receive_count(
+                            message.get("Attributes", {}).get("ApproximateReceiveCount")
                         ),
                         receipt=message["ReceiptHandle"],
                         received_at=monotonic(),
                         meta={"queue_url": url},
                     )
-                except (KeyError, ValueError):
+                except KeyError:
                     raise TransportError("SQS returned an invalid delivery.") from None
         return None
 

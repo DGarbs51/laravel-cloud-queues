@@ -2,7 +2,6 @@
 
 import gc
 import json
-import socket
 import traceback
 from pathlib import Path
 from unittest.mock import Mock
@@ -13,7 +12,7 @@ import pytest
 from laravel_cloud_queues.config import AgentConfig, ManagedQueuesConfig, SqsConnectionConfig
 from laravel_cloud_queues.errors import AgentProtocolError, AgentUnavailableError
 from laravel_cloud_queues.transports import agent
-from laravel_cloud_queues.transports.base import Consumer, Delivery
+from laravel_cloud_queues.transports.base import SQS_MAX_PAYLOAD_BYTES, Consumer, Delivery
 
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "agent"
 RESPONSES = json.loads((FIXTURES / "responses.json").read_text())
@@ -293,6 +292,23 @@ def test_streamed_response_limit(mock_agent, oversize):
     assert closed == [True]
 
 
+def test_response_cap_admits_the_largest_legal_sqs_body(mock_agent):
+    """R4 m5: a 1 MiB body of escaped quotes doubles under the agent's JSON escaping.
+    The cap must admit it, because rejecting it is fatal and the message is redelivered
+    to every restarted worker."""
+    consumer, requests, responses, _ = mock_agent
+    body = json.dumps({"displayName": "j", "laravel_cloud_queues": {"args": ['"' * 600_000]}})
+    body = body[: SQS_MAX_PAYLOAD_BYTES - 2] + '"}'
+    assert len(body.encode()) <= SQS_MAX_PAYLOAD_BYTES
+    raw = json.dumps({"messageId": "big", "receiptHandle": "r" * 1024, "body": body}).encode()
+    assert len(raw) > 2 * 1024 * 1024
+    responses.append(httpx.Response(200, content=raw))
+    delivery = consumer.receive([], 0)
+    assert delivery.message_id == "big"
+    assert delivery.body == body
+    assert len(requests) == 1
+
+
 @pytest.mark.parametrize(("method", "status"), [("next", 204), ("result", 200), ("result", 422)])
 def test_unused_response_bodies_are_not_read(mock_agent, method, status):
     consumer, _, responses, _ = mock_agent
@@ -350,23 +366,24 @@ def test_interrupt_preserves_full_response_and_reporting(mock_agent, monkeypatch
     assert len(requests) == 2
 
 
-def test_interrupt_during_connect_closes_new_socket(mock_agent):
-    consumer, _, _, _ = mock_agent
-    left, right = socket.socketpair()
-    try:
-        consumer._receiving = True
-        consumer.interrupt()
-        consumer._trace(
-            "connection.connect_unix_socket.complete",
-            {
-                "return_value": Mock(get_extra_info=Mock(return_value=left)),
-            },
-        )
-        right.settimeout(0.5)
-        assert right.recv(1) == b""
-    finally:
-        left.close()
-        right.close()
+def test_interrupt_never_aborts_an_in_flight_poll(mock_agent):
+    """PROJECT_SCOPE §13 / Laravel parity: a message the agent hands over after the stop
+    signal is returned and run, never dropped by closing the socket under the agent."""
+    consumer, requests, responses, _ = mock_agent
+
+    class HandoverAfterInterrupt(httpx.SyncByteStream):
+        def __iter__(self):
+            consumer.interrupt()
+            yield b'{"messageId":"late","receiptHandle":"r","body":"{}"}'
+
+        def close(self):
+            pass
+
+    responses.append(httpx.Response(200, stream=HandoverAfterInterrupt()))
+    delivery = consumer.receive([], 0)
+    assert delivery is not None and delivery.message_id == "late"
+    assert consumer.receive([], 0) is None
+    assert len(requests) == 1
 
 
 def test_renewal_and_lifecycle(mock_agent):

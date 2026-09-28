@@ -167,12 +167,15 @@ def test_agent_5xx_on_result_exits_0_without_fetching_again(managed: Managed) ->
 
 
 def test_sigterm_while_idle_exits_promptly(managed: Managed) -> None:
+    """An idle agent worker never aborts its in-flight ``GET /next`` (Laravel parity); it
+    exits once that poll returns. The emulator's short poll keeps the bound small here; on
+    Cloud the bound is the 65 s poll timeout, within Flex's 90 s."""
     process = managed.workers.start("--sleep", "3")
     managed.workers.wait_until_idle(process)
     signalled = managed.workers.terminate(process)
     run = managed.workers.wait(process, timeout=30)
     assert run.code == 0, run.describe()
-    assert time.monotonic() - signalled < 5
+    assert time.monotonic() - signalled < 5 + managed.emulator.poll_wait
 
 
 def test_conflicting_queue_is_a_startup_error(managed: Managed) -> None:

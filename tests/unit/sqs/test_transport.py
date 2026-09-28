@@ -143,6 +143,23 @@ def test_receive_priority_and_parameters(client, queues, wait, expected_wait):
     assert consumer.supports_renewal
 
 
+@pytest.mark.parametrize(
+    ("count", "expected"),
+    [("3", 3), ("0", 1), ("-2", 1), ("abc", 1), ("", 1), ("2.5", 1), (None, 1)],
+)
+def test_receive_count_missing_or_invalid_is_one(client, count, expected):
+    """Labeled deviation missing-receive-count-is-one (D13.5): identical to the agent path.
+    A non-numeric value must not raise, or the received message is never run nor acked."""
+    consumer = SqsConsumer(CONNECTION)
+    consumer._client = client
+    message = {"MessageId": "message", "Body": "body", "ReceiptHandle": "receipt"}
+    if count is not None:
+        message["Attributes"] = {"ApproximateReceiveCount": count}
+    with Stubber(client) as stub:
+        stub.add_response("receive_message", {"Messages": [message]})
+        assert consumer.receive(["emails"], 20).attempt == expected
+
+
 def test_priority_stops_at_first_message_and_interrupt_preserves_handoff():
     consumer = SqsConsumer(CONNECTION)
     client = Mock()

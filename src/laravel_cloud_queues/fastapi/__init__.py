@@ -18,6 +18,13 @@ injected parameters must be passed explicitly (a ``Depends()`` default is not re
 context. Sync handlers run on the calling thread (the worker main thread). Sync
 dependencies run in FastAPI's threadpool; their teardown order is preserved.
 
+``yield`` dependencies observe the handler's exception (and the ``JobControl`` raised by
+``JobContext.release()`` / ``fail()``) exactly as they observe a route's exception, so
+``except`` blocks such as a transaction rollback run on failure and release. Teardown
+after an explicit release or fail runs under a 10-second deadline that bounds **async**
+teardown; sync ``yield`` teardown runs in FastAPI's threadpool, cannot be cancelled, and
+is bounded only by the job timeout (SIGALRM).
+
 :meth:`LaravelCloudQueues.lifespan` enters ``app.router.lifespan_context`` once per enter.
 The worker enters it once per process and exits it on clean shutdown. Jobs can read
 resources from ``app.state``, including identifier keys yielded by the lifespan (copied

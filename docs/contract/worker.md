@@ -11,6 +11,10 @@ PROJECT_SCOPE.md §11-§14, D2, D4, D6b, D7, D12, D13. Laravel references: `Illu
 - SIGTERM/SIGINT (via the loop's signal handling): set `stopping`, call
   `consumer.interrupt()`. The current delivery always runs to completion and is reported.
   Repeated signals never skip reporting. A message handed over after the signal is still run.
+  `interrupt()` never aborts an in-flight receive: like Laravel, an idle agent worker waits
+  for the current `GET /next` (at most its 65 s timeout, within Flex's 90 s) and a single-queue
+  SQS worker for its long poll (at most 20 s), so the agent never has a popped message with no
+  worker to hand it to. Only the next receive returns immediately.
 - SIGALRM uses `signal.signal` so it interrupts sync handlers on the main thread (D2).
 
 ## Per-delivery states

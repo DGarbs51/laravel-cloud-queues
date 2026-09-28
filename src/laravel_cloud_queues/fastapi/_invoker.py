@@ -12,9 +12,14 @@ Sync **handlers** are called on the invoking thread — the worker's main thread
 ``SIGALRM`` can interrupt them. They are not handed to a threadpool.
 
 ``yield`` teardown finishes before :meth:`FastAPIInvoker.invoke` returns, which is
-before the worker acknowledges the delivery. After :class:`JobControl` (explicit
-release or fail), teardown is bounded by :data:`TEARDOWN_DEADLINE_SECONDS`; a teardown
-error is logged and the recorded outcome still propagates. A teardown error after a
+before the worker acknowledges the delivery. As in a FastAPI request, the handler's
+exception (or the :class:`JobControl` raised by an explicit release or fail) is thrown
+into ``yield`` dependencies, so a ``try: yield db; db.commit() except: db.rollback()``
+dependency rolls back on failure and release and commits only on success. After
+:class:`JobControl`, teardown is bounded by :data:`TEARDOWN_DEADLINE_SECONDS`; the
+deadline bounds async teardown only — sync ``yield`` teardown runs in FastAPI's
+threadpool and is bounded only by the job timeout. A teardown error after a release or
+fail is logged and the recorded outcome still propagates. A teardown error after a
 successful handler propagates and becomes the handler failure.
 """
 
@@ -24,6 +29,7 @@ import inspect
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
+from types import TracebackType
 from typing import Any, Literal
 
 import anyio
@@ -140,6 +146,7 @@ class FastAPIInvoker:
                 request_stack,
                 outcome=outcome,
                 context=context,
+                exc=caught,
             )
         if caught is not None:
             raise caught
@@ -242,14 +249,25 @@ async def _close_dependencies(
     *,
     outcome: _Outcome,
     context: JobContext,
+    exc: BaseException | None,
 ) -> None:
+    """Exit the per-job stacks the way FastAPI exits a request's.
+
+    ``exc`` (the handler's exception or ``JobControl``) is thrown into ``yield``
+    dependencies, so their ``except``/``finally`` blocks see it, exactly as in a request.
+    A dependency re-raising ``exc`` is normal teardown. A dependency suppressing it does
+    not change the job outcome: the caller still raises ``exc`` (FastAPI likewise still
+    fails the request). Any other exception is a teardown error.
+    """
     try:
         if outcome == "control":
             with anyio.fail_after(TEARDOWN_DEADLINE_SECONDS):
-                await _aclose(function_stack, request_stack)
+                await _aexit(function_stack, request_stack, exc)
         else:
-            await _aclose(function_stack, request_stack)
-    except Exception:
+            await _aexit(function_stack, request_stack, exc)
+    except Exception as teardown_exc:
+        if teardown_exc is exc:
+            return
         if outcome == "success":
             raise
         logger.exception(
@@ -259,12 +277,36 @@ async def _close_dependencies(
         )
 
 
-async def _aclose(function_stack: AsyncExitStack | None, request_stack: AsyncExitStack) -> None:
-    try:
-        if function_stack is not None:
-            await function_stack.aclose()
-    finally:
-        await request_stack.aclose()
+async def _aexit(
+    function_stack: AsyncExitStack | None,
+    request_stack: AsyncExitStack,
+    exc: BaseException | None,
+) -> None:
+    """Mirror FastAPI's ``async with request_stack: async with function_stack:`` unwinding.
+
+    The inner stack sees ``exc`` first. What it raises (``exc`` itself when a dependency
+    re-raises, or a new exception) is what the outer stack sees; when it suppresses,
+    the outer stack exits cleanly. Returns normally when the exception was suppressed or
+    when nothing was raised; the caller decides what the outcome is.
+    """
+    details = _exc_details(exc)
+    if function_stack is not None:
+        try:
+            if await function_stack.__aexit__(*details):
+                details = (None, None, None)
+        except BaseException as inner:
+            if await request_stack.__aexit__(type(inner), inner, inner.__traceback__):
+                return
+            raise
+    await request_stack.__aexit__(*details)
+
+
+def _exc_details(
+    exc: BaseException | None,
+) -> tuple[type[BaseException] | None, BaseException | None, TracebackType | None]:
+    if exc is None:
+        return (None, None, None)
+    return (type(exc), exc, exc.__traceback__)
 
 
 def _outcome_phrase(outcome: _Outcome) -> str:
