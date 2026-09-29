@@ -66,7 +66,7 @@ def _version_tuple(version: str) -> tuple[int, int]:
     return int(major_text), int("".join(minor_digits) or "0")
 
 
-if _version_tuple(_fastapi_version) < _MIN_FASTAPI:  # pragma: no cover
+if _version_tuple(_fastapi_version) < _MIN_FASTAPI:  # pragma: no cover - lock pins a newer fastapi
     raise ImportError(
         "laravel_cloud_queues.fastapi requires FastAPI >= 0.121 "
         f"(found {_fastapi_version}). The dependency solver reads yield-dependency "
