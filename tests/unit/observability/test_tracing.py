@@ -89,3 +89,33 @@ def test_tracing_is_a_noop_when_opentelemetry_cannot_be_imported(
     with activate_trace_context({"traceparent": "00-1"}):
         ran = True
     assert ran
+
+
+def test_activation_survives_propagator_and_detach_errors(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from opentelemetry import context as otel_context
+
+    def explode(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("propagator down")
+
+    carrier_a, _carrier_b = _carriers()
+    monkeypatch.setattr("opentelemetry.propagate.extract", explode)
+    with activate_trace_context(carrier_a):
+        assert not trace.get_current_span().get_span_context().is_valid
+    monkeypatch.undo()
+
+    original_detach = otel_context.detach
+
+    def failing_detach(token: object) -> None:
+        original_detach(token)
+        raise RuntimeError("detach down")
+
+    monkeypatch.setattr(otel_context, "detach", failing_detach)
+    with (
+        caplog.at_level("WARNING", logger="laravel_cloud_queues.observability"),
+        activate_trace_context(carrier_a),
+    ):
+        assert trace.get_current_span().get_span_context().is_valid
+    assert not trace.get_current_span().get_span_context().is_valid
+    assert "observability trace detach failed" in caplog.text

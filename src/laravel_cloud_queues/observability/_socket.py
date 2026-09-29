@@ -22,10 +22,8 @@ _WRITE_TIMEOUT_SECONDS = 2.0
 """The number of seconds to wait for each write to the socket."""
 _ZERO_WRITE_LIMIT = 5
 """The number of consecutive zero-byte writes before giving up."""
-_PEEK_FLAGS = socket.MSG_PEEK
+_PEEK_FLAGS = socket.MSG_PEEK | getattr(socket, "MSG_DONTWAIT", 0)
 """The flags used to peek at the socket without blocking."""
-if hasattr(socket, "MSG_DONTWAIT"):
-    _PEEK_FLAGS |= socket.MSG_DONTWAIT
 
 
 def _unix_path(address: str) -> str:
@@ -48,8 +46,6 @@ def _peer_closed(sock: socket.socket) -> bool:
         try:
             peeked = sock.recv(1, _PEEK_FLAGS)
         except BlockingIOError:
-            return False
-        except InterruptedError:
             return False
         except OSError:
             return True
@@ -106,16 +102,12 @@ class SocketEventSink:
         """Close the socket connection, if one is open."""
         if not begin_call():
             return
-        acquired = False
         try:
-            acquired = self._lock.acquire()
-            if acquired:
+            with self._lock:
                 self._disconnect()
         except Exception:
             log_failure("observability socket close failed")
         finally:
-            if acquired:
-                self._lock.release()
             end_call()
 
     def _acquire(self, lock_timeout: float | None) -> bool:
@@ -180,8 +172,6 @@ class SocketEventSink:
         while offset < total:
             try:
                 sent = sock.send(view[offset:])
-            except InterruptedError:
-                continue
             except OSError:
                 self._disconnect()
                 return False
