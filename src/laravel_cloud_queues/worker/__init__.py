@@ -141,6 +141,8 @@ class _Runtime:
     """
     defaults: WorkerDefaults
     """The worker-level defaults applied to each job's policy."""
+    wake: anyio.Event
+    """The event set by a stop signal, which ends a pause early."""
 
 
 @dataclass(frozen=True)
@@ -182,7 +184,6 @@ class Worker:
         self._runtime: _Runtime | None = None
         self._running: _Running | None = None
         self._stopping = threading.Event()
-        self._wake: anyio.Event | None = None
 
     def run(self) -> int:
         """Run the worker until a stop condition is reached and get the exit code.
@@ -202,10 +203,9 @@ class Worker:
             logger.error("Configuration error: %s", exc)
             return EXIT_CONFIG
         self._runtime = runtime
-        self._wake = anyio.Event()
         previous = signal.signal(signal.SIGALRM, self._on_alarm)
         try:
-            self._watch_signals(runtime.consumer)
+            self._watch_signals(runtime)
             async with self._target.lifespan():
                 code = await self._loop(runtime)
         except ConfigurationError as exc:
@@ -255,6 +255,7 @@ class Worker:
             wait=wait,
             sleep_when_empty=sleep_when_empty,
             defaults=WorkerDefaults(timeout=self._options.timeout),
+            wake=anyio.Event(),
         )
 
     def _select_queues(self, config: QueueConfig) -> tuple[str, ...]:
@@ -276,7 +277,7 @@ class Worker:
             return (assigned,)
         return requested or (config.default_queue,)
 
-    def _watch_signals(self, consumer: Consumer) -> None:
+    def _watch_signals(self, runtime: _Runtime) -> None:
         """Register the handlers that stop the worker on ``SIGTERM`` and ``SIGINT``."""
 
         # Loop signal handlers (the asyncio backend is fixed): a signal that arrives while a
@@ -286,20 +287,19 @@ class Worker:
             """Handle a stop signal by asking the worker to stop after the current job."""
             logger.info("Received %s; stopping after the current job.", signum.name)
             self._stopping.set()
-            if self._wake is not None:
-                self._wake.set()
-            consumer.interrupt()
+            runtime.wake.set()
+            runtime.consumer.interrupt()
 
         loop = asyncio.get_running_loop()
         for signum in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(signum, stop, signum)
 
-    async def _pause(self, seconds: float) -> None:
+    async def _pause(self, runtime: _Runtime, seconds: float) -> None:
         """Sleep for the given number of seconds, waking early on a stop signal."""
-        if seconds <= 0 or self._stopping.is_set() or self._wake is None:
+        if seconds <= 0 or self._stopping.is_set():
             return
         with anyio.move_on_after(seconds):
-            await self._wake.wait()
+            await runtime.wake.wait()
 
     # --- loop ----------------------------------------------------------------------------
 
@@ -357,7 +357,7 @@ class Worker:
             if reason is not None:
                 logger.info("Worker stopping: %s.", reason)
                 return EXIT_OK
-            await self._pause(pause)
+            await self._pause(runtime, pause)
         logger.info("Worker stopping: signal.")
         return EXIT_OK
 
