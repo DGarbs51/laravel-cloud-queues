@@ -9,9 +9,18 @@ from unittest.mock import Mock
 import httpx
 import pytest
 
-from laravel_cloud_queues.config import AgentConfig, ManagedQueuesConfig, SqsConnectionConfig
-from laravel_cloud_queues.errors import AgentProtocolError, AgentUnavailableError
-from laravel_cloud_queues.transports import agent
+from laravel_cloud_queues.config import (
+    AgentConfig,
+    ManagedQueuesConfig,
+    QueueConfig,
+    SqsConnectionConfig,
+)
+from laravel_cloud_queues.errors import (
+    AgentProtocolError,
+    AgentUnavailableError,
+    ConfigurationError,
+)
+from laravel_cloud_queues.transports import agent, create_backend
 from laravel_cloud_queues.transports.base import SQS_MAX_PAYLOAD_BYTES, Consumer, Delivery
 
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "agent"
@@ -431,3 +440,23 @@ def test_interrupt_during_retry_backoff(mock_agent, monkeypatch):
     monkeypatch.setattr(consumer._stopping, "wait", wait)
     assert consumer.receive([], 0) is None
     assert len(requests) == 2
+
+
+def test_interrupt_during_connection_failure_stops_polling(mock_agent, monkeypatch):
+    consumer, requests, _, pauses = mock_agent
+
+    def interrupt_then_fail(request):
+        requests.append(request)
+        consumer.interrupt()
+        raise httpx.ConnectError("receipt-secret")
+
+    monkeypatch.setattr(consumer._client, "_transport", httpx.MockTransport(interrupt_then_fail))
+    assert consumer.receive([], 0) is None
+    assert len(requests) == 1
+    assert pauses == []
+
+
+def test_managed_backend_requires_managed_config():
+    connection = SqsConnectionConfig("prefix", "us-east-1", "ecs")
+    with pytest.raises(ConfigurationError, match="managed configuration"):
+        create_backend(QueueConfig("managed", sqs=connection))

@@ -15,17 +15,19 @@ Verified against FastAPI 0.141.1 and Starlette 1.7.0:
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+from .._narrowing import is_mapping
 
 _RESERVED_STATE_KEY = "laravel_cloud_queues"
 """The ``app.state`` key that holds the adapter binding."""
 
 
 @asynccontextmanager
-async def enter_lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def enter_lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Run the application startup, yield for jobs, then run the shutdown.
 
     Because ``contextlib.asynccontextmanager`` throws a body error into the ``yield``,
@@ -54,7 +56,7 @@ def publish_lifespan_state(app: FastAPI, maybe_state: object) -> None:
     and ``laravel_cloud_queues`` is left as the adapter binding.
     """
 
-    if not isinstance(maybe_state, Mapping):
+    if not is_mapping(maybe_state):
         return
     for key, value in maybe_state.items():
         if isinstance(key, str) and key.isidentifier() and key != _RESERVED_STATE_KEY:

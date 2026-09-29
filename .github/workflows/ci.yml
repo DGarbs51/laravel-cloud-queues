@@ -53,6 +53,9 @@ jobs:
       # ty on src and tests/harness (pyproject.toml [tool.ty]); the downstream typing
       # samples (tests/typing/) are exercised inside the `test` job's pytest run.
       - run: uv run ty check
+      # mypy --strict and pyright strict over the shipped package ([tool.mypy]/[tool.pyright]).
+      - run: uv run mypy
+      - run: uv run pyright
 
   test:
     # Laravel Cloud runs Python on Debian 12 (bookworm) arm64 with CPython under
@@ -199,17 +202,27 @@ jobs:
       # LocalStack, Valkey and Redis above are `services:` containers, so GitHub
       # Actions already blocks job startup until their healthchecks pass.
 
+      # Both runs write parallel .coverage.* data files ([tool.coverage.run]) into the
+      # bind-mounted workspace; the `coverage` job combines them across the matrix.
       - name: Run the test suite (Valkey on 6379)
         run: >-
-          .github/scripts/cloud-python.sh uv run pytest -m "not packaging"
+          .github/scripts/cloud-python.sh uv run coverage run -m pytest -m "not packaging"
           --junitxml=test-results/junit-${{ matrix.python-version }}.xml
 
       - name: Re-run redis-marked tests against real Redis (6390)
         env:
           LARAVEL_CLOUD_QUEUES_TEST_REDIS_URL: redis://localhost:6390/15
         run: >-
-          .github/scripts/cloud-python.sh uv run pytest -m redis
+          .github/scripts/cloud-python.sh uv run coverage run -m pytest -m redis
           --junitxml=test-results/junit-${{ matrix.python-version }}-redis.xml
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ matrix.python-version }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
 
       - name: Upload failure artifacts
         if: failure()
@@ -222,6 +235,26 @@ jobs:
             conformance-artifacts/**
             compatibility-report.json
             **/*.log
+
+  coverage:
+    # 100% line and branch coverage of src/laravel_cloud_queues, combined across every
+    # Python version: some branches only run on specific versions, so no single job can
+    # reach it alone. fail_under lives in [tool.coverage.report].
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+      - run: uv run coverage combine
+      - run: uv run coverage report
 
   packaging:
     runs-on: ubuntu-24.04-arm
@@ -426,7 +459,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [lint, typecheck, docs, test, packaging, conformance]
+    needs: [lint, typecheck, docs, test, coverage, packaging, conformance]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

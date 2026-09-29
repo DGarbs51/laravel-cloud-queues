@@ -70,7 +70,7 @@ class Envelope:
     """The name used to look the job up in the registry."""
     args: tuple[JSONValue, ...] = ()
     """The encoded positional arguments."""
-    kwargs: Mapping[str, JSONValue] = field(default_factory=dict)
+    kwargs: Mapping[str, JSONValue] = field(default_factory=dict[str, JSONValue])
     """The encoded keyword arguments."""
     policy: RetryPolicy = field(default_factory=RetryPolicy)
     """The retry policy declared by the job."""
@@ -78,9 +78,9 @@ class Envelope:
     """The logical queue the job was dispatched to, kept for debugging only."""
     dispatched_at: str | None = None
     """The ISO 8601 time at which the job was dispatched."""
-    context: Mapping[str, str] = field(default_factory=dict)
+    context: Mapping[str, str] = field(default_factory=dict[str, str])
     """The trace context propagated from the dispatcher."""
-    extra: Mapping[str, JSONValue] = field(default_factory=dict)
+    extra: Mapping[str, JSONValue] = field(default_factory=dict[str, JSONValue])
     """The unknown keys preserved from the body.
 
     They are grouped into ``top_level``, ``section`` and ``policy`` object maps. Unknown or

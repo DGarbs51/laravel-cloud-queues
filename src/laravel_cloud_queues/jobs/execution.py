@@ -15,7 +15,7 @@ from typing import Literal
 from ..errors import CodecError, JobDefectError
 from ..observability import activate_trace_context
 from ..registry import Registry
-from .context import JobContext, _current_job
+from .context import CURRENT_JOB, JobContext
 from .envelope import Envelope, decode_envelope
 from .job import AnyJob
 from .policy import ResolvedPolicy, WorkerDefaults
@@ -67,7 +67,7 @@ def prepare_execution(registry: Registry, body: str) -> PreparedExecution:
     job = registry.get(envelope.job)
     try:
         args, kwargs = decode_arguments(
-            job._signature, registry.codecs, envelope.args, envelope.kwargs
+            job.signature, registry.codecs, envelope.args, envelope.kwargs
         )
     except JobDefectError:
         raise
@@ -88,14 +88,14 @@ async def run_prepared(prepared: PreparedExecution, context: JobContext) -> Hand
     """
     job = prepared.job
     error: Exception | None = None
-    token = _current_job.set(context)
+    token = CURRENT_JOB.set(context)
     try:
         with activate_trace_context(prepared.envelope.context):
             await job.registry.invoker.invoke(job, prepared.args, prepared.kwargs, context)
     except Exception as exc:
         error = exc
     finally:
-        _current_job.reset(token)
+        CURRENT_JOB.reset(token)
 
     # A recorded outcome wins even if the handler swallowed JobControl or returned normally.
     outcome = context.outcome

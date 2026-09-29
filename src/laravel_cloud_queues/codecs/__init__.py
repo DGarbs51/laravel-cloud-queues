@@ -19,7 +19,8 @@ import binascii
 import inspect
 import math
 import types
-from dataclasses import MISSING, fields, is_dataclass
+from collections.abc import Callable
+from dataclasses import MISSING, dataclass, fields, is_dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
@@ -31,24 +32,38 @@ from typing import (
     Literal,
     Protocol,
     TypeAlias,
+    TypeGuard,
     TypeVar,
     Union,
-    cast,
     get_args,
     get_origin,
     get_type_hints,
 )
 from uuid import UUID
 
+from typing_extensions import TypeIs
+
+from .._narrowing import is_list
 from ..errors import CodecError, ConfigurationError, SerializationError
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
-else:
+
+
+def _pydantic_model_type() -> type[BaseModel] | None:
+    """Import the Pydantic model base class, if the optional dependency is installed.
+
+    It is imported once here and never based on payload content.
+    """
     try:
         from pydantic import BaseModel
-    except ImportError:  # Optional dependency; never imported based on payload content.
-        BaseModel = None
+    except ImportError:
+        return None
+    return BaseModel
+
+
+_BASE_MODEL = _pydantic_model_type()
+"""The Pydantic model base class, or ``None`` when Pydantic is not installed."""
 
 JSONValue: TypeAlias = bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"] | None
 """A value that may be represented in JSON."""
@@ -96,11 +111,63 @@ class Codec(Protocol, Generic[T]):
         ...
 
 
-def _model(annotation: object) -> bool:
+@dataclass(frozen=True)
+class _Erased:
+    """A registered custom codec with its Python type erased for the registry's lookups."""
+
+    tag: str
+    """The tag that identifies values encoded by the codec."""
+    python_type: type[object]
+    """The Python type handled by the codec."""
+    encode: Callable[[object], JSONValue]
+    """Encode a value of exactly ``python_type`` as JSON."""
+    decode: Callable[[JSONValue], object]
+    """Decode a value from JSON."""
+
+
+def _erase(codec: Codec[T]) -> _Erased:
+    """Erase the Python type of the codec, narrowing back to it at the encoding boundary."""
+
+    def encode(value: object) -> JSONValue:
+        """Encode the value, which the registry routes here only for an exact type match."""
+        assert isinstance(value, codec.python_type)
+        return codec.encode(value)
+
+    return _Erased(codec.tag, codec.python_type, encode, codec.decode)
+
+
+def _model(annotation: object) -> TypeGuard[type[BaseModel]]:
     """Determine if the annotation is a Pydantic model class."""
     return (
-        BaseModel is not None and isinstance(annotation, type) and issubclass(annotation, BaseModel)
+        _BASE_MODEL is not None
+        and isinstance(annotation, type)
+        and issubclass(annotation, _BASE_MODEL)
     )
+
+
+def _is_class(annotation: object) -> TypeGuard[type[object]]:
+    """Determine if the annotation is a class, narrowing it without unknown type arguments."""
+    return isinstance(annotation, type)
+
+
+def _is_tuple(value: object) -> TypeIs[tuple[object, ...]]:
+    """Determine if the value is a tuple, narrowing it without unknown type arguments."""
+    return isinstance(value, tuple)
+
+
+def _is_dict(value: object) -> TypeIs[dict[object, object]]:
+    """Determine if the value is a dictionary, narrowing it without unknown type arguments."""
+    return isinstance(value, dict)
+
+
+def _string_keyed(value: dict[object, object]) -> dict[str, object]:
+    """Ensure every key of the dictionary is a string."""
+    entries: dict[str, object] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ValueError("Dictionary keys must be strings")
+        entries[key] = item
+    return entries
 
 
 def _json(value: object, depth: int = 0) -> JSONValue:
@@ -111,14 +178,14 @@ def _json(value: object, depth: int = 0) -> JSONValue:
     """
     if depth > _MAX_DEPTH:
         raise ValueError("Value nesting limit exceeded")
-    if value is None or type(value) in (bool, int, str):
-        return cast(JSONValue, value)
-    if type(value) is float and math.isfinite(value):
+    if value is None or (isinstance(value, (bool, int, str)) and type(value) in (bool, int, str)):
         return value
-    if isinstance(value, list):
+    if isinstance(value, float) and type(value) is float and math.isfinite(value):
+        return value
+    if is_list(value):
         return [_json(v, depth + 1) for v in value]
-    if isinstance(value, dict) and all(isinstance(k, str) for k in value):
-        return {k: _json(v, depth + 1) for k, v in value.items()}
+    if _is_dict(value):
+        return {k: _json(v, depth + 1) for k, v in _string_keyed(value).items()}
     raise ValueError("Expected a finite JSON value with string object keys")
 
 
@@ -130,9 +197,8 @@ class CodecRegistry:
 
     def __init__(self) -> None:
         """Create a new codec registry instance."""
-        # Heterogeneous codec types are erased only in this internal lookup.
-        self._custom: dict[type[Any], Codec[Any]] = {}
-        self._tags: dict[str, Codec[Any]] = {}
+        self._custom: dict[type[object], _Erased] = {}
+        self._tags: dict[str, _Erased] = {}
 
     def register(self, codec: Codec[T]) -> None:
         """Register a custom codec with the registry.
@@ -152,14 +218,15 @@ class CodecRegistry:
             or _model(codec.python_type)
         ):
             raise ConfigurationError("Codec tag or Python type conflicts with an existing codec")
-        self._custom[codec.python_type] = codec
-        self._tags[codec.tag] = codec
+        erased = _erase(codec)
+        self._custom[erased.python_type] = erased
+        self._tags[erased.tag] = erased
 
-    def _validate_annotation(self, annotation: object, seen: tuple[object, ...] = ()) -> None:
+    def validate_annotation(self, annotation: object, seen: tuple[object, ...] = ()) -> None:
         """Ensure the annotation is supported, including nested fields and recursive types.
 
-        This runs at registration time and raises a :class:`ConfigurationError` if any part
-        of the annotation is unsupported.
+        This runs when a handler is registered and raises a :class:`ConfigurationError` if
+        any part of the annotation is unsupported.
         """
         if annotation in seen:
             return
@@ -181,7 +248,7 @@ class CodecRegistry:
         ):
             return
         if origin is Annotated:
-            self._validate_annotation(args[0], seen)
+            self.validate_annotation(args[0], seen)
             return
         if origin in (Union, types.UnionType, list, tuple, dict):
             if origin is dict:
@@ -192,25 +259,24 @@ class CodecRegistry:
                 args = args[1:]
             for arg in args:
                 if arg is not Ellipsis:
-                    self._validate_annotation(arg, seen)
+                    self.validate_annotation(arg, seen)
             return
         if origin is Literal and all(
             type(a) in (str, int, bool, type(None)) or isinstance(a, Enum) for a in args
         ):
             return
-        if isinstance(annotation, type):
+        if _is_class(annotation):
             if annotation in self._custom or issubclass(annotation, Enum):
                 return
             if is_dataclass(annotation):
                 hints = get_type_hints(annotation, include_extras=True)
                 for field in fields(annotation):
                     if field.init:
-                        self._validate_annotation(hints[field.name], seen)
+                        self.validate_annotation(hints[field.name], seen)
                 return
             if _model(annotation):
-                model = cast("type[BaseModel]", annotation)
-                for model_field in model.model_fields.values():
-                    self._validate_annotation(model_field.annotation, seen)
+                for model_field in annotation.model_fields.values():
+                    self.validate_annotation(model_field.annotation, seen)
                 return
         raise ConfigurationError("Unsupported serialized parameter annotation")
 
@@ -245,20 +311,21 @@ class CodecRegistry:
                         raise ValueError("Non-finite decimal")
                     scalar = str(value)
                 return {TYPE_TAG_KEY: tag, "value": scalar}
-        if isinstance(value, tuple):
+        if _is_tuple(value):
             return {TYPE_TAG_KEY: "tuple", "value": [self._encode(v, depth + 1) for v in value]}
+        entries: dict[object, object] | None = None
         if is_dataclass(value) and not isinstance(value, type):
-            value = {f.name: getattr(value, f.name) for f in fields(value) if f.init}
-        elif BaseModel is not None and isinstance(value, BaseModel):
-            value = {name: getattr(value, name) for name in type(value).model_fields}
-        if isinstance(value, dict):
-            if not all(isinstance(k, str) for k in value):
-                raise ValueError("Dictionary keys must be strings")
+            entries = {f.name: getattr(value, f.name) for f in fields(value) if f.init}
+        elif _BASE_MODEL is not None and isinstance(value, _BASE_MODEL):
+            entries = {name: getattr(value, name) for name in type(value).model_fields}
+        elif _is_dict(value):
+            entries = value
+        if entries is not None:
             encoded: dict[str, JSONValue] = {
-                k: self._encode(v, depth + 1) for k, v in value.items()
+                k: self._encode(v, depth + 1) for k, v in _string_keyed(entries).items()
             }
-            return {TYPE_TAG_KEY: "dict", "value": encoded} if TYPE_TAG_KEY in value else encoded
-        if isinstance(value, list):
+            return {TYPE_TAG_KEY: "dict", "value": encoded} if TYPE_TAG_KEY in encoded else encoded
+        if is_list(value):
             return [self._encode(v, depth + 1) for v in value]
         return _json(value, depth)
 
@@ -292,11 +359,13 @@ class CodecRegistry:
                     # Identity keys also support Annotated metadata that is not hashable.
                     failures[key] = member
             raise ValueError("No union member matches")
-        if isinstance(annotation, type) and issubclass(annotation, Enum):
-            for member in annotation:
+        cls = annotation if _is_class(annotation) else None
+        if cls is not None and issubclass(cls, Enum):
+            for member in cls:
+                member_value: object = member.value
                 try:
-                    value = self._decode(data, type(member.value), failures)
-                    if type(value) is type(member.value) and value == member.value:
+                    value = self._decode(data, type(member_value), failures)
+                    if type(value) is type(member_value) and value == member_value:
                         return member
                 except Exception:
                     pass
@@ -316,9 +385,10 @@ class CodecRegistry:
         tag: str | None = None
         payload = data
         if isinstance(data, dict) and TYPE_TAG_KEY in data:
-            if set(data) != {TYPE_TAG_KEY, "value"} or not isinstance(data[TYPE_TAG_KEY], str):
+            tagged = data[TYPE_TAG_KEY]
+            if set(data) != {TYPE_TAG_KEY, "value"} or not isinstance(tagged, str):
                 raise ValueError("Malformed tag")
-            tag = cast(str, data[TYPE_TAG_KEY])
+            tag = tagged
             payload = data["value"]
             if tag not in _TAGS and tag not in self._tags:
                 raise ValueError("Unknown tag")
@@ -361,10 +431,9 @@ class CodecRegistry:
         elif annotation is int and type(data) in (int, float):
             if isinstance(data, int) or (isinstance(data, float) and data.is_integer()):
                 return int(data)
-        elif annotation is float and type(data) in (int, float):
-            number = float(cast(float, data))
-            if math.isfinite(number):
-                return number
+        elif annotation is float and isinstance(data, (int, float)) and type(data) in (int, float):
+            # The data is validated first, so the number is finite.
+            return float(data)
         elif annotation is str and isinstance(data, str):
             return data
         elif (annotation is list or origin is list) and tag is None and isinstance(data, list):
@@ -394,29 +463,27 @@ class CodecRegistry:
             if isinstance(payload, dict):
                 return {k: self._decode(v, Any, failures) for k, v in payload.items()}
             return payload
-        elif isinstance(annotation, type) and tag is None:
-            if is_dataclass(annotation) and isinstance(data, dict):
-                hints = get_type_hints(annotation, include_extras=True)
-                declared = {f.name: f for f in fields(annotation) if f.init}
+        elif cls is not None and tag is None:
+            if is_dataclass(cls) and isinstance(data, dict):
+                hints = get_type_hints(cls, include_extras=True)
+                declared = {f.name: f for f in fields(cls) if f.init}
                 if data.keys() - declared.keys() or any(
                     f.name not in data and f.default is MISSING and f.default_factory is MISSING
                     for f in declared.values()
                 ):
                     raise ValueError("Dataclass fields mismatch")
-                return annotation(
-                    **{k: self._decode(v, hints[k], failures) for k, v in data.items()}
-                )
-            elif _model(annotation) and isinstance(data, dict):
-                model = cast("type[BaseModel]", annotation)
-                if data.keys() - model.model_fields.keys():
+                return cls(**{k: self._decode(v, hints[k], failures) for k, v in data.items()})
+            elif _model(cls) and isinstance(data, dict):
+                model_fields = cls.model_fields
+                if data.keys() - model_fields.keys():
                     raise ValueError("Unknown model field")
                 decoded = {
-                    model.model_fields[k].alias or k: self._decode(
-                        v, model.model_fields[k].annotation, failures
+                    model_fields[k].alias or k: self._decode(
+                        v, model_fields[k].annotation, failures
                     )
                     for k, v in data.items()
                 }
-                return model.model_validate(decoded, strict=True)
+                return cls.model_validate(decoded, strict=True)
         raise ValueError("Annotation mismatch")
 
 

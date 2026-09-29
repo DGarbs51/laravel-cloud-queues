@@ -14,9 +14,17 @@ import anyio.lowlevel
 import pytest
 
 from laravel_cloud_queues import Job, JobContext, Registry, RetryPolicy
+from laravel_cloud_queues import registry as registry_module
+from laravel_cloud_queues.codecs import default_codecs
 from laravel_cloud_queues.config import QueueConfig
 from laravel_cloud_queues.errors import ConfigurationError, UnknownJobError
-from laravel_cloud_queues.registry import DefaultInvoker, WorkerTarget, merge_injected
+from laravel_cloud_queues.observability import NullSink, SocketEventSink, Telemetry
+from laravel_cloud_queues.registry import (
+    DefaultInvoker,
+    WorkerTarget,
+    bind_injected,
+)
+from tests.unit.jobs.fakes import make_registry
 
 
 def plain(user_id: int) -> int:
@@ -42,6 +50,7 @@ def test_bare_decorator_uses_module_qualname() -> None:
     assert job.policy == RetryPolicy()
     assert job.registry is registry
     assert job.func is plain
+    assert repr(job) == f"<Job '{__name__}.plain'>"
     assert registry.get(job.name) is job
     assert job(21) == 42
     assert job.__name__ == "plain"
@@ -243,21 +252,21 @@ def test_postponed_annotations_are_resolved_before_injection() -> None:
 
     assert inspect.signature(handler).parameters["context"].annotation == "JobContext"
     job = Registry().job(handler)
-    assert job._signature.injected == ("context",)
-    assert job._signature.serialized == ("order_id",)
+    assert job.signature.injected == ("context",)
+    assert job.signature.serialized == ("order_id",)
 
 
 def test_merge_injected_keeps_positional_shape() -> None:
     def handler(a: int, context: JobContext, /, b: int, *, c: int = 3) -> None: ...
 
     marker = object()
-    args, kwargs = merge_injected(inspect.signature(handler), [1, 2], {"c": 4}, {"context": marker})
-    assert args == (1, marker, 2)
-    assert kwargs == {"c": 4}
+    bound = bind_injected(inspect.signature(handler), [1, 2], {"c": 4}, {"context": marker})
+    assert bound.args == (1, marker, 2)
+    assert bound.kwargs == {"c": 4}
 
-    args, kwargs = merge_injected(inspect.signature(handler), [1], {"b": 2}, {"context": marker})
-    assert args == (1, marker, 2)
-    assert kwargs == {}
+    bound = bind_injected(inspect.signature(handler), [1], {"b": 2}, {"context": marker})
+    assert bound.args == (1, marker, 2)
+    assert bound.kwargs == {}
 
 
 def _context() -> JobContext:
@@ -307,3 +316,68 @@ def test_injected_positional_only_parameter_after_omitted_defaults() -> None:
         handler.dispatch(label="other")
         handler.dispatch(9)
     assert seen == [(7, "ok", 1), (7, "other", 1), (9, "ok", 1)]
+
+
+# --- lazy properties under contention ----------------------------------------------------
+
+
+class _SignallingLock:
+    """A lock that reports when a waiter reaches it, so a race can be staged deterministically."""
+
+    def __init__(self, inner: threading.RLock) -> None:
+        self.inner = inner
+        self.entered = threading.Event()
+
+    def __enter__(self) -> None:
+        self.entered.set()
+        self.inner.__enter__()
+
+    def __exit__(self, *exc: object) -> None:
+        self.inner.__exit__(*exc)
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [
+        ("_config", QueueConfig(mode="sqs")),
+        ("_codecs", default_codecs()),
+        ("_backend", make_registry()[0].backend),
+        ("_telemetry", Telemetry(sink=NullSink(), emits_cloud_events=False)),
+    ],
+)
+def test_lazy_properties_reuse_the_value_built_while_waiting_for_the_lock(
+    attribute: str, value: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A thread that queued behind the lock must not rebuild what the winner already built."""
+    registry = Registry()
+    forbidden = pytest.fail  # any build after the value is set is a duplicate
+    monkeypatch.setattr(registry_module, "load_config", forbidden)
+    monkeypatch.setattr(registry_module, "default_codecs", forbidden)
+    monkeypatch.setattr(registry_module, "create_backend", forbidden)
+    monkeypatch.setattr(registry_module, "Telemetry", forbidden)
+    lock = _SignallingLock(registry._lock)
+    registry._lock = lock
+    seen: list[object] = []
+    with lock.inner:  # hold the lock: the reader passes the outer check, then waits here
+        thread = threading.Thread(target=lambda: seen.append(getattr(registry, attribute[1:])))
+        thread.start()
+        assert lock.entered.wait(5)
+        setattr(registry, attribute, value)  # the "winner" finishes while the reader waits
+    thread.join(5)
+    assert seen == [value]
+
+
+def test_config_is_loaded_from_the_environment_on_first_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARAVEL_CLOUD_QUEUES_BACKEND", "redis")
+    monkeypatch.setenv("LARAVEL_CLOUD_QUEUES_REDIS_URL", "redis://cache")
+    registry = Registry()
+    assert registry.config.mode == "redis"
+    assert registry.config is registry.config
+
+
+def test_managed_mode_emits_cloud_events_over_the_log_socket() -> None:
+    registry = Registry(config=QueueConfig(mode="managed", log_socket="unix:///tmp/lcq-test.sock"))
+    assert registry.telemetry._emits_cloud_events
+    assert isinstance(registry.telemetry._sink, SocketEventSink)

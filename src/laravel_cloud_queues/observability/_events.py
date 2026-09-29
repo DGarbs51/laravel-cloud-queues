@@ -15,6 +15,10 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from typing import Final, Literal
 
+from typing_extensions import TypeIs
+
+from .._narrowing import is_mapping
+
 LifecycleType = Literal["queued", "started", "processed", "released", "failed"]
 """The lifecycle stages a queue event may report."""
 FAILED_JOB_LINE_LIMIT: Final = 16_384
@@ -56,6 +60,11 @@ def _replace_lone_surrogates(text: str) -> str:
     return text
 
 
+def _is_sequence(value: object) -> TypeIs[list[object] | tuple[object, ...]]:
+    """Determine if the value is a list or a tuple."""
+    return isinstance(value, list | tuple)
+
+
 def _sanitize(value: object) -> object:
     """Replace lone surrogates throughout the given value, recursively.
 
@@ -63,14 +72,14 @@ def _sanitize(value: object) -> object:
     """
     if isinstance(value, str):
         return _replace_lone_surrogates(value)
-    if isinstance(value, Mapping):
+    if is_mapping(value):
         cleaned: dict[str, object] = {}
         for key, item in value.items():
             if not isinstance(key, str):
                 raise TypeError("event keys must be strings")
             cleaned[_replace_lone_surrogates(key)] = _sanitize(item)
         return cleaned
-    if isinstance(value, list | tuple):
+    if _is_sequence(value):
         return [_sanitize(item) for item in value]
     return value
 
@@ -192,10 +201,10 @@ def _format_exception(exc: BaseException) -> str:
 def _job_name(payload: str) -> str:
     """Get the ``displayName`` from the payload, or an empty string if it is unavailable."""
     try:
-        decoded = json.loads(payload)
+        decoded: object = json.loads(payload)
     except ValueError:
         return ""
-    if not isinstance(decoded, dict):
+    if not is_mapping(decoded):
         return ""
     name = decoded.get("displayName")
     if isinstance(name, str):
@@ -206,8 +215,6 @@ def _job_name(payload: str) -> str:
 def _with_truncation_marker(original: str, head: str) -> str:
     """Append a marker to the head noting how many bytes of the original were removed."""
     removed = len(original.encode("utf-8")) - len(head.encode("utf-8"))
-    if removed <= 0:
-        return head
     return f"{head}\n... [truncated {removed} bytes]"
 
 
@@ -225,7 +232,9 @@ def _largest_fitting_prefix(
 
     The result is a number of code points, or None when even an empty head does not fit.
     The search is measured on encoded bytes, so JSON escaping and multibyte characters
-    count toward the limit.
+    count toward the limit. The encoded size never shrinks as the head grows (each code
+    point adds at least one byte and a truncation marker loses at most one digit), so the
+    binary search is exact.
     """
 
     def fits(head: str) -> bool:
@@ -244,8 +253,6 @@ def _largest_fitting_prefix(
             low = mid + 1
         else:
             high = mid - 1
-    while best < len(text) and fits(text[: best + 1]):
-        best += 1
     return best
 
 
@@ -328,10 +335,9 @@ def failed_job_event(
             lambda head: assemble(head, exc_text, not_replayable=True),
         )
 
-    if marker:
-        best_payload = fit_payload(marker)
-        if best_payload is not None:
-            return assemble(payload[:best_payload], marker, not_replayable=True)
+    best_payload = fit_payload(marker)
+    if best_payload is not None:
+        return assemble(payload[:best_payload], marker, not_replayable=True)
 
     best_payload = fit_payload("")
     if best_payload is not None:

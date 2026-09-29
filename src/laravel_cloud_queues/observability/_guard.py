@@ -11,7 +11,7 @@ import os
 import select
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 _logger = logging.getLogger("laravel_cloud_queues.observability")
@@ -62,7 +62,7 @@ def raw_diagnostic(message: str) -> None:
 
 
 @contextmanager
-def signal_safe() -> Iterator[None]:
+def signal_safe() -> Generator[None]:
     """Keep telemetry fallback diagnostics off logging locks while handling ``SIGALRM``."""
     previous = getattr(_local, "signal_safe", False)
     _local.signal_safe = True

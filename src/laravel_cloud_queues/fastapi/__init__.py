@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
-from typing import Any, TypeVar, overload
+from typing import TypeVar, overload
 
 from typing_extensions import ParamSpec
 
@@ -54,7 +54,7 @@ from ..registry import Registry
 
 try:
     from fastapi import FastAPI
-except ImportError as exc:  # pragma: no cover
+except ImportError as exc:
     raise ImportError(
         "FastAPI support requires the optional dependency: "
         'pip install "laravel-cloud-queues[fastapi]"'
@@ -126,7 +126,7 @@ class LaravelCloudQueues:
 
     def job(
         self,
-        func: Callable[..., Any] | None = None,
+        func: Callable[P, R] | None = None,
         /,
         *,
         name: str | None = None,
@@ -136,14 +136,14 @@ class LaravelCloudQueues:
         timeout: float | None = None,
         fail_on_timeout: bool | None = None,
         policy: RetryPolicy | None = None,
-    ) -> Any:
+    ) -> Job[P, R] | Callable[[Callable[P, R]], Job[P, R]]:
         """Register a handler as a queued job, either directly or as a decorator.
 
         Raises a :class:`~laravel_cloud_queues.errors.ConfigurationError` if the handler
         depends on a request-only dependency.
         """
 
-        def register(fn: Callable[..., Any]) -> Any:
+        def register(fn: Callable[P, R]) -> Job[P, R]:
             """Register the given handler with the registry."""
             with inspecting(fn):
                 reject_request_dependencies(fn, self._app.dependency_overrides)

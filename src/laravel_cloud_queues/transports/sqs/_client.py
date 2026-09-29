@@ -23,13 +23,13 @@ if TYPE_CHECKING:
 def _build_client(connection: SqsConnectionConfig) -> SQSClient:
     """Build an SQS client for the given connection.
 
-    Unless the default credential chain was requested, the client uses a private session
-    that ignores ambient profiles, credential files and endpoint settings. Raises a
+    The client never follows ambient endpoint settings. Unless the default credential chain
+    was requested, it also ignores ambient profiles, credential files and region. Raises a
     ``ConfigurationError`` if the selected provider returns no credentials.
     """
     credentials = connection.credentials
     if credentials == "default":
-        session = boto3.session.Session(region_name=connection.region)
+        core = botocore.session.Session()
     else:
         # A private session avoids ambient profiles, credential files, region and
         # endpoint settings without changing process-global os.environ.
@@ -46,43 +46,45 @@ def _build_client(connection: SqsConnectionConfig) -> SQSClient:
         )
         core.set_config_variable("config_file", os.devnull)
         core.set_config_variable("credentials_file", os.devnull)
-        if isinstance(credentials, StaticCredentials):
-            session = boto3.session.Session(
-                botocore_session=core,
-                aws_access_key_id=credentials.key,
-                aws_secret_access_key=credentials.secret,
-                aws_session_token=credentials.token,
-                region_name=connection.region,
+    # Every mode, the default chain included, connects only to the configured endpoint:
+    # AWS_ENDPOINT_URL* and endpoint_url in AWS config files are never followed.
+    core.set_config_variable("ignore_configured_endpoint_urls", True)
+    if credentials == "default":
+        session = boto3.session.Session(botocore_session=core, region_name=connection.region)
+    elif isinstance(credentials, StaticCredentials):
+        session = boto3.session.Session(
+            botocore_session=core,
+            aws_access_key_id=credentials.key,
+            aws_secret_access_key=credentials.secret,
+            aws_session_token=credentials.token,
+            region_name=connection.region,
+        )
+    else:
+        if credentials == "ecs":
+            provider: ContainerProvider | InstanceMetadataProvider = ContainerProvider()
+        elif credentials == "instance":
+            provider = InstanceMetadataProvider(
+                iam_role_fetcher=InstanceMetadataFetcher(timeout=1, num_attempts=2)
             )
         else:
-            if credentials == "ecs":
-                provider: ContainerProvider | InstanceMetadataProvider = ContainerProvider()
-            elif credentials == "instance":
-                provider = InstanceMetadataProvider(
-                    iam_role_fetcher=InstanceMetadataFetcher(timeout=1, num_attempts=2)
-                )
-            else:
-                raise ConfigurationError("Unknown SQS credentials provider.")
-            # Both providers return refreshable credentials, including the refresh
-            # callback and SDK locking. Never install the ambient credential chain.
-            core.register_component("credential_provider", CredentialResolver([provider]))
-            session = boto3.session.Session(botocore_session=core, region_name=connection.region)
-        if session.get_credentials() is None:
-            raise ConfigurationError(
-                "The selected SQS credentials provider returned no credentials."
-            )
-    return session.client(
+            raise ConfigurationError("Unknown SQS credentials provider.")
+        # Both providers return refreshable credentials, including the refresh
+        # callback and SDK locking. Never install the ambient credential chain.
+        core.register_component("credential_provider", CredentialResolver([provider]))
+        session = boto3.session.Session(botocore_session=core, region_name=connection.region)
+    if credentials != "default" and session.get_credentials() is None:
+        raise ConfigurationError("The selected SQS credentials provider returned no credentials.")
+    client: SQSClient = session.client(
         "sqs",
         endpoint_url=connection.endpoint_url,
         verify=True,
         config=Config(
-            # botocore-stubs omits this supported option.
-            ignore_configured_endpoint_urls=True,  # ty: ignore[unknown-argument]
             connect_timeout=5,
             read_timeout=25,
             retries={"mode": "standard", "total_max_attempts": 3},
         ),
     )
+    return client
 
 
 class SqsTransport:

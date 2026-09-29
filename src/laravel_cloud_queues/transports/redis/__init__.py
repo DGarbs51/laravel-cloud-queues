@@ -12,10 +12,10 @@ import json
 import math
 import ssl
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from threading import Event
-from typing import Any
+from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -27,8 +27,57 @@ from ...errors import (
     LeaseLostError,
     TransportError,
 )
-from ..base import Delivery, OutgoingMessage, SentMessage
+from ..base import Delivery, OutgoingMessage, SentMessage, json_object
 from . import _scripts
+
+if TYPE_CHECKING:
+    from redis.connection import Connection, ConnectionPool
+
+
+class _Connection(Protocol):
+    """The redis-py connection methods used here, which redis-py leaves untyped."""
+
+    def send_command(self, *args: str | float) -> None:
+        """Write a single command to the socket."""
+        ...
+
+    def read_response(self) -> object:
+        """Read the reply to the last command."""
+        ...
+
+    def disconnect(self) -> None:
+        """Close the socket."""
+        ...
+
+
+class _Pool(Protocol):
+    """The redis-py connection pool members used here, which redis-py types only partially."""
+
+    @property
+    def connection_kwargs(self) -> dict[str, object]:
+        """Get the keyword arguments passed to every new connection."""
+        ...
+
+    def get_connection(self, command_name: str | None = None) -> Connection:
+        """Acquire a connected connection, connecting on first use."""
+        ...
+
+    def release(self, connection: Connection) -> None:
+        """Return a connection to the pool."""
+        ...
+
+    def disconnect(self) -> None:
+        """Close every pooled connection."""
+        ...
+
+
+def _utf8(member: str) -> bool:
+    """Determine if the member survives UTF-8 encoding, unlike one with lone surrogates."""
+    try:
+        member.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 class _RedisTransport:
@@ -51,12 +100,22 @@ class _RedisTransport:
 
         self._redis = redis
         self._prefix = config.prefix
-        try:
-            scheme = urlsplit(config.url).scheme
-            if scheme not in {"redis", "rediss"}:
-                raise ValueError
-            self._pool = redis.ConnectionPool.from_url(config.url)
-            options = self._pool.connection_kwargs
+        # get_connection() stopped taking the command name in redis-py 5.3.
+        self._legacy_pool = tuple(int(part) for part in redis.__version__.split(".")[:2]) < (5, 3)
+        scheme = urlsplit(config.url).scheme
+
+        def pool_from_url(socket_timeout: int) -> ConnectionPool:
+            """Build a pool from the URL, enforcing TLS verification and bounded I/O."""
+            # Type-checker ignore, kept deliberately. redis-py declares
+            # `ConnectionPool.from_url(cls, url: str, **kwargs)` without annotating
+            # **kwargs, so pyright strict reports the whole method as partially unknown
+            # even though no keyword arguments are passed here; mypy and ty accept it.
+            # The alternatives are worse: ConnectionPool(...) has the same untyped
+            # **kwargs, and parsing the URL ourselves would duplicate redis-py's TLS, db
+            # and credential handling. Remove the ignore once redis-py annotates **kwargs
+            # (pyright's reportUnnecessaryTypeIgnoreComment will then flag it).
+            pool = redis.ConnectionPool.from_url(config.url)  # pyright: ignore[reportUnknownMemberType]
+            options = pool.connection_kwargs
             if scheme == "rediss":
                 if options.get("ssl_cert_reqs", "required") not in {"required", ssl.CERT_REQUIRED}:
                     raise ValueError
@@ -70,15 +129,19 @@ class _RedisTransport:
                 encoding="utf-8",
                 encoding_errors="surrogateescape",
                 socket_connect_timeout=2,
-                socket_timeout=2,
+                socket_timeout=socket_timeout,
                 retry=Retry(NoBackoff(), 0),
                 retry_on_error=[],
                 retry_on_timeout=False,
             )
-            reporting_options: dict[str, Any] = {**options, "socket_timeout": 10}
-            self._reporting_pool = redis.ConnectionPool(
-                connection_class=self._pool.connection_class, **reporting_options
-            )
+            return pool
+
+        try:
+            if scheme not in {"redis", "rediss"}:
+                raise ValueError
+            self._pool: _Pool = pool_from_url(socket_timeout=2)
+            # Reporting gets its own pool so watchdog I/O cannot alter polling timeouts.
+            self._reporting_pool: _Pool = pool_from_url(socket_timeout=10)
         except (ValueError, TypeError, redis.RedisError):
             raise ConfigurationError("Invalid Redis URL or TLS verification settings.") from None
 
@@ -94,12 +157,11 @@ class _RedisTransport:
         raise a ``TransportError``, or a ``BrokerConnectionError`` or
         ``AmbiguousAcknowledgementError`` when ``reporting`` a delivery outcome.
         """
-        # Reporting gets its own pool so watchdog I/O cannot alter polling timeouts.
         pool = self._reporting_pool if reporting else self._pool
         # Acquire/connect before sending so only definitely-unsent commands are retried.
         for attempt in range(3):
             try:
-                if self._redis.VERSION < (5, 3):
+                if self._legacy_pool:
                     connection = pool.get_connection(str(args[0]))
                 else:
                     connection = pool.get_connection()
@@ -107,14 +169,22 @@ class _RedisTransport:
             except self._redis.AuthenticationError:
                 raise ConfigurationError("Redis authentication failed.") from None
             except (self._redis.ConnectionError, self._redis.TimeoutError):
-                if attempt == 2:
-                    error = BrokerConnectionError if reporting else TransportError
-                    raise error("Redis connection unavailable after bounded retries.") from None
-                time.sleep(0.05 * 2**attempt)
+                if attempt < 2:
+                    time.sleep(0.05 * 2**attempt)
             except (ValueError, TypeError, self._redis.RedisError):
                 raise ConfigurationError("Invalid Redis connection settings.") from None
         else:
-            raise AssertionError("unreachable: the last attempt breaks or raises")
+            error = BrokerConnectionError if reporting else TransportError
+            raise error("Redis connection unavailable after bounded retries.")
+        try:
+            return self._exchange(connection, args, reporting)
+        finally:
+            pool.release(connection)
+
+    def _exchange(
+        self, connection: _Connection, args: tuple[str | float, ...], reporting: bool
+    ) -> object:
+        """Send the command over the acquired connection and return its reply."""
         try:
             connection.send_command(*args)
             return connection.read_response()
@@ -123,10 +193,7 @@ class _RedisTransport:
             connection.disconnect()
             if isinstance(
                 exc,
-                (
-                    self._redis.AuthenticationError,
-                    self._redis.exceptions.AuthenticationWrongNumberOfArgsError,
-                ),
+                (self._redis.AuthenticationError, self._redis.AuthenticationWrongNumberOfArgsError),
             ) or (
                 isinstance(exc, self._redis.ResponseError)
                 and str(exc).split(" ", 1)[0] in {"NOAUTH", "WRONGPASS"}
@@ -134,8 +201,6 @@ class _RedisTransport:
                 raise ConfigurationError("Redis authentication failed.") from None
             outcome_error = AmbiguousAcknowledgementError if reporting else TransportError
             raise outcome_error("Redis command failed; its outcome may be unknown.") from None
-        finally:
-            pool.release(connection)
 
     def close(self) -> None:
         """Disconnect every pooled connection."""
@@ -207,40 +272,48 @@ class RedisConsumer(_RedisTransport):
         notify = [self._keys(queue)[3] for queue in queues]
         while not self._interrupted.is_set():
             for queue in queues:
-                member = self._command(
+                reply = self._command(
                     "EVAL", _scripts.RESERVE, 4, *self._keys(queue), self._lease_seconds
                 )
-                if member is not None:
-                    if isinstance(member, str):
-                        try:
-                            member.encode("utf-8")
-                        except UnicodeEncodeError:
-                            # Preserve all bytes as the opaque receipt; core rejects the body.
-                            member = [member]
-                    wrapper: dict[str, Any]
-                    if isinstance(member, str):
-                        wrapper = json.loads(member)
-                    elif (
-                        isinstance(member, list) and len(member) == 1 and isinstance(member[0], str)
-                    ):
-                        # Malformed wrappers retain their raw receipt so core can fail/delete them.
-                        member = member[0]
-                        wrapper = {
-                            "id": "malformed-"
-                            + sha256(member.encode("utf-8", errors="surrogateescape")).hexdigest(),
-                            "body": member,
-                            "attempts": 1,
-                        }
-                    else:
-                        raise TransportError("Invalid Redis reservation response.")
-                    return Delivery(
-                        message_id=wrapper["id"],
-                        queue=queue,
-                        body=wrapper["body"],
-                        attempt=int(wrapper["attempts"]),
-                        receipt=member,
-                        received_at=time.monotonic(),
+                if reply is None:
+                    continue
+                if isinstance(reply, str) and _utf8(reply):
+                    member = reply
+                    # RESERVE validated the wrapper before re-encoding it with cjson.
+                    job: object = json.loads(member)
+                    fields: Mapping[str, object] = job if json_object(job) else {}
+                    message_id, body, attempts = (
+                        fields.get("id"),
+                        fields.get("body"),
+                        fields.get("attempts"),
                     )
+                    if not (
+                        isinstance(message_id, str)
+                        and isinstance(body, str)
+                        and isinstance(attempts, (int, float))
+                    ):
+                        raise TransportError("Invalid Redis reservation response.")
+                else:
+                    # Malformed wrappers arrive as a one-element array, or as a member that
+                    # is not valid UTF-8. They keep their raw receipt so core can fail and
+                    # delete them.
+                    match reply:
+                        case str():
+                            member = reply
+                        case [str() as member]:
+                            pass
+                        case _:
+                            raise TransportError("Invalid Redis reservation response.")
+                    digest = sha256(member.encode("utf-8", errors="surrogateescape")).hexdigest()
+                    message_id, body, attempts = f"malformed-{digest}", member, 1
+                return Delivery(
+                    message_id=message_id,
+                    queue=queue,
+                    body=body,
+                    attempt=int(attempts),
+                    receipt=member,
+                    received_at=time.monotonic(),
+                )
             remaining = deadline - time.monotonic()
             if remaining <= 0 or self._interrupted.is_set():
                 return None

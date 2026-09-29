@@ -10,6 +10,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 
+from typing_extensions import TypeIs
+
 from ..errors import ConfigurationError, InvalidQueueOptionError
 from ..transports.base import MAX_FRESH_DELAY_SECONDS, MAX_VISIBILITY_SECONDS
 
@@ -34,6 +36,16 @@ def _is_seconds(value: object) -> bool:
         and math.isfinite(value)
         and value >= 0
     )
+
+
+def _untrusted(value: object) -> object:
+    """Widen the value of a policy field, since untyped callers may pass anything."""
+    return value
+
+
+def _is_sequence(value: object) -> TypeIs[Sequence[object]]:
+    """Determine if the value is a sequence, narrowing it without unknown type arguments."""
+    return isinstance(value, Sequence)
 
 
 def _check_seconds(field: str, value: object) -> None:
@@ -75,13 +87,13 @@ class RetryPolicy:
         invalid policy raises a :class:`ConfigurationError`.
         """
         # Runtime checks for untyped callers: fields are read as ``object``.
-        tries: object = self.tries
+        tries = _untrusted(self.tries)
         if tries is not None and (
             not isinstance(tries, int) or isinstance(tries, bool) or tries < 0
         ):
             raise ConfigurationError(f"tries must be an integer >= 0, got {tries!r}.")
-        backoff: object = self.backoff
-        if isinstance(backoff, Sequence):
+        backoff = _untrusted(self.backoff)
+        if _is_sequence(backoff):
             if isinstance(backoff, str) or not backoff:
                 raise ConfigurationError(
                     f"backoff must be a number or a non-empty list, got {backoff!r}."
@@ -94,7 +106,7 @@ class RetryPolicy:
             _check_seconds("backoff", backoff)
         if self.timeout is not None:
             _check_timeout(self.timeout)
-        fail_on_timeout: object = self.fail_on_timeout
+        fail_on_timeout = _untrusted(self.fail_on_timeout)
         if fail_on_timeout is not None and not isinstance(fail_on_timeout, bool):
             raise ConfigurationError(f"fail_on_timeout must be a bool, got {fail_on_timeout!r}.")
 

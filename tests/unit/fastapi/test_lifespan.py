@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -29,7 +30,10 @@ class _Registry:
 class _Job:
     def __init__(self, func: Callable[..., Any]) -> None:
         self.func = func
-        self._signature = inspect_handler(func, is_injected=parameter_is_injected)
+        self.signature = inspect_handler(func, is_injected=parameter_is_injected)
+
+    def call_bound(self, bound: inspect.BoundArguments) -> Any:
+        return self.func(*bound.args, **bound.kwargs)
 
 
 def _run(func: Callable[..., Any], *args: Any) -> Any:
@@ -43,7 +47,8 @@ def test_lifespan_runs_once_across_jobs_and_exits_on_stop() -> None:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         events.append("start")
         _app.state.db = "ready"
-        yield {"label": "yielded"}
+        # Only identifier keys are copied onto app.state; the binding key is left alone.
+        yield {"label": "yielded", "not an identifier": 1, "laravel_cloud_queues": None}
         events.append("stop")
 
     app = FastAPI(lifespan=lifespan)
@@ -59,6 +64,8 @@ def test_lifespan_runs_once_across_jobs_and_exits_on_stop() -> None:
     async def scenario() -> None:
         async with queues.lifespan():
             assert events == ["start"]
+            assert app.state.laravel_cloud_queues is queues
+            assert not hasattr(app.state, "not an identifier")
             await invoker.invoke(_Job(send), (1,), {}, None)  # type: ignore[arg-type]
             await invoker.invoke(_Job(send), (2,), {}, None)  # type: ignore[arg-type]
             assert events.count("start") == 1

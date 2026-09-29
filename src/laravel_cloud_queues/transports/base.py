@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypeGuard, runtime_checkable
 
 SQS_MAX_PAYLOAD_BYTES = 1_048_576
 """The maximum job payload size in bytes.
@@ -102,11 +102,19 @@ class Delivery:
     """
     received_at: float = 0.0
     """The ``time.monotonic()`` value at the moment the message was received."""
-    meta: Mapping[str, str] = field(default_factory=dict, repr=False)
+    meta: Mapping[str, str] = field(default_factory=dict[str, str], repr=False)
     """Additional transport details, such as ``queue_url``.
 
     These values are not logged by default.
     """
+
+
+def json_object(value: object) -> TypeGuard[Mapping[str, object]]:
+    """Determine if a decoded JSON value is an object, whose keys are always strings.
+
+    The transports use this to narrow broker and agent payloads without ``Any``.
+    """
+    return isinstance(value, dict)
 
 
 @runtime_checkable

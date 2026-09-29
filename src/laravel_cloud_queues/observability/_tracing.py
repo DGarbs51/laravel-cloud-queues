@@ -7,14 +7,14 @@ context is always detached so it cannot leak into the next delivery.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 
 from ._guard import log_failure
 
 
 @contextmanager
-def _noop_context() -> Iterator[None]:
+def _noop_context() -> Generator[None]:
     """Provide a context that does nothing."""
     yield
 
@@ -49,7 +49,7 @@ def activate_trace_context(carrier: Mapping[str, str]) -> AbstractContextManager
         return _noop_context()
 
     @contextmanager
-    def _activated() -> Iterator[None]:
+    def _activated() -> Generator[None]:
         """Attach the extracted context and detach it on exit."""
         token = None
         try:

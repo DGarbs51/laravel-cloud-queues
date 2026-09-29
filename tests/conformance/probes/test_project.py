@@ -58,6 +58,10 @@ def test_ci_gate(evidence):
         '"3.13"',
         '"3.14"',
         "uv run ty check",
+        "uv run mypy",
+        "uv run pyright",
+        "coverage run -m pytest",
+        "uv run coverage combine",
         "ruff check",
         "--sqs localstack",
         "conformance-artifacts",
@@ -68,7 +72,7 @@ def test_ci_gate(evidence):
         "conformance:",
     ):
         assert required in workflow, required
-    assert "needs: [lint, typecheck, docs, test, packaging, conformance]" in workflow
+    assert "needs: [lint, typecheck, docs, test, coverage, packaging, conformance]" in workflow
     result = subprocess.run(
         [sys.executable, "-m", "ruff", "check", "src", "tests"],
         cwd=ROOT,

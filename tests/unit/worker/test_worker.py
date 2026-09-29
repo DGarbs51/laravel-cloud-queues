@@ -496,7 +496,7 @@ def test_signal_while_sleeping_wakes_the_worker(make: Any) -> None:
 def _record_pauses(h: Harness) -> list[float]:
     pauses: list[float] = []
 
-    async def pause(seconds: float) -> None:
+    async def pause(runtime: object, seconds: float) -> None:
         pauses.append(seconds)
 
     h.worker._pause = pause  # type: ignore[method-assign]
@@ -693,3 +693,50 @@ def test_timeout_never_reports_after_lease_loss(
     assert h.env.of("release") == []
     assert h.lines() == []
     assert types_of(h) == (["started"] if mode == "managed" else [])
+
+
+# --- process edges ----------------------------------------------------------------------------
+
+
+def test_configuration_error_after_start_exits_2_and_closes_the_consumer(make: Any) -> None:
+    from contextlib import asynccontextmanager
+
+    h = make([delivery()])
+
+    class Target:
+        registry = h.registry
+
+        @asynccontextmanager
+        async def lifespan(self) -> Any:
+            raise ConfigurationError("lifespan needs a setting")
+            yield
+
+    h.worker._target = Target()  # type: ignore[assignment]
+    assert h.run() == EXIT_CONFIG
+    assert h.consumer.closed
+    assert h.env.of("complete") == []
+
+
+def test_consumer_close_failure_is_logged_not_raised(
+    make: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    h = make([delivery()])
+
+    def close() -> None:
+        raise OSError("socket already gone")
+
+    h.consumer.close = close  # type: ignore[method-assign]
+    assert h.run() == EXIT_OK
+    assert "Closing the consumer failed (OSError)" in caplog.text
+
+
+def test_alarm_after_the_job_finished_is_ignored(make: Any) -> None:
+    h = make([])
+    h.worker._on_alarm(signal.SIGALRM, None)  # no running job: must not exit the process
+
+
+def test_timeout_with_a_healthy_watchdog_still_reports(make: Any) -> None:
+    d = delivery("sleep:5", timeout=0.3)
+    h = make([d], renewal=True, lease_seconds=30)
+    assert exit_code(h) == EXIT_TIMEOUT
+    assert h.env.of("complete") == [d.message_id]

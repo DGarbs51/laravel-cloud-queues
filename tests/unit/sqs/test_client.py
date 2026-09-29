@@ -101,6 +101,11 @@ def test_no_provider_credentials_never_falls_back(hostile_aws, monkeypatch):
         _client._build_client(SqsConnectionConfig("prefix", "us-east-1", "ecs"))
 
 
+def test_unknown_provider_is_rejected():
+    with pytest.raises(ConfigurationError, match="Unknown SQS credentials provider"):
+        _client._build_client(SqsConnectionConfig("prefix", "us-east-1", "imds-v3"))
+
+
 def test_default_chain_requires_explicit_opt_in_and_ignores_endpoint(monkeypatch):
     monkeypatch.delenv("AWS_PROFILE", raising=False)
     monkeypatch.delenv("AWS_DEFAULT_PROFILE", raising=False)
@@ -111,6 +116,24 @@ def test_default_chain_requires_explicit_opt_in_and_ignores_endpoint(monkeypatch
     client = _client._build_client(SqsConnectionConfig("prefix", "us-east-1", "default"))
     try:
         assert client._request_signer._credentials.access_key == "opt-in-key"
+        assert client.meta.endpoint_url == "https://sqs.us-east-1.amazonaws.com"
+    finally:
+        client.close()
+
+
+def test_default_chain_ignores_endpoint_in_the_aws_config_file(monkeypatch, tmp_path):
+    config = tmp_path / "config"
+    config.write_text("[default]\nendpoint_url = http://storage.invalid\n")
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_DEFAULT_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL_SQS", raising=False)
+    monkeypatch.delenv("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", raising=False)
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(config))
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "opt-in-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "opt-in-secret")
+    client = _client._build_client(SqsConnectionConfig("prefix", "us-east-1", "default"))
+    try:
         assert client.meta.endpoint_url == "https://sqs.us-east-1.amazonaws.com"
     finally:
         client.close()
