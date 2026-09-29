@@ -459,7 +459,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [lint, typecheck, docs, test, packaging, conformance]
+    needs: [lint, typecheck, docs, test, coverage, packaging, conformance]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
