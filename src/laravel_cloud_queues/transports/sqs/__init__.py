@@ -184,20 +184,21 @@ class SqsConsumer(SqsTransport):
             messages = response.get("Messages", [])
             if messages:
                 message = messages[0]
-                try:
-                    return Delivery(
-                        message_id=message["MessageId"],
-                        queue=normalize_queue(self._connection, url),
-                        body=message["Body"],
-                        attempt=receive_count(
-                            message.get("Attributes", {}).get("ApproximateReceiveCount")
-                        ),
-                        receipt=message["ReceiptHandle"],
-                        received_at=monotonic(),
-                        meta={"queue_url": url},
-                    )
-                except KeyError:
-                    raise TransportError("SQS returned an invalid delivery.") from None
+                if not (
+                    "MessageId" in message and "Body" in message and "ReceiptHandle" in message
+                ):
+                    raise TransportError("SQS returned an invalid delivery.")
+                return Delivery(
+                    message_id=message["MessageId"],
+                    queue=normalize_queue(self._connection, url),
+                    body=message["Body"],
+                    attempt=receive_count(
+                        message.get("Attributes", {}).get("ApproximateReceiveCount")
+                    ),
+                    receipt=message["ReceiptHandle"],
+                    received_at=monotonic(),
+                    meta={"queue_url": url},
+                )
         return None
 
     def complete(self, delivery: Delivery) -> None:

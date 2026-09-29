@@ -12,7 +12,7 @@ import httpx
 
 from ...config import ManagedQueuesConfig
 from ...errors import AgentProtocolError, AgentUnavailableError
-from ..base import Delivery
+from ..base import Delivery, json_object
 from ..sqs import normalize_queue, receive_count
 
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
@@ -23,6 +23,8 @@ would reject legal messages, and a rejected message loops forever as poison.
 """
 _CONNECTION_ERRORS = (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError)
 """The HTTP errors treated as connection failures and eligible for retry."""
+_UNREACHABLE = "The agent runtime socket is unreachable."
+"""The error message used once the connection retries are exhausted."""
 
 
 class AgentConsumer:
@@ -64,6 +66,7 @@ class AgentConsumer:
         The given queues and wait time are ignored, since the agent's assignment is
         authoritative. Raises an ``AgentUnavailableError`` once the retries are exhausted.
         """
+        failure = _UNREACHABLE
         for attempt in range(3):
             if self._stopping.is_set():
                 return None
@@ -72,21 +75,19 @@ class AgentConsumer:
             except _CONNECTION_ERRORS:
                 if self._stopping.is_set():
                     return None
-                if attempt == 2:
-                    raise AgentUnavailableError(
-                        "The agent runtime socket is unreachable."
-                    ) from None
+                failure = _UNREACHABLE
             else:
                 if status == 204:
                     return None
                 if status == 200:
                     # Do not check stopping here: a handed-over message must run.
                     return self._delivery(body)
-                if not 400 <= status < 600 or attempt == 2:
-                    raise AgentUnavailableError(f"The agent returned HTTP {status} from GET /next.")
+                failure = f"The agent returned HTTP {status} from GET /next."
+                if not 400 <= status < 600:
+                    raise AgentUnavailableError(failure)
             if attempt == 1 and self._stopping.wait(0.5):
                 return None
-        return None  # All attempts return, raise, or stop above.
+        raise AgentUnavailableError(failure)
 
     def _delivery(self, body: bytes) -> Delivery | None:
         """Parse a ``GET /next`` response body into a delivery.
@@ -95,24 +96,24 @@ class AgentConsumer:
         ``AgentUnavailableError`` when the body is not a JSON object or array.
         """
         try:
-            data = json.loads(body)
+            data: object = json.loads(body)
         except (ValueError, UnicodeError, RecursionError):
             raise AgentUnavailableError("The agent returned invalid JSON from GET /next.") from None
-        if not isinstance(data, (dict, list)):
-            raise AgentUnavailableError("The agent returned non-object/array JSON from GET /next.")
-        if not isinstance(data, dict):
+        if isinstance(data, list):
             return None
+        if not json_object(data):
+            raise AgentUnavailableError("The agent returned non-object/array JSON from GET /next.")
         message_id = data.get("messageId")
         if not isinstance(message_id, str) or not message_id:
             return None
         receipt = data.get("receiptHandle")
         payload = data.get("body")
         attributes = data.get("attributes")
-        count = attributes.get("ApproximateReceiveCount") if isinstance(attributes, dict) else None
+        count = attributes.get("ApproximateReceiveCount") if json_object(attributes) else None
         attempt = receive_count(count)  # missing-receive-count-is-one (D13.5)
         queue_url = data.get("queueUrl")
         queue = self._managed.queue
-        meta = {}
+        meta: dict[str, str] = {}
         if isinstance(queue_url, str) and queue_url:
             queue = normalize_queue(self._managed.connection, queue_url)
             meta["queue_url"] = queue_url
@@ -154,11 +155,8 @@ class AgentConsumer:
             try:
                 code, _ = self._request("POST", "/result", timeout=10, payload=payload)
             except _CONNECTION_ERRORS:
-                if attempt == 2:
-                    raise AgentUnavailableError(
-                        "The agent runtime socket is unreachable."
-                    ) from None
-                sleep(0.1)
+                if attempt < 2:
+                    sleep(0.1)
                 continue
             if code >= 500:
                 raise AgentUnavailableError(f"The agent returned HTTP {code} from POST /result.")
@@ -167,6 +165,7 @@ class AgentConsumer:
                     f"The agent rejected the result with HTTP {code}.", status=code
                 )
             return
+        raise AgentUnavailableError(_UNREACHABLE)
 
     def _request(
         self, method: str, path: str, *, timeout: float, payload: dict[str, str | int] | None = None

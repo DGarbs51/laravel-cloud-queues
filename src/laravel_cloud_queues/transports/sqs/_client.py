@@ -71,13 +71,15 @@ def _build_client(connection: SqsConnectionConfig) -> SQSClient:
             raise ConfigurationError(
                 "The selected SQS credentials provider returned no credentials."
             )
-    return session.client(
+    # boto3-stubs types client() per service, and the overloads for the services whose
+    # stubs are not installed resolve to Unknown.
+    return session.client(  # pyright: ignore[reportUnknownMemberType]
         "sqs",
         endpoint_url=connection.endpoint_url,
         verify=True,
         config=Config(
-            # botocore-stubs omits this supported option.
-            ignore_configured_endpoint_urls=True,  # ty: ignore[unknown-argument]
+            # botocore-stubs omits this option, which botocore has supported since 1.28.
+            ignore_configured_endpoint_urls=True,  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
             connect_timeout=5,
             read_timeout=25,
             retries={"mode": "standard", "total_max_attempts": 3},
