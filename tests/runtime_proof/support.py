@@ -30,7 +30,7 @@ def calibrate_native_iterations(target_s: float = 1.35) -> int:
     # slowed by preemption or an efficiency core under-counts n, and an
     # uncontended worker then finishes sum() well before target_s.
     sample = 3_000_000
-    elapsed = 1.0
+    elapsed = float("inf")
     for _ in range(10):
         started = time.perf_counter()
         sum(range(sample))

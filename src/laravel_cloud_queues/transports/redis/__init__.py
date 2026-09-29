@@ -106,7 +106,8 @@ class _RedisTransport:
 
         def pool_from_url(socket_timeout: int) -> ConnectionPool:
             """Build a pool from the URL, enforcing TLS verification and bounded I/O."""
-            # redis-py leaves from_url's keyword arguments unannotated.
+            # redis-py leaves from_url's **kwargs unannotated, so pyright sees the whole
+            # method as partially unknown even though no keyword arguments are passed.
             pool = redis.ConnectionPool.from_url(config.url)  # pyright: ignore[reportUnknownMemberType]
             options = pool.connection_kwargs
             if scheme == "rediss":
