@@ -43,6 +43,7 @@ from uuid import UUID
 
 from typing_extensions import TypeIs
 
+from .._narrowing import is_list
 from ..errors import CodecError, ConfigurationError, SerializationError
 
 if TYPE_CHECKING:
@@ -149,11 +150,6 @@ def _is_class(annotation: object) -> TypeGuard[type[object]]:
     return isinstance(annotation, type)
 
 
-def _is_list(value: object) -> TypeIs[list[object]]:
-    """Determine if the value is a list, narrowing it without unknown type arguments."""
-    return isinstance(value, list)
-
-
 def _is_tuple(value: object) -> TypeIs[tuple[object, ...]]:
     """Determine if the value is a tuple, narrowing it without unknown type arguments."""
     return isinstance(value, tuple)
@@ -186,7 +182,7 @@ def _json(value: object, depth: int = 0) -> JSONValue:
         return value
     if isinstance(value, float) and type(value) is float and math.isfinite(value):
         return value
-    if _is_list(value):
+    if is_list(value):
         return [_json(v, depth + 1) for v in value]
     if _is_dict(value):
         return {k: _json(v, depth + 1) for k, v in _string_keyed(value).items()}
@@ -329,7 +325,7 @@ class CodecRegistry:
                 k: self._encode(v, depth + 1) for k, v in _string_keyed(entries).items()
             }
             return {TYPE_TAG_KEY: "dict", "value": encoded} if TYPE_TAG_KEY in encoded else encoded
-        if _is_list(value):
+        if is_list(value):
             return [self._encode(v, depth + 1) for v in value]
         return _json(value, depth)
 

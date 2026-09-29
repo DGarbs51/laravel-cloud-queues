@@ -8,8 +8,7 @@ import os
 from collections.abc import Mapping
 from typing import Literal, NoReturn
 
-from typing_extensions import TypeIs
-
+from .._narrowing import is_list, is_mapping
 from ..errors import ConfigurationError
 from ._models import (
     DEFAULT_AGENT_SOCKET,
@@ -34,19 +33,9 @@ def _string(value: object, setting: str, *, empty: bool = False) -> str:
     return value
 
 
-def _is_mapping(value: object) -> TypeIs[Mapping[object, object]]:
-    """Determine if the value is a mapping, narrowing it without unknown type arguments."""
-    return isinstance(value, Mapping)
-
-
-def _is_list(value: object) -> TypeIs[list[object]]:
-    """Determine if the value is a list, narrowing it without unknown type arguments."""
-    return isinstance(value, list)
-
-
 def _object(value: object, setting: str) -> dict[str, object]:
     """Ensure the given setting is an object with string keys."""
-    if not _is_mapping(value):
+    if not is_mapping(value):
         raise ConfigurationError(f"{setting} must be an object.")
     result: dict[str, object] = {}
     for key, item in value.items():
@@ -184,7 +173,7 @@ def load_config(
         if socket is None or socket == "":
             socket = setting(agent_socket, "LARAVEL_CLOUD_AGENT_SOCKET", DEFAULT_AGENT_SOCKET)
         inventory = raw.get("queues", [])
-        if not (_is_list(inventory) or _is_mapping(inventory)):
+        if not (is_list(inventory) or is_mapping(inventory)):
             raise ConfigurationError("queues must be a list or object.")
         queues = tuple(_string(queue, "queues entry") for queue in inventory)
         overflow = _object(conn.get("overflow", {}), "connection.overflow")

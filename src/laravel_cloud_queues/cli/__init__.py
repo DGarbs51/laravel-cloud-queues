@@ -19,8 +19,9 @@ from typing import Protocol, TypedDict
 from urllib.parse import unquote_plus
 
 import click
-from typing_extensions import ParamSpec, TypeIs
+from typing_extensions import ParamSpec
 
+from .._narrowing import is_list
 from ..config import QueueConfig, StaticCredentials
 from ..errors import ConfigurationError
 from ..jobs.job import AnyJob
@@ -307,14 +308,9 @@ def _render(report: _Report) -> str:
 
 def _text(value: object) -> str:
     """Format the given report value for display."""
-    if _is_list(value):
+    if is_list(value):
         return ",".join(str(item) for item in value) or "-"
     return "-" if value is None else str(value)
-
-
-def _is_list(value: object) -> TypeIs[list[object]]:
-    """Determine if the value is a list, narrowing it without unknown type arguments."""
-    return isinstance(value, list)
 
 
 @cli.command(

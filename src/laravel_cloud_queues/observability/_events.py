@@ -17,6 +17,8 @@ from typing import Final, Literal
 
 from typing_extensions import TypeIs
 
+from .._narrowing import is_mapping
+
 LifecycleType = Literal["queued", "started", "processed", "released", "failed"]
 """The lifecycle stages a queue event may report."""
 FAILED_JOB_LINE_LIMIT: Final = 16_384
@@ -58,11 +60,6 @@ def _replace_lone_surrogates(text: str) -> str:
     return text
 
 
-def _is_mapping(value: object) -> TypeIs[Mapping[object, object]]:
-    """Determine if the value is a mapping, without assuming anything about its keys."""
-    return isinstance(value, Mapping)
-
-
 def _is_sequence(value: object) -> TypeIs[list[object] | tuple[object, ...]]:
     """Determine if the value is a list or a tuple."""
     return isinstance(value, list | tuple)
@@ -75,7 +72,7 @@ def _sanitize(value: object) -> object:
     """
     if isinstance(value, str):
         return _replace_lone_surrogates(value)
-    if _is_mapping(value):
+    if is_mapping(value):
         cleaned: dict[str, object] = {}
         for key, item in value.items():
             if not isinstance(key, str):
@@ -207,7 +204,7 @@ def _job_name(payload: str) -> str:
         decoded: object = json.loads(payload)
     except ValueError:
         return ""
-    if not _is_mapping(decoded):
+    if not is_mapping(decoded):
         return ""
     name = decoded.get("displayName")
     if isinstance(name, str):
