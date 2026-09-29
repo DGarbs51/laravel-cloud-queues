@@ -121,6 +121,24 @@ def test_default_chain_requires_explicit_opt_in_and_ignores_endpoint(monkeypatch
         client.close()
 
 
+def test_default_chain_ignores_endpoint_in_the_aws_config_file(monkeypatch, tmp_path):
+    config = tmp_path / "config"
+    config.write_text("[default]\nendpoint_url = http://storage.invalid\n")
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_DEFAULT_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL_SQS", raising=False)
+    monkeypatch.delenv("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", raising=False)
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(config))
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "opt-in-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "opt-in-secret")
+    client = _client._build_client(SqsConnectionConfig("prefix", "us-east-1", "default"))
+    try:
+        assert client.meta.endpoint_url == "https://sqs.us-east-1.amazonaws.com"
+    finally:
+        client.close()
+
+
 def test_initialization_failure_is_sanitized(monkeypatch):
     monkeypatch.setattr(_client, "_build_client", Mock(side_effect=ValueError("secret")))
     producer = SqsProducer(SqsConnectionConfig("prefix", "us-east-1", "ecs"))
