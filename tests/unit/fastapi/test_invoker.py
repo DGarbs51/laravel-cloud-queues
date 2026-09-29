@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -29,7 +30,10 @@ class _Job:
 
     def __init__(self, func: Callable[..., Any]) -> None:
         self.func = func
-        self._signature = inspect_handler(func, is_injected=parameter_is_injected)
+        self.signature = inspect_handler(func, is_injected=parameter_is_injected)
+
+    def call_bound(self, bound: inspect.BoundArguments) -> Any:
+        return self.func(*bound.args, **bound.kwargs)
 
 
 class _Context:

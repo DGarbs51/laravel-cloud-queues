@@ -6,7 +6,9 @@ import json
 import logging
 import os
 from collections.abc import Mapping
-from typing import Any, NoReturn
+from typing import Literal, NoReturn
+
+from typing_extensions import TypeIs
 
 from ..errors import ConfigurationError
 from ._models import (
@@ -32,12 +34,35 @@ def _string(value: object, setting: str, *, empty: bool = False) -> str:
     return value
 
 
-def _object(value: object, setting: str) -> dict[str, Any]:
+def _is_mapping(value: object) -> TypeIs[Mapping[object, object]]:
+    """Determine if the value is a mapping, narrowing it without unknown type arguments."""
+    return isinstance(value, Mapping)
+
+
+def _is_list(value: object) -> TypeIs[list[object]]:
+    """Determine if the value is a list, narrowing it without unknown type arguments."""
+    return isinstance(value, list)
+
+
+def _object(value: object, setting: str) -> dict[str, object]:
     """Ensure the given setting is an object with string keys."""
-    # Any is confined to the forward-compatible, arbitrary JSON configuration document.
-    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+    if not _is_mapping(value):
         raise ConfigurationError(f"{setting} must be an object.")
-    return dict(value)
+    result: dict[str, object] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ConfigurationError(f"{setting} must be an object.")
+        result[key] = item
+    return result
+
+
+def _managed_provider(value: object) -> Literal["ecs", "instance"]:
+    """Ensure the managed credentials explicitly select a refreshable AWS provider."""
+    if value == "ecs":
+        return "ecs"
+    if value == "instance":
+        return "instance"
+    raise ConfigurationError("Managed credentials must explicitly select ecs or instance.")
 
 
 def _boolean(value: object, setting: str) -> bool:
@@ -56,7 +81,7 @@ def load_config(
     *,
     env: Mapping[str, str] | None = None,
     backend: Mode | None = None,
-    managed_config: str | Mapping[str, Any] | None = None,
+    managed_config: str | Mapping[str, object] | None = None,
     sqs_prefix: str | None = None,
     sqs_suffix: str | None = None,
     sqs_queue: str | None = None,
@@ -133,15 +158,9 @@ def load_config(
             raise ConfigurationError("Managed configuration driver must be cloud.")
         conn = _object(raw.get("connection"), "connection")
         region = _string(conn.get("region"), "connection.region")
-        credentials = conn.get("credentials")
-        if credentials not in ("ecs", "instance"):
-            raise ConfigurationError("Managed credentials must explicitly select ecs or instance.")
+        credentials = _managed_provider(conn.get("credentials"))
         if sqs_credentials is not None:
-            if sqs_credentials not in ("ecs", "instance"):
-                raise ConfigurationError(
-                    "Managed credentials must explicitly select ecs or instance."
-                )
-            credentials = sqs_credentials
+            credentials = _managed_provider(sqs_credentials)
         connection = SqsConnectionConfig(
             prefix=_string(
                 sqs_prefix if sqs_prefix is not None else conn.get("prefix", ""),
@@ -165,7 +184,7 @@ def load_config(
         if socket is None or socket == "":
             socket = setting(agent_socket, "LARAVEL_CLOUD_AGENT_SOCKET", DEFAULT_AGENT_SOCKET)
         inventory = raw.get("queues", [])
-        if not isinstance(inventory, (list, Mapping)):
+        if not (_is_list(inventory) or _is_mapping(inventory)):
             raise ConfigurationError("queues must be a list or object.")
         queues = tuple(_string(queue, "queues entry") for queue in inventory)
         overflow = _object(conn.get("overflow", {}), "connection.overflow")

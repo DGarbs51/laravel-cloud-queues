@@ -319,3 +319,8 @@ def test_any_policy_constructor_exception_is_a_job_defect(monkeypatch):
     monkeypatch.setattr(RetryPolicy, "__post_init__", reject)
     with pytest.raises(MalformedEnvelopeError):
         decode_envelope(json.dumps(wire()))
+
+
+def test_extras_must_be_namespaced_objects():
+    with pytest.raises(SerializationError):
+        encode_envelope(Envelope(uuid="u", display_name="j", job="j", extra={"top_level": "x"}))

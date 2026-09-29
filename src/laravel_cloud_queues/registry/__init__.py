@@ -7,10 +7,15 @@ import inspect
 import pkgutil
 import threading
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
-from contextlib import AbstractAsyncContextManager, AbstractContextManager, asynccontextmanager
+from collections.abc import AsyncGenerator, Callable, Generator, Mapping, Sequence
+from contextlib import (
+    AbstractAsyncContextManager,
+    AbstractContextManager,
+    asynccontextmanager,
+    contextmanager,
+)
 from types import MappingProxyType, ModuleType
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, overload, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeVar, overload, runtime_checkable
 
 from typing_extensions import ParamSpec
 
@@ -24,7 +29,7 @@ from ..observability import NullSink, SocketEventSink, Telemetry
 from ..transports import SQS_MAX_PAYLOAD_BYTES, Backend, create_backend
 
 if TYPE_CHECKING:
-    from ..testing import DispatchRecorder, _TestingSession
+    from ..testing import DispatchRecorder, TestingSession
 
 P = ParamSpec("P")
 """The parameters of a registered handler."""
@@ -100,24 +105,23 @@ class DefaultInvoker:
         context: JobContext,
     ) -> None:
         """Call the handler with the context injected, awaiting it when it is async."""
-        signature = job._signature
+        signature = job.signature
         injected = {name: context for name in signature.injected}
-        call_args, call_kwargs = merge_injected(signature.signature, args, kwargs, injected)
-        result = job.func(*call_args, **call_kwargs)
+        result = job.call_bound(bind_injected(signature.signature, args, kwargs, injected))
         if inspect.isawaitable(result):
             await result
 
 
-def merge_injected(
+def bind_injected(
     signature: inspect.Signature,
     args: Sequence[object],
     kwargs: Mapping[str, object],
     injected: Mapping[str, object],
-) -> tuple[tuple[Any, ...], dict[str, Any]]:
-    """Merge the payload arguments with the injected values for the full handler signature.
+) -> inspect.BoundArguments:
+    """Bind the payload arguments and the injected values to the full handler signature.
 
-    The payload arguments are bound against the serialized parameters only, and the result
-    is an ``(args, kwargs)`` pair.
+    The payload arguments are bound against the serialized parameters only. The result is
+    passed to :meth:`Job.call_bound`.
     """
     serialized = signature.replace(
         parameters=[p for p in signature.parameters.values() if p.name not in injected]
@@ -132,8 +136,7 @@ def merge_injected(
             if parameter.name not in arguments and parameter.name not in injected:
                 arguments[parameter.name] = parameter.default
     arguments.update(injected)
-    bound = inspect.BoundArguments(signature, arguments)
-    return bound.args, bound.kwargs
+    return inspect.BoundArguments(signature, arguments)
 
 
 class Registry:
@@ -167,7 +170,7 @@ class Registry:
         self._jobs: dict[str, AnyJob] = {}
         self._loaded = False
         self._lock = threading.RLock()
-        self._testing_session: _TestingSession | None = None
+        self._testing_session: TestingSession | None = None
 
     @property
     def registry(self) -> Registry:
@@ -229,6 +232,11 @@ class Registry:
         """Get the invoker used to call job handlers."""
         return self._invoker
 
+    @property
+    def testing_session(self) -> TestingSession | None:
+        """Get the active :meth:`testing` session that intercepts dispatches, if any."""
+        return self._testing_session
+
     @overload
     def job(self, func: Callable[P, R], /) -> Job[P, R]: ...
 
@@ -249,7 +257,7 @@ class Registry:
 
     def job(
         self,
-        func: Callable[..., Any] | None = None,
+        func: Callable[P, R] | None = None,
         /,
         *,
         name: str | None = None,
@@ -259,7 +267,7 @@ class Registry:
         timeout: float | None = None,
         fail_on_timeout: bool | None = None,
         policy: RetryPolicy | None = None,
-    ) -> Any:
+    ) -> Job[P, R] | Callable[[Callable[P, R]], Job[P, R]]:
         """Register the given handler as a job.
 
         The default wire name is ``module.qualname``, though an explicit ``name`` is preferred
@@ -279,7 +287,7 @@ class Registry:
             fail_on_timeout=base.fail_on_timeout if fail_on_timeout is None else fail_on_timeout,
         )
 
-        def register(handler: Callable[..., Any]) -> AnyJob:
+        def register(handler: Callable[P, R]) -> Job[P, R]:
             """Register the handler under its job name."""
             if name is None:
                 qualname = getattr(handler, "__qualname__", None)
@@ -345,11 +353,20 @@ class Registry:
         execution path (encode, decode, validate, invoke), surfacing handler exceptions.
         Otherwise, dispatches are only recorded.
         """
-        from ..testing import _testing_session
+        from ..testing import DispatchRecorder, TestingSession
 
-        return _testing_session(self, eager=eager)
+        return self._activate(TestingSession(self, DispatchRecorder(), eager))
 
-    def _default_queue(self) -> str:
+    @contextmanager
+    def _activate(self, session: TestingSession) -> Generator[DispatchRecorder, None, None]:
+        """Route dispatches to the session for the block, restoring the previous one on exit."""
+        previous, self._testing_session = self._testing_session, session
+        try:
+            yield session.recorder
+        finally:
+            self._testing_session = previous
+
+    def default_queue(self) -> str:
         """Get the queue that dispatches fall back to.
 
         The test double never loads configuration implicitly.
@@ -358,7 +375,7 @@ class Registry:
             return DEFAULT_QUEUE
         return self.config.default_queue
 
-    def _producer_capabilities(self) -> tuple[bool, int | None]:
+    def producer_capabilities(self) -> tuple[bool, int | None]:
         """Get the ``(supports_fifo, max_payload_bytes)`` capabilities of the dispatch producer.
 
         The test double never builds a backend implicitly: it follows the configured mode,
@@ -373,7 +390,7 @@ class Registry:
 
 
 @asynccontextmanager
-async def _noop_lifespan() -> AsyncIterator[None]:
+async def _noop_lifespan() -> AsyncGenerator[None, None]:
     """Enter and exit an empty worker lifespan."""
     yield
 

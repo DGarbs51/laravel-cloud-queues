@@ -8,14 +8,13 @@ registering the handler (``inspecting``). ``JobContext`` annotations are injecte
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from types import UnionType
 from typing import (
     Annotated,
     Protocol,
-    TypeVar,
     Union,
     get_args,
     get_origin,
@@ -31,16 +30,12 @@ from starlette.background import BackgroundTasks
 from starlette.requests import HTTPConnection, Request
 from starlette.responses import Response
 from starlette.websockets import WebSocket
-from typing_extensions import ParamSpec
 
 from ..errors import ConfigurationError
 from ..jobs.context import JobContext
 
 QUEUE_JOB_PATH = "/__laravel_cloud_queues__/job"
 """The synthetic request path used when solving queue job dependencies."""
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 
 @runtime_checkable
@@ -77,7 +72,7 @@ _REQUEST_NAMES = {label for _, label in _REQUEST_TYPES}
 
 
 @contextmanager
-def inspecting(func: Callable[P, R]) -> Generator[None, None, None]:
+def inspecting(func: object) -> Generator[None, None, None]:
     """Expose the handler while registration asks which of its parameters are injected."""
 
     token: Token[tuple[inspect.Parameter, ...] | None] = _inspecting_parameters.set(
@@ -97,7 +92,7 @@ def parameter_is_injected(parameter: inspect.Parameter) -> bool:
 
 
 def reject_request_dependencies(
-    func: Callable[P, R],
+    func: object,
     overrides: Overrides | None = None,
 ) -> None:
     """Ensure the job declares no HTTP-only dependencies.
@@ -145,7 +140,7 @@ def reject_request_dependencies(
     _walk(dependant, func, overrides or {}, seen=set())
 
 
-def dependency_parameters(func: Callable[P, R]) -> tuple[inspect.Parameter, ...]:
+def dependency_parameters(func: object) -> tuple[inspect.Parameter, ...]:
     """Get the injected parameters FastAPI should solve, excluding plain ``JobContext``."""
 
     return tuple(
@@ -155,8 +150,13 @@ def dependency_parameters(func: Callable[P, R]) -> tuple[inspect.Parameter, ...]
     )
 
 
-def evaluated_parameters(func: Callable[P, R]) -> tuple[inspect.Parameter, ...]:
-    """Get the handler parameters with their postponed annotations evaluated."""
+def evaluated_parameters(func: object) -> tuple[inspect.Parameter, ...]:
+    """Get the handler parameters with their postponed annotations evaluated.
+
+    Raises a ``TypeError`` if the handler is not callable, as ``inspect.signature`` does.
+    """
+    if not callable(func):
+        raise TypeError(f"{func!r} is not a callable object")
     signature = inspect.signature(func)
     hints = _type_hints(func)
     parameters: list[inspect.Parameter] = []
@@ -260,7 +260,7 @@ def _plain_job_context(parameter: inspect.Parameter) -> bool:
     return is_job_context(parameter.annotation) and depends_of(parameter) is None
 
 
-def _type_hints(func: Callable[P, R]) -> Mapping[str, object]:
+def _type_hints(func: object) -> Mapping[str, object]:
     """Get the handler type hints, or an empty mapping when they cannot be evaluated."""
     try:
         return get_type_hints(func, include_extras=True)
@@ -311,7 +311,7 @@ def _dependency_call(parameter: inspect.Parameter) -> AnyCallable | None:
 
 def _reject_markers(
     call: AnyCallable | None,
-    func: Callable[P, R],
+    func: object,
     overrides: Overrides,
     *,
     seen: set[int],
@@ -343,7 +343,7 @@ def _reject_markers(
 
 def _walk(
     dependant: Dependant,
-    func: Callable[P, R],
+    func: object,
     overrides: Overrides,
     *,
     seen: set[int],
@@ -374,7 +374,7 @@ def _walk(
 
 def _walk_override(
     call: AnyCallable,
-    func: Callable[P, R],
+    func: object,
     overrides: Overrides,
     *,
     seen: set[int],

@@ -75,12 +75,12 @@ def prepare_dispatch(
     registry = job.registry
     queue = options.queue if options.queue is not None else job.queue
     if queue is None:
-        queue = registry._default_queue()
+        queue = registry.default_queue()
     if not queue:
         raise InvalidQueueOptionError("Queue name must be a non-empty string.")
     delay = 0 if options.delay is None else normalize_delay(options.delay)
 
-    supports_fifo, max_payload_bytes = registry._producer_capabilities()
+    supports_fifo, max_payload_bytes = registry.producer_capabilities()
     fifo = supports_fifo and queue.endswith(".fifo")
     if fifo and delay > 0:
         raise InvalidQueueOptionError(
@@ -90,7 +90,7 @@ def prepare_dispatch(
         queue, options, supports_fifo=supports_fifo, fifo=fifo
     )
 
-    args_json, kwargs_json = encode_arguments(job._signature, registry.codecs, args, kwargs)
+    args_json, kwargs_json = encode_arguments(job.signature, registry.codecs, args, kwargs)
     message_uuid = str(uuidlib.uuid4())
     body = encode_envelope(
         Envelope(

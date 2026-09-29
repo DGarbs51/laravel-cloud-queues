@@ -216,3 +216,32 @@ def test_redis_precedence():
 def test_invalid_managed_field_types(changes):
     with pytest.raises(ConfigurationError):
         load_config(env={}, managed_config=managed(**changes))
+
+
+def test_managed_object_keys_must_be_strings():
+    with pytest.raises(ConfigurationError):
+        load_config(env={}, managed_config=managed(agent={1: True}))
+
+
+@pytest.mark.parametrize("credentials", ["ecs", "instance"])
+def test_managed_credentials_from_code_override_the_document(credentials):
+    config = load_config(env={}, managed_config=managed(), sqs_credentials=credentials)
+    assert config.sqs.credentials == credentials
+    assert load_config(env={}, managed_config=managed()).sqs.credentials == "ecs"
+
+
+@pytest.mark.parametrize("credentials", ["default", StaticCredentials("k", "s")])
+def test_managed_credentials_from_code_must_be_refreshable(credentials):
+    with pytest.raises(ConfigurationError):
+        load_config(env={}, managed_config=managed(), sqs_credentials=credentials)
+
+
+def test_sqs_credentials_from_code_must_name_a_provider():
+    env = {
+        "LARAVEL_CLOUD_QUEUES_BACKEND": "sqs",
+        "LARAVEL_CLOUD_QUEUES_SQS_PREFIX": "https://sqs.example/123",
+        "LARAVEL_CLOUD_QUEUES_SQS_REGION": "us-east-1",
+    }
+    assert load_config(env=env, sqs_credentials="instance").sqs.credentials == "instance"
+    with pytest.raises(ConfigurationError):
+        load_config(env=env, sqs_credentials="bogus")

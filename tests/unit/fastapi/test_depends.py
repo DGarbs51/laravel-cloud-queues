@@ -16,6 +16,7 @@ from laravel_cloud_queues.fastapi import JobContext, LaravelCloudQueues
 from laravel_cloud_queues.fastapi._depends import (
     SignatureCall,
     dependency_parameters,
+    evaluated_parameters,
     inspecting,
     is_job_context,
     parameter_is_injected,
@@ -300,3 +301,8 @@ def test_reject_request_dependencies_accepts_an_omitted_override_mapping() -> No
         assert user_id
 
     reject_request_dependencies(job)
+
+
+def test_evaluated_parameters_rejects_a_non_callable() -> None:
+    with pytest.raises(TypeError, match="is not a callable object"):
+        evaluated_parameters(42)

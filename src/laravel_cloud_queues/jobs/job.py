@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import copy
 import functools
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 import anyio.to_thread
 from typing_extensions import ParamSpec
 
 from .policy import RetryPolicy
-from .signature import inspect_handler
+from .signature import JobSignature, inspect_handler
 
 if TYPE_CHECKING:
     from ..registry import Registry
@@ -124,9 +125,22 @@ class Job(Generic[P, R]):
         """Get the options used when the job is dispatched."""
         return self._options
 
+    @property
+    def signature(self) -> JobSignature:
+        """Get the inspected signature of the handler."""
+        return self._signature
+
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """Call the job's handler directly."""
         return self._func(*args, **kwargs)
+
+    def call_bound(self, bound: inspect.BoundArguments) -> R:
+        """Call the handler with arguments already bound to its signature.
+
+        Invokers use this to run a delivery, since the payload arguments are decoded without
+        the handler's static parameter types.
+        """
+        return self._func(*bound.args, **bound.kwargs)
 
     def options(
         self,
@@ -163,7 +177,7 @@ class Job(Generic[P, R]):
         from .dispatch import prepare_dispatch, send_prepared
 
         prepared = prepare_dispatch(self, args, kwargs, self._options)
-        session = self._registry._testing_session
+        session = self._registry.testing_session
         if session is not None:
             return session.dispatch(prepared)
         return send_prepared(self, prepared)
@@ -175,7 +189,7 @@ class Job(Generic[P, R]):
         """
         from .dispatch import prepare_dispatch, send_prepared
 
-        session = self._registry._testing_session
+        session = self._registry.testing_session
         if session is not None:
             return await session.dispatch_async(prepare_dispatch(self, args, kwargs, self._options))
         # Preparing may build the configuration and backend lazily (blocking), so it shares
@@ -185,5 +199,42 @@ class Job(Generic[P, R]):
         )
 
 
-AnyJob = Job[..., Any]
-"""A job with any handler signature."""
+class AnyJob(Protocol):
+    """A registered job of any handler signature, as seen by the worker and the registry.
+
+    Every :class:`Job` satisfies this view, which erases the handler's parameter types.
+    """
+
+    @property
+    def name(self) -> str:
+        """Get the name of the job."""
+        ...
+
+    @property
+    def func(self) -> object:
+        """Get the handler function wrapped by the job."""
+        ...
+
+    @property
+    def queue(self) -> str | None:
+        """Get the default queue of the job, if one was declared."""
+        ...
+
+    @property
+    def policy(self) -> RetryPolicy:
+        """Get the retry policy of the job."""
+        ...
+
+    @property
+    def registry(self) -> Registry:
+        """Get the registry the job belongs to."""
+        ...
+
+    @property
+    def signature(self) -> JobSignature:
+        """Get the inspected signature of the handler."""
+        ...
+
+    def call_bound(self, bound: inspect.BoundArguments) -> object:
+        """Call the handler with arguments already bound to its signature."""
+        ...

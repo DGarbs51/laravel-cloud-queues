@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -29,7 +30,10 @@ class _Registry:
 class _Job:
     def __init__(self, func: Callable[..., Any]) -> None:
         self.func = func
-        self._signature = inspect_handler(func, is_injected=parameter_is_injected)
+        self.signature = inspect_handler(func, is_injected=parameter_is_injected)
+
+    def call_bound(self, bound: inspect.BoundArguments) -> Any:
+        return self.func(*bound.args, **bound.kwargs)
 
 
 def _run(func: Callable[..., Any], *args: Any) -> Any:

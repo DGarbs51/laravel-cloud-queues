@@ -27,23 +27,22 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import Literal, TypeVar
+from typing import Literal
 
 import anyio
 from fastapi import FastAPI
 from fastapi import __version__ as _fastapi_version
 from fastapi.dependencies.utils import get_dependant, solve_dependencies
 from starlette.requests import Request
-from typing_extensions import ParamSpec
 
 from .._narrowing import is_mapping
 from ..errors import ConfigurationError
 from ..jobs.context import JobContext, JobControl, current_job
 from ..jobs.job import AnyJob
-from ..registry import merge_injected
+from ..registry import bind_injected
 from ._depends import (
     QUEUE_JOB_PATH,
     SignatureCall,
@@ -79,9 +78,6 @@ logger = logging.getLogger("laravel_cloud_queues.fastapi")
 
 TEARDOWN_DEADLINE_SECONDS = 10.0
 """The number of seconds async teardown may take after an explicit release or fail."""
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 _Outcome = Literal["pending", "success", "control", "error"]
 """The outcome of a handler, as recorded for dependency teardown."""
@@ -164,7 +160,7 @@ class FastAPIInvoker:
 
 async def _solve(
     app: FastAPI,
-    func: Callable[P, R],
+    func: object,
     context: JobContext,
     request_stack: AsyncExitStack,
     function_stack: AsyncExitStack,
@@ -234,17 +230,15 @@ def _call(
     context: JobContext,
     solved: Mapping[str, object],
 ) -> object:
-    """Call the handler through :func:`merge_injected` and the inspected signature.
+    """Call the handler through :func:`bind_injected` and the inspected signature.
 
     Omitted defaults stay omitted, matching dispatch. FastAPI solves every injected
     parameter except a plain ``JobContext``, which receives this delivery's context.
     """
 
-    # Job keeps the inspected signature private; the core package owns a public accessor.
-    signature = job._signature  # pyright: ignore[reportPrivateUsage]
+    signature = job.signature
     injected = {name: solved.get(name, context) for name in signature.injected}
-    call_args, call_kwargs = merge_injected(signature.signature, args, kwargs, injected)
-    return job.func(*call_args, **call_kwargs)
+    return job.call_bound(bind_injected(signature.signature, args, kwargs, injected))
 
 
 async def _close_dependencies(

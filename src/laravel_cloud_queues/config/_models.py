@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 Mode = Literal["managed", "sqs", "redis"]
 """The name of a queue backend."""
@@ -88,11 +88,11 @@ class ManagedQueuesConfig:
     """The queue inventory (a list, or object keys), which is never a dispatch allowlist."""
     after_commit: bool = False
     """Indicates if jobs should be dispatched after database commits."""
-    overflow: Mapping[str, Any] = field(default_factory=dict)
+    overflow: Mapping[str, object] = field(default_factory=dict[str, object])
     """The oversized payload settings, which are not supported."""
-    credential_cache: Mapping[str, Any] = field(default_factory=dict)
+    credential_cache: Mapping[str, object] = field(default_factory=dict[str, object])
     """The shared credential cache settings, which are not supported."""
-    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    raw: Mapping[str, object] = field(default_factory=dict[str, object], repr=False)
     """The full decoded document, with unknown fields kept for forward compatibility."""
 
 
