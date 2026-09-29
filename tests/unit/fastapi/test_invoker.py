@@ -493,7 +493,8 @@ def test_dependencies_fastapi_cannot_solve_are_configuration_errors() -> None:
     """Registration cannot see that ``self`` has no value; the solver reports it."""
 
     class Builder:
-        def build(self, size: int = 1) -> int:
+        @staticmethod
+        def build(size: int = 1) -> int:
             return size
 
     def send(size: int = Depends(Builder.build)) -> None:

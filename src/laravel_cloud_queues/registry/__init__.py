@@ -92,7 +92,8 @@ class DefaultInvoker:
     handler is awaited if it returns an awaitable (async handlers).
     """
 
-    def is_injected(self, parameter: inspect.Parameter) -> bool:
+    @staticmethod
+    def is_injected(parameter: inspect.Parameter) -> bool:
         """Determine if the given parameter is annotated exactly ``JobContext``."""
         # inspect_handler passes parameters with resolved type hints.
         return parameter.annotation is JobContext
@@ -342,7 +343,8 @@ class Registry:
                     importlib.import_module(info.name)
             self._loaded = True
 
-    def lifespan(self) -> AbstractAsyncContextManager[None]:
+    @staticmethod
+    def lifespan() -> AbstractAsyncContextManager[None]:
         """Get the lifespan context of the worker process, which is a no-op here."""
         return _noop_lifespan()
 

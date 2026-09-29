@@ -22,15 +22,18 @@ class RecordingSink:
         self.timeouts.append(lock_timeout)
         return True
 
-    def close(self) -> None:
+    @staticmethod
+    def close() -> None:
         return None
 
 
 class RaisingSink:
-    def emit(self, event: Mapping[str, object], *, lock_timeout: float | None = None) -> bool:
+    @staticmethod
+    def emit(event: Mapping[str, object], *, lock_timeout: float | None = None) -> bool:
         raise RuntimeError("sink down")
 
-    def close(self) -> None:
+    @staticmethod
+    def close() -> None:
         return None
 
 
@@ -86,10 +89,12 @@ def test_log_line_swallows_encoding_and_write_errors(monkeypatch: pytest.MonkeyP
     telemetry.log_line({"bad": Odd()})
 
     class Closed:
-        def write(self, data: str) -> None:
+        @staticmethod
+        def write(data: str) -> None:
             raise OSError("closed")
 
-        def flush(self) -> None:
+        @staticmethod
+        def flush() -> None:
             raise OSError("closed")
 
     monkeypatch.setattr(sys, "stdout", Closed())
@@ -117,7 +122,8 @@ def test_log_line_logging_reentry_does_not_recurse_or_log_the_record(
         def write(self, data: str) -> None:
             raise OSError("closed")
 
-        def flush(self) -> None:
+        @staticmethod
+        def flush() -> None:
             return None
 
     handler = Handler()

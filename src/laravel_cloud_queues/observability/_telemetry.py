@@ -36,11 +36,13 @@ class EventSink(Protocol):
 class NullSink:
     """An event sink that discards every event."""
 
-    def emit(self, event: Mapping[str, object], *, lock_timeout: float | None = None) -> bool:
+    @staticmethod
+    def emit(event: Mapping[str, object], *, lock_timeout: float | None = None) -> bool:
         """Discard the event."""
         return True
 
-    def close(self) -> None:
+    @staticmethod
+    def close() -> None:
         """Close the sink."""
         return None
 

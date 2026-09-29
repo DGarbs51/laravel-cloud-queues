@@ -442,30 +442,30 @@ class Worker:
                 await anyio.to_thread.run_sync(runtime.consumer.release, delivery, outcome.delay)
             else:
                 await anyio.to_thread.run_sync(runtime.consumer.complete, delivery)
-        except AgentProtocolError as exc:
-            logger.error(
-                "The agent rejected the outcome for message %s (%s); not reporting it again.",
-                delivery.message_id,
-                exc,
-            )
-        except AgentUnavailableError as exc:
-            self._log_fatal("reporting", exc)
-            code = exc.exit_code
-        except FatalWorkerError as exc:
-            self._log_fatal("reporting", exc)
-            return exc.exit_code
-        except TransportError as exc:
-            logger.error(
-                "Acknowledgement of message %s is ambiguous (%s: %s); stopping.",
-                delivery.message_id,
-                type(exc).__name__,
-                exc,
-            )
-            return EXIT_FATAL
-        self._record(
-            runtime, delivery, _STATUS[outcome.kind], outcome.exception, started_at, job_name
+    except AgentProtocolError as exc:
+        logger.error(
+            "The agent rejected the outcome for message %s (%s); not reporting it again.",
+            delivery.message_id,
+            exc,
         )
-        return code
+    except AgentUnavailableError as exc:
+        self._log_fatal("reporting", exc)
+        code = exc.exit_code
+    except FatalWorkerError as exc:
+        self._log_fatal("reporting", exc)
+        return exc.exit_code
+    except TransportError as exc:
+        logger.error(
+            "Acknowledgement of message %s is ambiguous (%s: %s); stopping.",
+            delivery.message_id,
+            type(exc).__name__,
+            exc,
+        )
+        return EXIT_FATAL
+    self._record(
+        runtime, delivery, _STATUS[outcome.kind], outcome.exception, started_at, job_name
+    )
+    return code
 
     def _record(
         self,
@@ -513,8 +513,8 @@ class Worker:
             lock_timeout=lock_timeout,
         )
 
+    @staticmethod
     def _log_failure(
-        self,
         runtime: _Runtime,
         delivery: Delivery,
         exception: BaseException,
@@ -599,7 +599,8 @@ class Worker:
             lock_timeout=ALARM_LOCK_TIMEOUT,
         )
 
-    def _log_fatal(self, stage: str, exc: FatalWorkerError) -> None:
+    @staticmethod
+    def _log_fatal(stage: str, exc: FatalWorkerError) -> None:
         """Log the fatal error that is stopping the worker."""
         if isinstance(exc, AgentUnavailableError):
             logger.error(

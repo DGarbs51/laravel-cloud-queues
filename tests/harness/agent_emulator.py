@@ -343,65 +343,59 @@ class _AgentHandler(BaseHTTPRequestHandler):
                 emulator._stopped.wait()
             elif fault.kind == "apply_then_disconnect":
                 assert record is not None
-                with emulator._condition:
-                    record.applied_code = emulator._apply(record.body)
-            if fault.kind in {"disconnect", "apply_then_disconnect", "hang"}:
-                self._record_response(emulator, record, None)
-                self.close_connection = True
-                return
-            if fault.kind != "delay":
-                code, raw = self._fault_response(fault)
-                self._record_response(emulator, record, code)
-                self._send(code, raw)
-                return
-        if emulator._stopped.is_set():
+            with emulator._condition:
+                record.applied_code = emulator._apply(record.body)
+        if fault.kind in {"disconnect", "apply_then_disconnect", "hang"}:
             self._record_response(emulator, record, None)
             self.close_connection = True
             return
-        if record is not None:
-            with emulator._condition:
-                code = emulator._apply(record.body)
-                record.applied_code = code
-            response: object = {}
-        else:
-            code, response = emulator._next()
-        self._record_response(emulator, record, code)
-        self._send(code, b"" if code == 204 else json.dumps(response).encode())
+        if fault.kind != "delay":
+            code, raw = self._fault_response(fault)
+            self._record_response(emulator, record, code)
+            self._send(code, raw)
+            return
+    if emulator._stopped.is_set():
+        self._record_response(emulator, record, None)
+        self.close_connection = True
+        return
+    if record is not None:
+        with emulator._condition:
+            code = emulator._apply(record.body)
+            record.applied_code = code
+        response: object = {}
+    else:
+        code, response = emulator._next()
+    self._record_response(emulator, record, code)
+    self._send(code, b"" if code == 204 else json.dumps(response).encode())
 
-    def _record_response(
-        self, emulator: AgentEmulator, record: Result | None, code: int | None
-    ) -> None:
-        if record is not None:
-            with emulator._condition:
-                record.response_code = code
-                record.completed = True
-                emulator._condition.notify_all()
+def _record_response(
+    self, emulator: AgentEmulator, record: Result | None, code: int | None
+) -> None:
+    if record is not None:
+        with emulator._condition:
+            record.response_code = code
+            record.completed = True
+            emulator._condition.notify_all()
 
-    def _fault_response(self, fault: Fault) -> tuple[int, bytes]:
-        if fault.kind == "status":
-            return fault.code, fault.body.encode()
-        responses = {
-            "malformed_json": b"{invalid",
-            "non_object_json": b'"x"',
-            "missing_message_id": b"{}",
-            "empty_message_id": b'{"messageId":""}',
-            "non_string_fields": b'{"messageId":"fault-message","receiptHandle":42,"body":[]}',
-        }
-        return 200, responses[fault.kind]
+@staticmethod
+def _fault_response(fault: Fault) -> tuple[int, bytes]:
+    if fault.kind == "status":
+        return fault.code, fault.body.encode()
+    responses = {
+        "malformed_json": b"{invalid",
+        "non_object_json": b'"x"',
+        "missing_message_id": b'{}',
+        "empty_message_id": b'{"messageId":""}',
+        "non_string_fields": b'{"messageId":"fault-message","receiptHandle":42,"body":[]}',
+    }
+    return 200, responses[fault.kind]
 
-    def _send(self, code: int, body: bytes) -> None:
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--socket", required=True)
-    args = parser.parse_args()
-    stopped = threading.Event()
+def _send(self, code: int, body: bytes) -> None:
+    self.send_response(code)
+    self.send_header("Content-Type", "application/json")
+    self.send_header("Content-Length", str(len(body)))
+    self.end_headers()
+    self.wfile.write(body)
 
     def stop(signum: int, frame: object) -> None:
         stopped.set()

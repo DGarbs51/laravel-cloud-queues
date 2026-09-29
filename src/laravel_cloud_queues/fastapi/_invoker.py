@@ -107,7 +107,8 @@ class FastAPIInvoker:
         """Create a new FastAPI invoker instance."""
         self._app = app
 
-    def is_injected(self, parameter: inspect.Parameter) -> bool:
+    @staticmethod
+    def is_injected(parameter: inspect.Parameter) -> bool:
         """Determine if the given parameter is injected rather than taken from the payload."""
         return parameter_is_injected(parameter)
 

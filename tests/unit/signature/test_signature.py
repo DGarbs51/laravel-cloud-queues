@@ -166,10 +166,12 @@ def test_custom_codec_handler_registration_and_roundtrip():
         tag = "token"
         python_type = Token
 
-        def encode(self, value):
+        @staticmethod
+        def encode(value):
             return value.text
 
-        def decode(self, data):
+        @staticmethod
+        def decode(data):
             if not isinstance(data, str):
                 raise ValueError("Expected token text")
             return Token(data)

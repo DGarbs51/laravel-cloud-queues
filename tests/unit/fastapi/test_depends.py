@@ -31,7 +31,8 @@ class _Registry:
     def __init__(self, invoker: FastAPIInvoker) -> None:
         self.invoker = invoker
 
-    def job(self, func: Callable[..., Any] | None = None, /, **_kwargs: Any) -> Any:
+    @staticmethod
+    def job(func: Callable[..., Any] | None = None, /, **_kwargs: Any) -> Any:
         def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
             return fn
 
@@ -268,7 +269,8 @@ def test_dependency_parameters_a_queue_job_cannot_supply() -> None:
     queues = _queues()
 
     class Builder:
-        def build(self, size: int = 1) -> int:
+        @staticmethod
+        def build(size: int = 1) -> int:
             return size
 
     def with_varargs(*args: int, **kwargs: int) -> int:

@@ -91,48 +91,42 @@ class Workers:
             module = "tests.integration.worker.apps.short_lease"
             command = [sys.executable, "-m", module, str(lease), "work", target, *args]
         process = self.run_process(command, env=self.env, cwd=ROOT)
-        self.started.append((process, time.monotonic()))
-        return process
+    self.started.append((process, time.monotonic()))
+    return process
 
-    def wait(self, process: Process, timeout: float = 60) -> Run:
-        began = next(at for p, at in self.started if p is process)
-        result = process.wait(timeout=timeout)
-        return Run(result, time.monotonic() - began)
+def wait(self, process: Process, timeout: float = 60) -> Run:
+    began = next(at for p, at in self.started if p is process)
+    result = process.wait(timeout=timeout)
+    return Run(result, time.monotonic() - began)
 
-    def run(self, *args: str, lease: int | None = None, timeout: float = 60) -> Run:
-        return self.wait(self.start(*args, lease=lease), timeout=timeout)
+def run(self, *args: str, lease: int | None = None, timeout: float = 60) -> Run:
+    return self.wait(self.start(*args, lease=lease), timeout=timeout)
 
-    def records(self) -> list[dict[str, Any]]:
-        if not self.record_path.exists():
-            return []
-        return json_lines(self.record_path.read_text())
+def records(self) -> list[dict[str, Any]]:
+    if not self.record_path.exists():
+        return []
+    return json_lines(self.record_path.read_text())
 
-    def wait_for_record(
-        self, predicate: Callable[[dict[str, Any]], bool], timeout: float = 30
-    ) -> None:
-        deadline = time.monotonic() + timeout
-        while not any(predicate(r) for r in self.records()):
-            if time.monotonic() > deadline:
-                raise TimeoutError("record not written")
-            time.sleep(0.05)
+def wait_for_record(
+    self, predicate: Callable[[dict[str, Any]], bool], timeout: float = 30
+) -> None:
+    deadline = time.monotonic() + timeout
+    while not any(predicate(r) for r in self.records()):
+        if time.monotonic() > deadline:
+            raise TimeoutError("record not written")
+        time.sleep(0.05)
 
-    def wait_until_idle(self, process: Process, timeout: float = 30) -> None:
-        """Until the worker logged its start (it then blocks in receive)."""
-        deadline = time.monotonic() + timeout
-        while "Worker started" not in process.stderr_path.read_text(errors="replace"):
-            if process.process.poll() is not None or time.monotonic() > deadline:
-                raise TimeoutError(process.stderr_path.read_text(errors="replace"))
-            time.sleep(0.05)
-        time.sleep(0.5)
+@staticmethod
+def wait_until_idle(process: Process, timeout: float = 30) -> None:
+    """Until the worker logged its start (it then blocks in receive)."""
+    deadline = time.monotonic() + timeout
+    while "Worker started" not in process.stderr_path.read_text(errors="replace"):
+        if process.process.poll() is not None or time.monotonic() > deadline:
+            raise TimeoutError(process.stderr_path.read_text(errors="replace"))
+        time.sleep(0.05)
+    time.sleep(0.5)
 
-    def terminate(self, process: Process) -> float:
-        process.send_signal(signal.SIGTERM)
-        return time.monotonic()
-
-
-def native_iterations(seconds: float) -> int:
-    """``sum(range(n))`` runs in C without checking for signals and holds the GIL."""
-    sample = 5_000_000
-    started = time.perf_counter()
-    sum(range(sample))
-    return int(sample * seconds / max(time.perf_counter() - started, 1e-6))
+@staticmethod
+def terminate(process: Process) -> float:
+    process.send_signal(signal.SIGTERM)
+    return time.monotonic()

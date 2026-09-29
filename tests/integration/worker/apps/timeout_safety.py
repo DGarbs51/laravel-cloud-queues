@@ -24,13 +24,16 @@ class Consumer:
     def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery:
         return self.delivery
 
-    def complete(self, delivery: Delivery) -> None:
+    @staticmethod
+    def complete(delivery: Delivery) -> None:
         os.write(1, b"completed\n")
 
-    def interrupt(self) -> None:
+    @staticmethod
+    def interrupt() -> None:
         pass
 
-    def close(self) -> None:
+    @staticmethod
+    def close() -> None:
         pass
 
 
@@ -50,10 +53,12 @@ def main(case: str) -> None:
         if case == "buffered_stdout":
 
             class LockedStream:
-                def write(self, text: str) -> None:
+                @staticmethod
+                def write(text: str) -> None:
                     threading.Event().wait(10)
 
-                def flush(self) -> None:
+                @staticmethod
+                def flush() -> None:
                     threading.Event().wait(10)
 
             sys.stdout = LockedStream()  # type: ignore[assignment]

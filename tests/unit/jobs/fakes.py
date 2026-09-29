@@ -47,7 +47,8 @@ class FakeProducer:
         self.sent.append(message)
         return SentMessage(message_id=f"msg-{len(self.sent)}", queue=message.queue)
 
-    def close(self) -> None:
+    @staticmethod
+    def close() -> None:
         return None
 
 

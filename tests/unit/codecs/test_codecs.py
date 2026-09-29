@@ -187,10 +187,12 @@ class TokenCodec:
     tag = "token"
     python_type = Token
 
-    def encode(self, value):
+    @staticmethod
+    def encode(value):
         return value.text
 
-    def decode(self, data):
+    @staticmethod
+    def decode(data):
         if not isinstance(data, str):
             raise ValueError("bad token")
         return Token(data)

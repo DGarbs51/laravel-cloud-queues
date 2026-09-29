@@ -18,7 +18,8 @@ from laravel_cloud_queues.jobs.signature import inspect_handler
 
 
 class _Registry:
-    def job(self, func: Callable[..., Any] | None = None, /, **_kwargs: Any) -> Any:
+    @staticmethod
+    def job(func: Callable[..., Any] | None = None, /, **_kwargs: Any) -> Any:
         def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
             return fn
 

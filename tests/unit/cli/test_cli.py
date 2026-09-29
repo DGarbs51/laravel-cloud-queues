@@ -103,7 +103,8 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, WorkerOptions]]
         def __init__(self, target: Any, options: WorkerOptions) -> None:
             runs.append((target, options))
 
-        def run(self) -> int:
+        @staticmethod
+        def run() -> int:
             return 7
 
     monkeypatch.setattr(cli, "Worker", FakeWorker)
@@ -190,7 +191,8 @@ def test_unexpected_error_exits_1(
         def __init__(self, *args: object) -> None:
             pass
 
-        def run(self) -> int:
+        @staticmethod
+        def run() -> int:
             raise RuntimeError("socket exploded")
 
     monkeypatch.setattr(cli, "Worker", Boom)
@@ -410,7 +412,8 @@ def test_click_exits_pass_through_the_command_wrapper(
         def __init__(self, *args: object) -> None:
             pass
 
-        def run(self) -> int:
+        @staticmethod
+        def run() -> int:
             raise click.Abort
 
     monkeypatch.setattr(cli, "Worker", Aborting)
