@@ -65,3 +65,52 @@ def test_raw_write_drains_a_large_record_without_truncating() -> None:
         os.close(read_fd)
     assert not reader.is_alive()
     assert b"".join(chunks) == data
+
+
+def test_raw_write_with_no_data_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    write = Mock()
+    monkeypatch.setattr(_guard.os, "write", write)
+    _guard.raw_write(2, b"", timeout=1)
+    write.assert_not_called()
+
+
+def test_raw_write_gives_up_when_the_descriptor_stays_full() -> None:
+    import os
+    import time
+
+    read_fd, write_fd = os.pipe()
+    try:
+        started = time.monotonic()
+        _guard.raw_write(write_fd, b"x" * 1_000_000, timeout=0.05)
+        assert time.monotonic() - started < 1
+        assert os.get_blocking(write_fd)
+        os.set_blocking(read_fd, False)
+        assert 0 < len(os.read(read_fd, 2_000_000)) < 1_000_000
+    finally:
+        os.close(write_fd)
+        os.close(read_fd)
+
+
+def test_log_failure_ignores_reentry_and_logger_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    import logging
+
+    logger = logging.getLogger("laravel_cloud_queues.observability")
+    messages: list[str] = []
+
+    class Handler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+            _guard.log_failure("nested")
+
+    handler = Handler()
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
+        _guard.log_failure("outer")
+    finally:
+        logger.removeHandler(handler)
+    assert messages == ["outer"]
+
+    monkeypatch.setattr(_guard, "_logger", Mock(warning=Mock(side_effect=RuntimeError("down"))))
+    _guard.log_failure("still swallowed")
+    assert getattr(_guard._local, "in_log", False) is False

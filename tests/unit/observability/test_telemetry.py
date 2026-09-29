@@ -151,3 +151,19 @@ def test_log_line_alarm_lock_timeout_never_uses_logging(monkeypatch: pytest.Monk
     finally:
         telemetry._lock.release()
     telemetry.log_line({"invalid": object()}, lock_timeout=0.01)
+
+
+def test_null_sink_accepts_and_discards_events() -> None:
+    sink = NullSink()
+    assert sink.emit({"_cloud_event": "queue"}) is True
+    assert sink.emit({"_cloud_event": "queue"}, lock_timeout=0.1) is True
+    assert sink.close() is None
+
+
+def test_log_line_alarm_path_writes_directly_to_the_descriptor(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    telemetry = Telemetry(sink=NullSink(), emits_cloud_events=False)
+    telemetry.log_line({"status": "failed", "path": "a/b"}, lock_timeout=0.05)
+    out = capfd.readouterr().out
+    assert out == '{"status":"failed","path":"a/b"}\n'

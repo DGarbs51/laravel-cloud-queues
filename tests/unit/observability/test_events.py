@@ -408,3 +408,96 @@ def test_failure_log_record_is_full_and_has_no_receipt_handle() -> None:
     assert record["exception_preview"] == _expected_preview(exc)
     assert "receipt" not in record
     assert len(str(record["payload"])) > FAILED_JOB_LINE_LIMIT
+
+
+def test_encode_event_line_sanitizes_nested_sequences_and_rejects_non_string_keys() -> None:
+    line = encode_event_line({"items": ("A\ud800", ["B\udfff"]), "n": (1, 2)})
+    assert json.loads(line) == {"items": ["A�", ["B�"]], "n": [1, 2]}
+    with pytest.raises(TypeError, match="event keys must be strings"):
+        encode_event_line({"outer": {1: "x"}})
+
+
+class UnprintableError(Exception):
+    def __str__(self) -> str:
+        raise RuntimeError("no string form")
+
+
+def test_failed_job_message_falls_back_to_str_for_non_string_args() -> None:
+    numeric = _raise(SampleError(404))
+    assert str(_failed(numeric)["exception_preview"]).startswith(f"{__name__}.SampleError: 404 in ")
+    unprintable = _raise(UnprintableError(404))
+    preview = str(_failed(unprintable)["exception_preview"])
+    assert preview.startswith(f"{__name__}.UnprintableError in ")
+    assert ": " not in preview.split(" in ", 1)[0]
+
+
+def test_failed_job_origin_is_the_innermost_frame() -> None:
+    def inner() -> None:
+        raise SampleError("deep")
+
+    def outer() -> None:
+        inner()
+
+    try:
+        outer()
+    except SampleError as caught:
+        exc = caught
+    filename, lineno = _origin(exc)
+    assert exc.__traceback__ is not None
+    assert exc.__traceback__.tb_next is not None
+    assert str(_failed(exc)["exception_preview"]) == (
+        f"{__name__}.SampleError: deep in {filename}:{lineno}"
+    )
+
+
+def test_failed_job_exception_falls_back_when_the_traceback_cannot_be_formatted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def explode(*_args: object, **_kwargs: object) -> list[str]:
+        raise RuntimeError("formatter down")
+
+    monkeypatch.setattr(traceback, "format_exception", explode)
+    exc = _raise(SampleError("smtp down"))
+    assert _failed(exc)["exception"] == f"{__name__}.SampleError: smtp down\n"
+
+
+def _without_id(event: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in event.items() if key != "id"}
+
+
+def test_d1_keeps_the_payload_with_an_empty_exception_when_the_marker_does_not_fit() -> None:
+    """The truncation marker can outweigh a tiny exception; an empty one still fits."""
+
+    exc = _raise(SampleError("x"))
+    payload = '{"displayName":"SendEmail","body":"intact"}'
+    full = _failed(exc, payload, limit_bytes=10**9)
+    emptied = dict(full)
+    emptied["exception"] = ""
+    limit = len(encode_event_line(emptied))
+
+    result = _failed(exc, payload, limit_bytes=limit)
+    assert _without_id(result) == _without_id(emptied)
+    assert "replayable" not in result
+    assert len(encode_event_line(result)) == limit
+
+
+def test_d1_drops_the_marker_and_then_the_payload_when_nothing_else_fits() -> None:
+    exc = _raise(SampleError("x"))
+    payload = '{"displayName":"SendEmail","body":"long enough to be trimmed away"}'
+    full = _failed(exc, payload, limit_bytes=10**9)
+    skeleton = dict(full)
+    skeleton["exception"] = ""
+    skeleton["payload"] = ""
+    skeleton["replayable"] = False
+    skeleton_len = len(encode_event_line(skeleton))
+
+    result = _failed(exc, payload, limit_bytes=skeleton_len + 5)
+    assert result["replayable"] is False
+    assert result["exception"] == ""
+    assert payload.startswith(str(result["payload"]))
+    assert 0 < len(str(result["payload"])) <= 5
+    assert len(encode_event_line(result)) <= skeleton_len + 5
+
+    for limit in (skeleton_len - 1, 0, -1):
+        smallest = _failed(exc, payload, limit_bytes=limit)
+        assert _without_id(smallest) == _without_id(skeleton)
