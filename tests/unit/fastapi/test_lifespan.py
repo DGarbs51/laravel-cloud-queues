@@ -43,7 +43,8 @@ def test_lifespan_runs_once_across_jobs_and_exits_on_stop() -> None:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         events.append("start")
         _app.state.db = "ready"
-        yield {"label": "yielded"}
+        # Only identifier keys are copied onto app.state; the binding key is left alone.
+        yield {"label": "yielded", "not an identifier": 1, "laravel_cloud_queues": None}
         events.append("stop")
 
     app = FastAPI(lifespan=lifespan)
@@ -59,6 +60,8 @@ def test_lifespan_runs_once_across_jobs_and_exits_on_stop() -> None:
     async def scenario() -> None:
         async with queues.lifespan():
             assert events == ["start"]
+            assert app.state.laravel_cloud_queues is queues
+            assert not hasattr(app.state, "not an identifier")
             await invoker.invoke(_Job(send), (1,), {}, None)  # type: ignore[arg-type]
             await invoker.invoke(_Job(send), (2,), {}, None)  # type: ignore[arg-type]
             assert events.count("start") == 1
