@@ -54,11 +54,14 @@ lcq = "laravel_cloud_queues.cli:main"
 [dependency-groups]
 dev = [
     "boto3-stubs[sqs]>=1.35",
+    "coverage>=7.10",
     "fastapi>=0.121",
     "moto[server]>=5.0",
+    "mypy>=1.18",
     "opentelemetry-api>=1.27",
     "opentelemetry-sdk>=1.27",
     "pydantic>=2.7",
+    "pyright[nodejs]>=1.1.400",
     "pytest>=8.3",
     "pytest-timeout>=2.3",
     "redis>=5.0",
@@ -89,11 +92,12 @@ extend-exclude = [".worktrees", "*.md"]
 # ANN and PYI stand in for mypy --strict's annotation checks, which ty does not do
 # (https://docs.astral.sh/ty/coming-from-mypy-or-pyright/).
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT", "PGH", "ANN", "PYI"]
-ignore = ["RUF001", "RUF002", "RUF003", "ANN401"]
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
 # Only shipped code (src/) and the test harness (tests/harness/) require full annotations.
-"tests/**" = ["B011", "PT011", "PT018"]
+# Explicit Any (ANN401) is banned in shipped code only.
+"tests/**" = ["B011", "PT011", "PT018", "ANN401"]
 "tests/{conformance,contract,docs,fixtures,integration,packaging,runtime_proof,typing,unit}/**" = ["ANN"]
 "tests/harness/test_*.py" = ["ANN"]
 "conftest.py" = ["ANN"]
@@ -118,6 +122,23 @@ possibly-unresolved-reference = "warn"
 unsound-return-statement = "error"
 unused-ignore-comment = "error"
 
+# mypy --strict and pyright strict gate the shipped package only (src/laravel_cloud_queues);
+# ty above still covers src and tests/harness. disallow_any_expr/disallow_any_decorated stay
+# off: they flag every call into untyped third-party APIs (boto3, redis, FastAPI internals).
+[tool.mypy]
+python_version = "3.10"
+files = ["src/laravel_cloud_queues"]
+strict = true
+disallow_any_explicit = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
+
+[tool.pyright]
+include = ["src/laravel_cloud_queues"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+reportUnnecessaryTypeIgnoreComment = "error"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
@@ -133,3 +154,22 @@ markers = [
     "packaging: builds and installs the wheel and sdist",
     "conformance: conformance catalog probes",
 ]
+
+# 100% line and branch coverage of the shipped package, measured over the whole CI matrix:
+# each test job uploads its data files and the `coverage` job combines them, since some
+# branches only run on specific Python versions. patch = ["subprocess"] follows the real
+# worker subprocesses the integration and runtime-proof suites spawn.
+[tool.coverage.run]
+source = ["laravel_cloud_queues"]
+branch = true
+parallel = true
+patch = ["subprocess"]
+
+[tool.coverage.paths]
+source = ["src/laravel_cloud_queues", "*/site-packages/laravel_cloud_queues"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "@overload", "raise NotImplementedError", "\\.\\.\\.$"]
