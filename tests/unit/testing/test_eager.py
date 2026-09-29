@@ -279,3 +279,17 @@ def test_eager_nested_dispatch(registry: Registry) -> None:
         parent.dispatch()
     assert order == ["parent start", "child 1", "child 2", "parent end"]
     assert [d.job_name for d in recorder.dispatched] == ["parent", "child", "child"]
+
+
+def test_dispatch_async_only_records_when_not_eager(registry: Registry) -> None:
+    @registry.job(name="j")
+    async def handler() -> None:
+        raise AssertionError("must not run")
+
+    async def main() -> None:
+        with registry.testing(eager=False) as recorder:
+            receipt = await handler.dispatch_async()
+        assert [d.job_name for d in recorder.dispatched] == ["j"]
+        assert receipt.queue == "default"
+
+    anyio.run(main)

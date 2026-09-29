@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -12,6 +13,7 @@ from uuid import UUID
 
 import pytest
 
+from laravel_cloud_queues import codecs as codecs_module
 from laravel_cloud_queues.codecs import default_codecs
 from laravel_cloud_queues.errors import (
     CodecError,
@@ -299,3 +301,74 @@ def test_recursive_union_work_is_bounded(valid):
     assert perf_counter() - started < 0.5
     # Failure state must never leak into the next top-level call.
     assert codecs.decode({"child": None}, Shape) == Circle(None)
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        Literal["yes", "no"],
+        dict[str, list[Literal[1]]],
+        Parent,
+        Shape,
+        list[Circle],
+        tuple[int, ...],
+    ],
+)
+def test_supported_annotations_validate(annotation):
+    default_codecs().validate_annotation(annotation)
+
+
+def test_pydantic_annotations_validate_field_by_field():
+    pydantic = pytest.importorskip("pydantic")
+
+    class Model(pydantic.BaseModel):
+        child: Child
+
+    class Unsupported(pydantic.BaseModel):
+        anything: object
+
+    default_codecs().validate_annotation(Model)
+    with pytest.raises(ConfigurationError):
+        default_codecs().validate_annotation(Unsupported)
+
+
+def test_without_pydantic_models_are_plain_objects(monkeypatch):
+    pydantic = pytest.importorskip("pydantic")
+
+    class Model(pydantic.BaseModel):
+        count: int = 1
+
+    monkeypatch.setitem(sys.modules, "pydantic", None)
+    assert codecs_module._pydantic_model_type() is None
+    monkeypatch.setattr(codecs_module, "_BASE_MODEL", None)
+    codecs = default_codecs()
+    with pytest.raises(ConfigurationError):
+        codecs.validate_annotation(Model)
+    with pytest.raises(SerializationError):
+        codecs.encode(Model())
+    with pytest.raises(CodecError):
+        codecs.decode({"count": 1}, Model)
+
+
+def test_enum_literal_with_undecodable_value():
+    with pytest.raises(CodecError):
+        default_codecs().decode("purple", Literal[Color.RED])
+
+
+def test_custom_codec_must_return_its_python_type():
+    class Wrong(TokenCodec):
+        def decode(self, data):
+            return data
+
+    codecs = default_codecs()
+    codecs.register(Wrong())
+    with pytest.raises(CodecError):
+        codecs.decode({"$type": "token", "value": "abc"}, Token)
+
+
+@pytest.mark.parametrize(
+    ("data", "annotation"), [([1], dict[str, int]), ({"a": 1}, dict[int, int])]
+)
+def test_dictionary_annotation_mismatches(data, annotation):
+    with pytest.raises(CodecError):
+        default_codecs().decode(data, annotation)

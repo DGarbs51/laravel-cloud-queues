@@ -93,3 +93,9 @@ def test_job_control_is_an_exception() -> None:
 def test_current_job_outside_a_job() -> None:
     with pytest.raises(RuntimeError):
         current_job()
+
+
+def test_repr_names_the_delivery_without_the_message_id() -> None:
+    assert repr(make_context()) == (
+        "JobContext(job_name='emails.send', uuid='u-1', queue='emails', attempt=2, max_tries=3)"
+    )
