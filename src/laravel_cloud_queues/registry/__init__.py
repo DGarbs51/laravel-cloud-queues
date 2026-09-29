@@ -150,7 +150,8 @@ def merge_injected(
     This is :func:`bind_injected` for callers that spread the arguments themselves.
     """
     bound = bind_injected(signature, args, kwargs, injected)
-    return bound.args, bound.kwargs
+    call_kwargs: dict[str, object] = bound.kwargs
+    return bound.args, call_kwargs
 
 
 class Registry:
