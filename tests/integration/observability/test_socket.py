@@ -332,7 +332,7 @@ def test_logging_handler_reentry_does_not_recurse() -> None:
     logger = logging.getLogger("laravel_cloud_queues.observability")
     messages: list[str] = []
 
-    class Handler(logging.Handler):
+    class Handler(logging.Handler):  # skipcq: PY-A6006 - test-only capture handler
         def __init__(self) -> None:
             super().__init__()
             self.calls = 0

@@ -97,7 +97,7 @@ def test_log_failure_ignores_reentry_and_logger_errors(monkeypatch: pytest.Monke
     logger = logging.getLogger("laravel_cloud_queues.observability")
     messages: list[str] = []
 
-    class Handler(logging.Handler):
+    class Handler(logging.Handler):  # skipcq: PY-A6006 - test-only capture handler
         def emit(self, record: logging.LogRecord) -> None:
             messages.append(record.getMessage())
             _guard.log_failure("nested")
