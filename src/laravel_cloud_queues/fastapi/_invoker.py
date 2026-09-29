@@ -39,6 +39,7 @@ from fastapi.dependencies.utils import get_dependant, solve_dependencies
 from starlette.requests import Request
 from typing_extensions import ParamSpec
 
+from .._narrowing import is_mapping
 from ..errors import ConfigurationError
 from ..jobs.context import JobContext, JobControl, current_job
 from ..jobs.job import AnyJob
@@ -327,9 +328,8 @@ def _format_errors(errors: Sequence[object]) -> str:
     """
     parts: list[str] = []
     for error in errors:
-        if isinstance(error, Mapping):
-            details: Mapping[object, object] = error
-            parts.append(f"{details.get('loc', ())}: {details.get('msg', 'invalid')}")
+        if is_mapping(error):
+            parts.append(f"{error.get('loc', ())}: {error.get('msg', 'invalid')}")
         else:
             parts.append(repr(error))
     return "; ".join(parts) or "dependency validation failed"
