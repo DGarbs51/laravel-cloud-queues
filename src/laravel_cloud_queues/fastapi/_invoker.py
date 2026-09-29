@@ -30,13 +30,14 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import Any, Literal
+from typing import Literal, TypeVar
 
 import anyio
 from fastapi import FastAPI
 from fastapi import __version__ as _fastapi_version
 from fastapi.dependencies.utils import get_dependant, solve_dependencies
 from starlette.requests import Request
+from typing_extensions import ParamSpec
 
 from ..errors import ConfigurationError
 from ..jobs.context import JobContext, JobControl, current_job
@@ -44,10 +45,9 @@ from ..jobs.job import AnyJob
 from ..registry import merge_injected
 from ._depends import (
     QUEUE_JOB_PATH,
-    _signature_call,
+    SignatureCall,
     dependency_parameters,
     parameter_is_injected,
-    plain_job_context_parameters,
     reject_request_dependencies,
 )
 
@@ -78,6 +78,9 @@ logger = logging.getLogger("laravel_cloud_queues.fastapi")
 
 TEARDOWN_DEADLINE_SECONDS = 10.0
 """The number of seconds async teardown may take after an explicit release or fail."""
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 _Outcome = Literal["pending", "success", "control", "error"]
 """The outcome of a handler, as recorded for dependency teardown."""
@@ -132,32 +135,23 @@ class FastAPIInvoker:
         request_stack = AsyncExitStack()
         function_stack = AsyncExitStack()
         await request_stack.__aenter__()
-        function_entered = False
+        await function_stack.__aenter__()
         outcome: _Outcome = "pending"
         caught: BaseException | None = None
         try:
-            await function_stack.__aenter__()
-            function_entered = True
-            try:
-                solved = await _solve(self._app, func, context, request_stack, function_stack)
-                await _run_handler(job, args, kwargs, context, solved)
-            except JobControl as exc:
-                outcome = "control"
-                caught = exc
-            except Exception as exc:
-                outcome = "error"
-                caught = exc
-            else:
-                outcome = "success"
+            solved = await _solve(self._app, func, context, request_stack, function_stack)
+            await _run_handler(job, args, kwargs, context, solved)
         except JobControl as exc:
             outcome = "control"
             caught = exc
         except Exception as exc:
             outcome = "error"
             caught = exc
+        else:
+            outcome = "success"
         finally:
             await _close_dependencies(
-                function_stack if function_entered else None,
+                function_stack,
                 request_stack,
                 outcome=outcome,
                 context=context,
@@ -169,17 +163,17 @@ class FastAPIInvoker:
 
 async def _solve(
     app: FastAPI,
-    func: Callable[..., Any],
+    func: Callable[P, R],
     context: JobContext,
     request_stack: AsyncExitStack,
     function_stack: AsyncExitStack,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Resolve the handler's dependencies against a synthetic queue job request.
 
     Raises a :class:`ConfigurationError` if the dependencies cannot be resolved.
     """
     parameters = dependency_parameters(func)
-    scope: dict[str, Any] = {
+    scope: dict[str, object] = {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "2.3"},
         "http_version": "1.1",
@@ -199,16 +193,15 @@ async def _solve(
         "fastapi_function_astack": function_stack,
     }
     provider = _OverrideProvider(app, context)
-    # Fresh cache per delivery. FastAPI reuses one cached sub-dependency within this call.
-    cache: dict[Any, Any] = {}
+    # No ``dependency_cache`` is passed, so FastAPI builds a fresh one per delivery and
+    # reuses a cached sub-dependency within this call only.
     solved = await solve_dependencies(
         request=Request(scope),
         dependant=get_dependant(
             path=QUEUE_JOB_PATH,
-            call=_signature_call(inspect.Signature(parameters)),
+            call=SignatureCall(inspect.Signature(parameters)),
         ),
         dependency_overrides_provider=provider,
-        dependency_cache=cache,
         async_exit_stack=request_stack,
         embed_body_fields=False,
     )
@@ -225,7 +218,7 @@ async def _run_handler(
     args: Sequence[object],
     kwargs: Mapping[str, object],
     context: JobContext,
-    solved: Mapping[str, Any],
+    solved: Mapping[str, object],
 ) -> None:
     """Run the handler, awaiting its result when it is awaitable."""
     result = _call(job, args, kwargs, context, solved)
@@ -238,34 +231,23 @@ def _call(
     args: Sequence[object],
     kwargs: Mapping[str, object],
     context: JobContext,
-    solved: Mapping[str, Any],
-) -> Any:
+    solved: Mapping[str, object],
+) -> object:
     """Call the handler through :func:`merge_injected` and the inspected signature.
 
-    Omitted defaults stay omitted, matching dispatch. Plain ``JobContext`` parameters
-    receive this delivery's context; FastAPI solves the other injected parameters.
-    Raises a :class:`ConfigurationError` if an injected parameter has no value.
+    Omitted defaults stay omitted, matching dispatch. FastAPI solves every injected
+    parameter except a plain ``JobContext``, which receives this delivery's context.
     """
 
-    signature = job._signature
-    plain = {parameter.name for parameter in plain_job_context_parameters(job.func)}
-    injected: dict[str, object] = {}
-    for name in signature.injected:
-        if name in solved:
-            injected[name] = solved[name]
-        elif name in plain:
-            injected[name] = context
-        else:
-            raise ConfigurationError(
-                f"Job [{_qualname(job.func)}] parameter {name!r} "
-                "was not provided by the payload or by a dependency."
-            )
+    # Job keeps the inspected signature private; the core package owns a public accessor.
+    signature = job._signature  # pyright: ignore[reportPrivateUsage]
+    injected = {name: solved.get(name, context) for name in signature.injected}
     call_args, call_kwargs = merge_injected(signature.signature, args, kwargs, injected)
     return job.func(*call_args, **call_kwargs)
 
 
 async def _close_dependencies(
-    function_stack: AsyncExitStack | None,
+    function_stack: AsyncExitStack,
     request_stack: AsyncExitStack,
     *,
     outcome: _Outcome,
@@ -276,9 +258,10 @@ async def _close_dependencies(
 
     The handler's exception, or its ``JobControl``, is thrown into ``yield`` dependencies
     so their ``except`` and ``finally`` blocks see it, exactly as in a request. Re-raising
-    it is normal teardown, and suppressing it does not change the job outcome, since the
-    caller still raises it. Any other exception is a teardown error: it propagates after a
-    success and is logged otherwise.
+    it is normal teardown, which ``contextlib`` reports as "not suppressed" rather than
+    raising, and suppressing it does not change the job outcome, since the caller still
+    raises it. Any other exception is a teardown error: it propagates after a success and
+    is logged otherwise.
     """
     try:
         if outcome == "control":
@@ -286,20 +269,18 @@ async def _close_dependencies(
                 await _aexit(function_stack, request_stack, exc)
         else:
             await _aexit(function_stack, request_stack, exc)
-    except Exception as teardown_exc:
-        if teardown_exc is exc:
-            return
+    except Exception:
         if outcome == "success":
             raise
         logger.exception(
             "Dependency teardown failed after %s for job [%s]; the recorded outcome stands.",
             _outcome_phrase(outcome),
-            _job_label(context),
+            context.job_name,
         )
 
 
 async def _aexit(
-    function_stack: AsyncExitStack | None,
+    function_stack: AsyncExitStack,
     request_stack: AsyncExitStack,
     exc: BaseException | None,
 ) -> None:
@@ -311,14 +292,13 @@ async def _aexit(
     raised, leaving the caller to decide the outcome.
     """
     details = _exc_details(exc)
-    if function_stack is not None:
-        try:
-            if await function_stack.__aexit__(*details):
-                details = (None, None, None)
-        except BaseException as inner:
-            if await request_stack.__aexit__(type(inner), inner, inner.__traceback__):
-                return
-            raise
+    try:
+        if await function_stack.__aexit__(*details):
+            details = (None, None, None)
+    except BaseException as inner:
+        if await request_stack.__aexit__(type(inner), inner, inner.__traceback__):
+            return
+        raise
     await request_stack.__aexit__(*details)
 
 
@@ -340,30 +320,21 @@ def _outcome_phrase(outcome: _Outcome) -> str:
     return "a handler error"
 
 
-def _job_label(context: JobContext) -> str:
-    """Get the job name for logging, or ``unknown`` when it is unavailable."""
-    try:
-        return context.job_name
-    except Exception:
-        return "unknown"
+def _format_errors(errors: Sequence[object]) -> str:
+    """Format the dependency validation errors as a single message.
 
-
-def _format_errors(errors: Sequence[Any]) -> str:
-    """Format the dependency validation errors as a single message."""
+    FastAPI reports each error as a pydantic ``ErrorDetails`` mapping.
+    """
     parts: list[str] = []
     for error in errors:
         if isinstance(error, Mapping):
-            parts.append(f"{error.get('loc', ())}: {error.get('msg', 'invalid')}")
-            continue
-        loc = getattr(error, "loc", None)
-        msg = getattr(error, "msg", None)
-        if loc is not None and msg is not None:
-            parts.append(f"{loc}: {msg}")
+            details: Mapping[object, object] = error
+            parts.append(f"{details.get('loc', ())}: {details.get('msg', 'invalid')}")
         else:
-            parts.append(type(error).__name__)
+            parts.append(repr(error))
     return "; ".join(parts) or "dependency validation failed"
 
 
-def _qualname(func: Callable[..., Any]) -> str:
+def _qualname(func: object) -> str:
     """Get the qualified name of the given handler."""
     return str(getattr(func, "__qualname__", "<job>"))
