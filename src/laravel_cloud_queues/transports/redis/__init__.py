@@ -147,6 +147,11 @@ class _RedisTransport:
 
     def _keys(self, queue: str) -> tuple[str, str, str, str]:
         """Get the pending, delayed, reserved and notify keys for the given queue."""
+        # A pending key must never alias another queue's internal key.
+        if queue.endswith((":delayed", ":reserved", ":notify")):
+            raise ConfigurationError(
+                "Redis queue names must not end with :delayed, :reserved, or :notify."
+            )
         pending = f"{self._prefix}queues:{queue}"
         return pending, f"{pending}:delayed", f"{pending}:reserved", f"{pending}:notify"
 

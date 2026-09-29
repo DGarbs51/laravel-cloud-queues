@@ -6,14 +6,17 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from hashlib import sha256
 from threading import Event
 from uuid import UUID, uuid4
 
 import pytest
 
-from laravel_cloud_queues.config import RedisConfig
-from laravel_cloud_queues.errors import LeaseLostError
+from laravel_cloud_queues import Registry
+from laravel_cloud_queues.config import QueueConfig, RedisConfig
+from laravel_cloud_queues.errors import ConfigurationError, LeaseLostError
+from laravel_cloud_queues.transports import Backend
 from laravel_cloud_queues.transports.base import OutgoingMessage
 from laravel_cloud_queues.transports.redis import RedisConsumer, RedisProducer
 
@@ -61,6 +64,55 @@ def broker(request):
         if keys:
             client.delete(*keys)
         client.close()
+
+
+@pytest.mark.parametrize("suffix", ["delayed", "reserved", "notify"])
+@pytest.mark.parametrize("delay", [0, 60])
+def test_dispatch_cannot_alias_another_queues_internal_keys(broker, suffix, delay):
+    config, client, producer, consumer = broker
+    registry = Registry(
+        config=QueueConfig(mode="redis", redis=config),
+        backend=Backend(
+            mode="redis", producer=producer, consumer_factory=partial(RedisConsumer, config)
+        ),
+    )
+    job = registry.job(name="alias.test")(lambda: None)
+    with pytest.raises(ConfigurationError, match="Redis queue names must not end with"):
+        job.options(queue=f"orders:{suffix}", delay=delay).dispatch()
+    assert list(client.scan_iter(match=f"{config.prefix}*")) == []
+
+    sent = job.options(queue="orders").dispatch()
+    delivery = consumer.receive(["orders"], 0)
+    assert delivery is not None
+    assert delivery.message_id == sent.message_id
+    consumer.renew(delivery, 60)
+    consumer.release(delivery, 0)
+    redelivered = consumer.receive(["orders"], 0)
+    assert redelivered is not None
+    assert redelivered.message_id == sent.message_id
+    assert redelivered.attempt == 2
+    consumer.complete(redelivered)
+    assert consumer.receive(["orders"], 0) is None
+
+
+@pytest.mark.parametrize(
+    "queue",
+    [
+        "reserved",
+        "tenant:orders",
+        "orders:reserved:child",
+        "orders:notify-other",
+        "orders:delayed:",
+    ],
+)
+def test_non_aliasing_queue_names_keep_existing_keys(broker, queue):
+    config, client, producer, consumer = broker
+    sent = producer.send(OutgoingMessage("body", queue))
+    assert client.llen(f"{config.prefix}queues:{queue}") == 1
+    delivery = consumer.receive([queue], 0)
+    assert delivery is not None
+    assert (delivery.message_id, delivery.queue, delivery.body) == (sent.message_id, queue, "body")
+    consumer.complete(delivery)
 
 
 @pytest.mark.parametrize("terminal", [False, True])
