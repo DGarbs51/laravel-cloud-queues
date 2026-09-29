@@ -3,7 +3,8 @@ version = 1
 # Test files are analyzed as tests, not shipped code.
 test_patterns = ["tests/**", "conftest.py"]
 
-exclude_patterns = ["docs/_build/**", "conformance-artifacts/**"]
+# Sphinx config and the contract catalog; not shipped code.
+exclude_patterns = ["docs/**"]
 
 [[analyzers]]
 name = "python"
