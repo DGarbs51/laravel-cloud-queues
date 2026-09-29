@@ -9,7 +9,8 @@ from typing import Literal
 Mode = Literal["managed", "sqs", "redis"]
 """The name of a queue backend."""
 
-DEFAULT_AGENT_SOCKET = "/tmp/cloud-agent.sock"
+# The platform owns this socket; the path is fixed by Laravel Cloud, not a temp file we create.
+DEFAULT_AGENT_SOCKET = "/tmp/cloud-agent.sock"  # skipcq: BAN-B108
 """The default path of the Laravel Cloud agent socket."""
 DEFAULT_LOG_SOCKET = "unix:///tmp/cloud-init.sock"
 """The default address of the Laravel Cloud log socket."""

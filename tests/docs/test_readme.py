@@ -50,7 +50,8 @@ def test_runnable_blocks_execute(line: int, code: str, monkeypatch: pytest.Monke
     # A real module so dataclasses/type hints defined in the example resolve normally.
     module = types.ModuleType(f"readme_example_{line}")
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    exec(compile(code, f"README.md:{line}", "exec"), module.__dict__)
+    # exec runs this repo's own README examples, never outside input.
+    exec(compile(code, f"README.md:{line}", "exec"), module.__dict__)  # skipcq: PYL-W0122
 
 
 def test_runnable_examples_exist() -> None:

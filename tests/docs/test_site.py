@@ -64,7 +64,8 @@ def test_runnable_blocks_execute(where: str, code: str, monkeypatch: pytest.Monk
     # A real module so dataclasses/type hints defined in the example resolve normally.
     module = types.ModuleType("docs_example_" + re.sub(r"\W", "_", where))
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    exec(compile(code, where, "exec"), module.__dict__)
+    # exec runs this repo's own documentation examples, never outside input.
+    exec(compile(code, where, "exec"), module.__dict__)  # skipcq: PYL-W0122
 
 
 def test_runnable_examples_exist() -> None:
