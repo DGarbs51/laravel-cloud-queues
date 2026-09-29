@@ -101,6 +101,11 @@ def test_no_provider_credentials_never_falls_back(hostile_aws, monkeypatch):
         _client._build_client(SqsConnectionConfig("prefix", "us-east-1", "ecs"))
 
 
+def test_unknown_provider_is_rejected():
+    with pytest.raises(ConfigurationError, match="Unknown SQS credentials provider"):
+        _client._build_client(SqsConnectionConfig("prefix", "us-east-1", "imds-v3"))
+
+
 def test_default_chain_requires_explicit_opt_in_and_ignores_endpoint(monkeypatch):
     monkeypatch.delenv("AWS_PROFILE", raising=False)
     monkeypatch.delenv("AWS_DEFAULT_PROFILE", raising=False)
