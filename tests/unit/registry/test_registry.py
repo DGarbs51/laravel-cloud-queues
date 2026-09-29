@@ -16,7 +16,12 @@ import pytest
 from laravel_cloud_queues import Job, JobContext, Registry, RetryPolicy
 from laravel_cloud_queues.config import QueueConfig
 from laravel_cloud_queues.errors import ConfigurationError, UnknownJobError
-from laravel_cloud_queues.registry import DefaultInvoker, WorkerTarget, merge_injected
+from laravel_cloud_queues.registry import (
+    DefaultInvoker,
+    WorkerTarget,
+    bind_injected,
+    merge_injected,
+)
 
 
 def plain(user_id: int) -> int:
@@ -251,13 +256,17 @@ def test_merge_injected_keeps_positional_shape() -> None:
     def handler(a: int, context: JobContext, /, b: int, *, c: int = 3) -> None: ...
 
     marker = object()
-    bound = merge_injected(inspect.signature(handler), [1, 2], {"c": 4}, {"context": marker})
+    bound = bind_injected(inspect.signature(handler), [1, 2], {"c": 4}, {"context": marker})
     assert bound.args == (1, marker, 2)
     assert bound.kwargs == {"c": 4}
 
-    bound = merge_injected(inspect.signature(handler), [1], {"b": 2}, {"context": marker})
+    bound = bind_injected(inspect.signature(handler), [1], {"b": 2}, {"context": marker})
     assert bound.args == (1, marker, 2)
     assert bound.kwargs == {}
+    assert merge_injected(inspect.signature(handler), [1], {"b": 2}, {"context": marker}) == (
+        (1, marker, 2),
+        {},
+    )
 
 
 def _context() -> JobContext:

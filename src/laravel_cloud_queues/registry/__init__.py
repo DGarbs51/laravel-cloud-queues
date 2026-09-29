@@ -107,21 +107,21 @@ class DefaultInvoker:
         """Call the handler with the context injected, awaiting it when it is async."""
         signature = job.signature
         injected = {name: context for name in signature.injected}
-        result = job.call_bound(merge_injected(signature.signature, args, kwargs, injected))
+        result = job.call_bound(bind_injected(signature.signature, args, kwargs, injected))
         if inspect.isawaitable(result):
             await result
 
 
-def merge_injected(
+def bind_injected(
     signature: inspect.Signature,
     args: Sequence[object],
     kwargs: Mapping[str, object],
     injected: Mapping[str, object],
 ) -> inspect.BoundArguments:
-    """Merge the payload arguments with the injected values for the full handler signature.
+    """Bind the payload arguments and the injected values to the full handler signature.
 
-    The payload arguments are bound against the serialized parameters only, and the result
-    is bound to the full signature.
+    The payload arguments are bound against the serialized parameters only. The result is
+    passed to :meth:`Job.call_bound`.
     """
     serialized = signature.replace(
         parameters=[p for p in signature.parameters.values() if p.name not in injected]
@@ -137,6 +137,20 @@ def merge_injected(
                 arguments[parameter.name] = parameter.default
     arguments.update(injected)
     return inspect.BoundArguments(signature, arguments)
+
+
+def merge_injected(
+    signature: inspect.Signature,
+    args: Sequence[object],
+    kwargs: Mapping[str, object],
+    injected: Mapping[str, object],
+) -> tuple[tuple[object, ...], dict[str, object]]:
+    """Merge the payload arguments with the injected values as an ``(args, kwargs)`` pair.
+
+    This is :func:`bind_injected` for callers that spread the arguments themselves.
+    """
+    bound = bind_injected(signature, args, kwargs, injected)
+    return bound.args, bound.kwargs
 
 
 class Registry:
