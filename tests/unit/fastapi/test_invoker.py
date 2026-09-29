@@ -14,7 +14,12 @@ from starlette.requests import Request
 
 from laravel_cloud_queues.errors import ConfigurationError
 from laravel_cloud_queues.fastapi._depends import parameter_is_injected
-from laravel_cloud_queues.fastapi._invoker import TEARDOWN_DEADLINE_SECONDS, FastAPIInvoker
+from laravel_cloud_queues.fastapi._invoker import (
+    TEARDOWN_DEADLINE_SECONDS,
+    FastAPIInvoker,
+    _format_errors,
+    _version_tuple,
+)
 from laravel_cloud_queues.jobs.context import JobContext, JobControl, current_job
 from laravel_cloud_queues.jobs.signature import inspect_handler
 
@@ -458,3 +463,145 @@ def test_sync_and_async_yield_dependencies_tear_down_lifo() -> None:
         "async-exit",
         "sync-exit",
     ]
+
+
+def test_version_tuple_reads_major_and_minor() -> None:
+    assert _version_tuple("0.141.1") == (0, 141)
+    assert _version_tuple("0.121") == (0, 121)
+    assert _version_tuple("1.0rc1") == (1, 0)
+    assert _version_tuple("2") == (2, 0)
+
+
+def test_an_app_override_of_current_job_wins() -> None:
+    app = FastAPI()
+    stand_in = _Context("override")
+    app.dependency_overrides[current_job] = lambda: stand_in
+    seen: list[str] = []
+
+    def send(job: JobContext = Depends(current_job)) -> None:  # noqa: B008
+        seen.append(job.job_name)
+
+    _run(FastAPIInvoker(app).invoke, _Job(send), (), {}, _Context("delivery"))
+    assert seen == ["override"]
+
+
+def test_dependencies_fastapi_cannot_solve_are_configuration_errors() -> None:
+    """Registration cannot see that ``self`` has no value; the solver reports it."""
+
+    class Builder:
+        def build(self, size: int = 1) -> int:
+            return size
+
+    def send(size: int = Depends(Builder.build)) -> None:
+        assert size
+
+    with pytest.raises(ConfigurationError, match=r"could not be resolved: .*'self'.*required"):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+
+
+def test_format_errors_handles_every_shape() -> None:
+    assert _format_errors([]) == "dependency validation failed"
+    assert _format_errors([{"loc": ("query", "x"), "msg": "Field required"}, {}, 5]) == (
+        "('query', 'x'): Field required; (): invalid; 5"
+    )
+
+
+def test_function_scoped_teardown_is_unwound_before_request_scope() -> None:
+    """``Depends(scope="function")`` exits before request-scoped dependencies, and what it
+    raises or suppresses is what the request scope sees, as in FastAPI's nested stacks."""
+    log: list[str] = []
+
+    async def swallow() -> AsyncIterator[str]:
+        try:
+            yield "function"
+        except RuntimeError as exc:
+            log.append(f"function:{exc}")
+
+    async def outer() -> AsyncIterator[str]:
+        try:
+            yield "request"
+            log.append("request:clean")
+        except BaseException as exc:
+            log.append(f"request:{exc}")
+            raise
+
+    async def send(
+        inner: str = Depends(swallow, scope="function"),
+        wrapper: str = Depends(outer),
+    ) -> None:
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert log == ["function:boom", "request:clean"]
+
+
+def test_request_scope_can_suppress_a_function_scoped_teardown_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    log: list[str] = []
+
+    async def explode() -> AsyncIterator[str]:
+        yield "function"
+        raise ValueError("teardown boom")
+
+    async def absorb() -> AsyncIterator[str]:
+        try:
+            yield "request"
+        except ValueError as exc:
+            log.append(f"absorbed:{exc}")
+
+    async def send(
+        inner: str = Depends(explode, scope="function"),
+        wrapper: str = Depends(absorb),
+    ) -> None:
+        log.append("ran")
+
+    with caplog.at_level(logging.ERROR):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert log == ["ran", "absorbed:teardown boom"]
+    assert caplog.text == ""
+
+
+def test_function_scoped_teardown_error_propagates_after_success() -> None:
+    log: list[str] = []
+
+    async def explode() -> AsyncIterator[str]:
+        yield "function"
+        raise ValueError("teardown boom")
+
+    async def outer() -> AsyncIterator[str]:
+        try:
+            yield "request"
+        except ValueError as exc:
+            log.append(f"seen:{exc}")
+            raise
+
+    async def send(
+        inner: str = Depends(explode, scope="function"),
+        wrapper: str = Depends(outer),
+    ) -> None:
+        log.append("ran")
+
+    with pytest.raises(ValueError, match="teardown boom"):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert log == ["ran", "seen:teardown boom"]
+
+
+def test_teardown_error_after_cancellation_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    class _Abort(BaseException):
+        pass
+
+    async def resource() -> AsyncIterator[int]:
+        try:
+            yield 1
+        finally:
+            raise RuntimeError("teardown boom")
+
+    async def send(value: int = Depends(resource)) -> None:
+        raise _Abort()
+
+    with caplog.at_level(logging.ERROR), pytest.raises(_Abort):
+        _run(FastAPIInvoker(FastAPI()).invoke, _Job(send), (), {}, _Context())
+    assert "after cancellation" in caplog.text
+    assert "teardown boom" in caplog.text
