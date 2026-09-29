@@ -26,9 +26,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid as uuidlib
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -74,7 +73,7 @@ class RecordedDispatch:
 class DispatchRecorder:
     """The recorder of every dispatch made within a ``registry.testing()`` block."""
 
-    dispatched: list[RecordedDispatch] = field(default_factory=list)
+    dispatched: list[RecordedDispatch] = field(default_factory=list[RecordedDispatch])
     """The recorded dispatches, in the order they were made."""
 
     def for_job(self, job_name: str) -> list[RecordedDispatch]:
@@ -83,7 +82,7 @@ class DispatchRecorder:
 
 
 @dataclass
-class _TestingSession:
+class TestingSession:
     """The active ``registry.testing()`` block.
 
     The ``Job.dispatch*`` methods route here instead of sending.
@@ -167,20 +166,6 @@ def _raise_failure(result: HandlerResult) -> None:
     """Raise the exception of the given handler result if the job errored or failed."""
     if result.kind in ("error", "fail") and result.exception is not None:
         raise result.exception
-
-
-@contextmanager
-def _testing_session(registry: Registry, *, eager: bool) -> Iterator[DispatchRecorder]:
-    """Route the registry's dispatches to a new testing session for the block.
-
-    The previous session is restored on exit, so sessions may be nested.
-    """
-    session = _TestingSession(registry, DispatchRecorder(), eager)
-    previous, registry._testing_session = registry._testing_session, session
-    try:
-        yield session.recorder
-    finally:
-        registry._testing_session = previous
 
 
 __all__ = ["DispatchRecorder", "RecordedDispatch"]

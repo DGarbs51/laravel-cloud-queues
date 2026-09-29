@@ -126,7 +126,7 @@ class JobContext:
         raise JobControl(f"Job outcome chosen: {self._outcome.kind}.")
 
 
-_current_job: ContextVar[JobContext] = ContextVar("laravel_cloud_queues.current_job")
+CURRENT_JOB: ContextVar[JobContext] = ContextVar("laravel_cloud_queues.current_job")
 """The context of the job running in the current execution context."""
 
 
@@ -137,6 +137,6 @@ def current_job() -> JobContext:
     is running. It may be used as a FastAPI dependency via ``Depends(current_job)``.
     """
     try:
-        return _current_job.get()
+        return CURRENT_JOB.get()
     except LookupError:
         raise RuntimeError("current_job() was called outside a running job.") from None

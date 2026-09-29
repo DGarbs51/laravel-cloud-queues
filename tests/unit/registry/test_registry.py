@@ -243,21 +243,21 @@ def test_postponed_annotations_are_resolved_before_injection() -> None:
 
     assert inspect.signature(handler).parameters["context"].annotation == "JobContext"
     job = Registry().job(handler)
-    assert job._signature.injected == ("context",)
-    assert job._signature.serialized == ("order_id",)
+    assert job.signature.injected == ("context",)
+    assert job.signature.serialized == ("order_id",)
 
 
 def test_merge_injected_keeps_positional_shape() -> None:
     def handler(a: int, context: JobContext, /, b: int, *, c: int = 3) -> None: ...
 
     marker = object()
-    args, kwargs = merge_injected(inspect.signature(handler), [1, 2], {"c": 4}, {"context": marker})
-    assert args == (1, marker, 2)
-    assert kwargs == {"c": 4}
+    bound = merge_injected(inspect.signature(handler), [1, 2], {"c": 4}, {"context": marker})
+    assert bound.args == (1, marker, 2)
+    assert bound.kwargs == {"c": 4}
 
-    args, kwargs = merge_injected(inspect.signature(handler), [1], {"b": 2}, {"context": marker})
-    assert args == (1, marker, 2)
-    assert kwargs == {}
+    bound = merge_injected(inspect.signature(handler), [1], {"b": 2}, {"context": marker})
+    assert bound.args == (1, marker, 2)
+    assert bound.kwargs == {}
 
 
 def _context() -> JobContext:

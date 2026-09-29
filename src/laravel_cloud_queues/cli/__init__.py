@@ -15,9 +15,11 @@ import sys
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+from typing import Protocol, TypedDict
 from urllib.parse import unquote_plus
 
 import click
+from typing_extensions import ParamSpec, TypeIs
 
 from ..config import QueueConfig, StaticCredentials
 from ..errors import ConfigurationError
@@ -26,6 +28,8 @@ from ..worker import EXIT_CONFIG, EXIT_FATAL, Worker, WorkerOptions, resolve_tar
 
 PROG = "laravel-cloud-queues"
 """The program name shown in usage and error messages."""
+P = ParamSpec("P")
+"""The parameters of a wrapped command function."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -51,7 +55,15 @@ def cli() -> None:
     """
 
 
-def _command(func: Callable[..., int]) -> Callable[..., None]:
+class _Command(Protocol[P]):
+    """A command function that takes the ``--debug`` flag and the wrapped parameters."""
+
+    def __call__(self, debug: bool, *args: P.args, **kwargs: P.kwargs) -> None:
+        """Run the command."""
+        ...
+
+
+def _command(func: Callable[P, int]) -> _Command[P]:
     """Wrap the given function as a command that exits with its returned code.
 
     The wrapper adds a ``--debug`` flag and turns any failure into one redacted error line.
@@ -59,10 +71,10 @@ def _command(func: Callable[..., int]) -> Callable[..., None]:
 
     @click.option("--debug", is_flag=True, help="Show tracebacks on errors.")
     @functools.wraps(func)
-    def wrapper(debug: bool, **params: object) -> None:
+    def wrapper(debug: bool, *args: P.args, **kwargs: P.kwargs) -> None:
         """Run the command and exit with its code, reporting failures on stderr."""
         try:
-            code = func(**params)
+            code = func(*args, **kwargs)
         except (click.ClickException, click.exceptions.Exit, click.Abort):
             raise
         except (Exception, KeyboardInterrupt) as exc:
@@ -190,7 +202,20 @@ def inspect(target: str, as_json: bool) -> int:
     return 0
 
 
-def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> dict[str, object]:
+class _Report(TypedDict):
+    """The inspection report of a worker target."""
+
+    mode: str
+    """The selected queue backend."""
+    queues: dict[str, object]
+    """The default queue and, in managed mode, the worker assignment and inventory."""
+    jobs: list[dict[str, object]]
+    """The registered jobs with their declared queue and policy fields."""
+    settings: dict[str, object]
+    """The non-secret backend settings."""
+
+
+def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> _Report:
     """Build the inspection report for the given configuration and jobs.
 
     The report is built field by field so nothing secret (credentials, Redis passwords)
@@ -220,7 +245,7 @@ def _report(config: QueueConfig, jobs: Mapping[str, AnyJob]) -> dict[str, object
         settings["redis_prefix"] = config.redis.prefix
     if config.emits_cloud_events:
         settings["log_socket"] = _redact(config.log_socket)
-    registered = []
+    registered: list[dict[str, object]] = []
     for name, job in sorted(jobs.items()):
         policy = job.policy
         backoff = policy.backoff
@@ -262,12 +287,11 @@ def _redact(text: str) -> str:
     )
 
 
-def _render(report: dict[str, object]) -> str:
+def _render(report: _Report) -> str:
     """Format the inspection report as human-readable text."""
     lines = [f"Mode: {report['mode']}", "Queues:"]
-    lines += [f"  {key}: {_text(value)}" for key, value in _items(report["queues"])]
+    lines += [f"  {key}: {_text(value)}" for key, value in report["queues"].items()]
     jobs = report["jobs"]
-    assert isinstance(jobs, list)
     lines.append(f"Jobs ({len(jobs)}):")
     for job in jobs:
         declared = ", ".join(
@@ -277,21 +301,20 @@ def _render(report: dict[str, object]) -> str:
         )
         lines.append(f"  {job['name']}" + (f" ({declared})" if declared else ""))
     lines.append("Settings:")
-    lines += [f"  {key}: {_text(value)}" for key, value in _items(report["settings"])]
+    lines += [f"  {key}: {_text(value)}" for key, value in report["settings"].items()]
     return "\n".join(lines)
-
-
-def _items(value: object) -> list[tuple[str, object]]:
-    """Get the key and value pairs of the given report section."""
-    assert isinstance(value, dict)
-    return list(value.items())
 
 
 def _text(value: object) -> str:
     """Format the given report value for display."""
-    if isinstance(value, list):
+    if _is_list(value):
         return ",".join(str(item) for item in value) or "-"
     return "-" if value is None else str(value)
+
+
+def _is_list(value: object) -> TypeIs[list[object]]:
+    """Determine if the value is a list, narrowing it without unknown type arguments."""
+    return isinstance(value, list)
 
 
 @cli.command(

@@ -5,10 +5,17 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, get_type_hints
+from typing import TypeVar, get_type_hints
+
+from typing_extensions import ParamSpec
 
 from ..codecs import CodecRegistry, JSONValue, default_codecs
 from ..errors import ArgumentError, ArgumentMismatchError, CodecError, ConfigurationError
+
+P = ParamSpec("P")
+"""The parameters of an inspected handler."""
+R = TypeVar("R")
+"""The return type of an inspected handler."""
 
 InjectedPredicate = Callable[[inspect.Parameter], bool]
 """A predicate that determines if a parameter is injected at run time.
@@ -22,8 +29,6 @@ from payload data.
 class JobSignature:
     """The inspected signature of a job handler."""
 
-    func: Callable[..., Any]
-    """The handler function."""
     signature: inspect.Signature
     """The handler's signature with its annotations resolved."""
     hints: Mapping[str, object]
@@ -35,7 +40,7 @@ class JobSignature:
 
 
 def inspect_handler(
-    func: Callable[..., Any],
+    func: Callable[P, R],
     *,
     is_injected: InjectedPredicate,
     codecs: CodecRegistry | None = None,
@@ -63,10 +68,9 @@ def inspect_handler(
             if is_injected(parameter):
                 injected.append(parameter.name)
             else:
-                codecs._validate_annotation(parameter.annotation)
+                codecs.validate_annotation(parameter.annotation)
                 serialized.append(parameter.name)
         return JobSignature(
-            func,
             signature.replace(parameters=parameters),
             hints,
             tuple(serialized),
