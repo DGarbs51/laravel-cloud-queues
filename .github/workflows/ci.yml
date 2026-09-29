@@ -245,6 +245,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # DeepSource matches the report to a commit: use the PR head, not the
+          # temporary merge commit GitHub checks out for pull_request events.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: "3.13"
@@ -254,6 +258,21 @@ jobs:
           pattern: coverage-data-*
           merge-multiple: true
       - run: uv run coverage combine
+      # Upload before the gate so DeepSource shows the missed lines when it fails.
+      - run: uv run coverage xml --fail-under=0
+      - name: Report coverage to DeepSource
+        # Informational, not a gate: fork PRs have no secret, and a DeepSource
+        # outage must not fail CI. The 100% gate is the next step.
+        continue-on-error: true
+        env:
+          DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+        run: |
+          if [ -z "$DEEPSOURCE_DSN" ]; then
+            echo "DEEPSOURCE_DSN is not available; skipping the DeepSource upload."
+            exit 0
+          fi
+          curl -fsSL https://cli.deepsource.com/install | BINDIR=./bin sh
+          ./bin/deepsource report --analyzer test-coverage --key python --value-file ./coverage.xml
       - run: uv run coverage report
 
   packaging:

@@ -13,3 +13,5 @@ htmlcov/
 compatibility-report.json
 conformance-artifacts/
 docs/_build/
+coverage.xml
+/bin/

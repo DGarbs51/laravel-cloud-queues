@@ -1,0 +1,20 @@
+version = 1
+
+# Test files are analyzed as tests, not shipped code.
+test_patterns = ["tests/**", "conftest.py"]
+
+exclude_patterns = ["docs/_build/**", "conformance-artifacts/**"]
+
+[[analyzers]]
+name = "python"
+
+  [analyzers.meta]
+  runtime_version = "3.x.x"
+  max_line_length = 100
+
+# Coverage comes from the combined 3.10-3.14 report uploaded by the CI `coverage` job.
+[[analyzers]]
+name = "test-coverage"
+
+[[analyzers]]
+name = "secrets"
