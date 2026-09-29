@@ -85,6 +85,12 @@ def test_request_kind_sees_through_unions_and_string_annotations() -> None:
     assert request_kind(_Plain) is None
 
 
+def test_request_kind_matches_subclasses_of_request_types() -> None:
+    class AppRequest(Request): ...
+
+    assert request_kind(AppRequest) == "Request"
+
+
 def test_is_job_context_accepts_annotated_strings_and_subclasses() -> None:
     class Sub(JobContext):
         pass
