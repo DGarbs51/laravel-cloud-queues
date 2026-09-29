@@ -26,11 +26,16 @@ def note(scenario: str, **fields: object) -> None:
 
 
 def calibrate_native_iterations(target_s: float = 1.35) -> int:
+    # Take the fastest of several samples, as timeit does. One ~15 ms sample
+    # slowed by preemption or an efficiency core under-counts n, and an
+    # uncontended worker then finishes sum() well before target_s.
     sample = 3_000_000
-    started = time.perf_counter()
-    sum(range(sample))
-    elapsed = max(time.perf_counter() - started, 1e-4)
-    return max(sample, int(sample * target_s / elapsed))
+    elapsed = 1.0
+    for _ in range(10):
+        started = time.perf_counter()
+        sum(range(sample))
+        elapsed = min(elapsed, time.perf_counter() - started)
+    return max(sample, int(sample * target_s / max(elapsed, 1e-4)))
 
 
 def read_events(path: Path) -> list[dict[str, Any]]:
