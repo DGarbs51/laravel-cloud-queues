@@ -321,6 +321,36 @@ def test_client_is_lazy_and_created_once_in_calling_thread(monkeypatch):
 def test_invalid_lease(lease):
     with pytest.raises(ConfigurationError):
         SqsConsumer(CONNECTION, lease_seconds=lease)
+    with pytest.raises(ValueError):
+        SqsConsumer(CONNECTION).renew(DELIVERY, lease)
+
+
+@pytest.mark.parametrize("wait", [-1, float("inf"), float("nan")])
+def test_invalid_wait_does_not_poll(wait):
+    consumer = SqsConsumer(CONNECTION)
+    with pytest.raises(ValueError):
+        consumer.receive(["emails"], wait)
+    assert consumer._client is None
+
+
+@pytest.mark.parametrize("missing", ["MessageId", "Body", "ReceiptHandle"])
+def test_incomplete_message_is_a_transport_error(client, missing):
+    consumer = SqsConsumer(CONNECTION)
+    consumer._client = client
+    message = {"MessageId": "message", "Body": "body", "ReceiptHandle": "receipt"}
+    del message[missing]
+    with Stubber(client) as stub:
+        stub.add_response("receive_message", {"Messages": [message]})
+        with pytest.raises(TransportError, match="invalid delivery"):
+            consumer.receive(["emails"], 0)
+
+
+def test_missing_receipt_never_issues_a_request():
+    consumer = SqsConsumer(CONNECTION)
+    consumer._client = Mock()
+    with pytest.raises(LeaseLostError):
+        consumer.complete(replace(DELIVERY, receipt=None))
+    consumer._client.delete_message.assert_not_called()
 
 
 def test_release_respects_remaining_twelve_hour_window(monkeypatch):

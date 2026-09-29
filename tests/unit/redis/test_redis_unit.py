@@ -223,3 +223,30 @@ def test_reporting_timeout_is_separate_from_polling(monkeypatch, operation):
         release.assert_called_once_with(connection)
     finally:
         consumer.close()
+
+
+def test_legacy_pools_receive_the_command_name():
+    """redis-py < 5.3 requires the command name when acquiring a connection."""
+    consumer = RedisConsumer(CONFIG)
+    assert consumer._legacy_pool is False
+    connection = Mock()
+    connection.read_response.return_value = "PONG"
+    consumer._pool = Mock()
+    consumer._pool.get_connection.return_value = connection
+    assert consumer._command("PING") == "PONG"
+    consumer._pool.get_connection.assert_called_once_with()
+    consumer._legacy_pool = True
+    consumer._pool.get_connection.reset_mock()
+    assert consumer._command("PING") == "PONG"
+    consumer._pool.get_connection.assert_called_once_with("PING")
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [42, b"bytes", [], ["one", "two"], [1], '{"id":1,"body":"x","attempts":1}', '{"id":"x"}', "[]"],
+)
+def test_invalid_reservation_replies_are_transport_errors(monkeypatch, reply):
+    consumer = RedisConsumer(CONFIG)
+    monkeypatch.setattr(consumer, "_command", Mock(return_value=reply))
+    with pytest.raises(TransportError, match="Invalid Redis reservation response"):
+        consumer.receive(["default"], 0)
