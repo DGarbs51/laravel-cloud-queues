@@ -106,8 +106,14 @@ class _RedisTransport:
 
         def pool_from_url(socket_timeout: int) -> ConnectionPool:
             """Build a pool from the URL, enforcing TLS verification and bounded I/O."""
-            # redis-py leaves from_url's **kwargs unannotated, so pyright sees the whole
-            # method as partially unknown even though no keyword arguments are passed.
+            # Type-checker ignore, kept deliberately. redis-py declares
+            # `ConnectionPool.from_url(cls, url: str, **kwargs)` without annotating
+            # **kwargs, so pyright strict reports the whole method as partially unknown
+            # even though no keyword arguments are passed here; mypy and ty accept it.
+            # The alternatives are worse: ConnectionPool(...) has the same untyped
+            # **kwargs, and parsing the URL ourselves would duplicate redis-py's TLS, db
+            # and credential handling. Remove the ignore once redis-py annotates **kwargs
+            # (pyright's reportUnnecessaryTypeIgnoreComment will then flag it).
             pool = redis.ConnectionPool.from_url(config.url)  # pyright: ignore[reportUnknownMemberType]
             options = pool.connection_kwargs
             if scheme == "rediss":
