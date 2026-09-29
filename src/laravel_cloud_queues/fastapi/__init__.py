@@ -54,7 +54,7 @@ from ..registry import Registry
 
 try:
     from fastapi import FastAPI
-except ImportError as exc:  # pragma: no cover - the test environment installs fastapi
+except ImportError as exc:
     raise ImportError(
         "FastAPI support requires the optional dependency: "
         'pip install "laravel-cloud-queues[fastapi]"'
