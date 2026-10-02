@@ -170,9 +170,12 @@ def work(
     rest: float,
 ) -> int:
     """Run a queue worker for TARGET (module:attribute, a registry or an app)."""
+    _import_path()
+    resolved = resolve_target(target)
+    # After the import, so an app that calls laravel_cloud_logging.configure() itself (or
+    # sets up any logging) keeps its configuration and is not configured a second time.
     if not logging.getLogger().handlers:
         configure()
-    _import_path()
     options = WorkerOptions(
         queues=queue,
         max_jobs=max_jobs,
@@ -183,7 +186,7 @@ def work(
         sleep=sleep,
         rest=rest,
     )
-    return Worker(resolve_target(target), options).run()
+    return Worker(resolved, options).run()
 
 
 @cli.command(short_help="Show jobs and settings.")

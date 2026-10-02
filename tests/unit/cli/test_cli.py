@@ -404,6 +404,31 @@ def test_work_configures_logging_when_the_root_logger_is_bare(
     assert [type(handler) for handler in root.handlers] == [CloudHandler]
 
 
+def test_work_keeps_logging_the_app_configured_on_import(
+    app: str,
+    captured: list[tuple[Any, WorkerOptions]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = logging.getLogger()
+    monkeypatch.setattr(root, "handlers", [])
+    calls: list[object] = []
+    monkeypatch.setattr(cli, "configure", lambda *args, **kwargs: calls.append(args))
+    configured = f"{app}_configured"
+    (tmp_path / f"{configured}.py").write_text(
+        f"from {app} import *\n"
+        "from laravel_cloud_logging import configure\n"
+        "configure(level='debug')\n"
+    )
+    try:
+        assert cli.main(["work", f"{configured}:sqs"]) == 7
+    finally:
+        sys.modules.pop(configured, None)
+    assert calls == []
+    assert root.level == logging.DEBUG
+    assert [type(handler) for handler in root.handlers] == [CloudHandler]
+
+
 def test_click_exits_pass_through_the_command_wrapper(
     app: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
