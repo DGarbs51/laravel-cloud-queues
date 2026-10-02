@@ -797,8 +797,8 @@ mismatch, Laravel overflow `@pointer` body).
   lifecycle event are sent to Laravel Cloud, which owns failed-job inspection and retry.
   A dashboard retry re-queues the envelope verbatim; the worker runs it as a fresh first
   attempt with its original retry policy.
-- In **`sqs` and `redis` modes** the worker writes the full failure record as **one JSON
-  line to stdout** (visible in Laravel Cloud's Logs tab) and then deletes the message. There
+- In **`sqs` and `redis` modes** the worker logs the full failure record as **one
+  error-level log line** (visible in Laravel Cloud's Logs tab) and then deletes the message. There
   is no Python failed-job store, dead-letter queue or retry command in v1; re-running a
   failed job means dispatching it again.
 
@@ -831,10 +831,12 @@ successful job into a failed one.
 
 **`sqs` and `redis` modes.** Laravel Cloud currently ingests queue lifecycle events for
 managed queues only, so the package sends **no** socket events in these modes. The worker
-logs structured lines to stderr/stdout instead: one info line per completed or released
-delivery, and one JSON failure record per terminal failure with `queue`, `message_id`,
-`attempts`, `job_name`, `started_at`, `failed_at`, `exception_preview`, `exception` and the
-original `payload`.
+logs Laravel-style lines through
+[`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/) instead: one line
+per completed, released or failed delivery, and one error-level failure record per terminal
+failure with `queue`, `message_id`, `attempts`, `job_name`, `started_at`, `failed_at`,
+`exception_preview` and the original `payload` in `context`, and the exception in
+`context.exception`. Lines go to the log socket on Laravel Cloud, or to stdout elsewhere.
 
 **Tracing.** With the `[otel]` extra installed, dispatch injects W3C trace context
 (`traceparent`/`tracestate`) into the envelope and the worker extracts and activates it

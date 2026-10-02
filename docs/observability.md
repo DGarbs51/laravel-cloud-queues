@@ -39,9 +39,14 @@ Laravel Cloud currently ingests queue lifecycle events for managed queues only, 
 `sqs` and `redis` modes the package sends **no** events to the socket. Instead, the
 worker logs:
 
-- one info line to stderr for each completed or released delivery, and
-- one JSON [failure record](failed-jobs.md#sqs-and-redis-modes) on stdout for each
+- one log line for each completed, released or failed delivery, and
+- one [failure record](failed-jobs.md#sqs-and-redis-modes) at error level for each
   terminal failure.
+
+These are Laravel-style log lines written by
+[`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/): the fields are
+in `context`, so levels and exceptions show in the **Logs** tab like a Laravel app's. They go
+to the log socket on Laravel Cloud, or to stdout elsewhere.
 
 Credentials, receipt handles and payloads are never logged by default. Payloads only
 appear inside failure records.

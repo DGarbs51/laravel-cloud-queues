@@ -11,6 +11,7 @@ from typing import Any
 
 import click
 import pytest
+from laravel_cloud_logging import CloudHandler
 
 import laravel_cloud_queues.cli as cli
 from laravel_cloud_queues.worker import WorkerOptions
@@ -400,7 +401,7 @@ def test_work_configures_logging_when_the_root_logger_is_bare(
     monkeypatch.setattr(root, "level", logging.WARNING)
     assert cli.main(["work", f"{app}:sqs"]) == 7
     assert root.level == logging.INFO
-    assert [type(handler) for handler in root.handlers] == [logging.StreamHandler]
+    assert [type(handler) for handler in root.handlers] == [CloudHandler]
 
 
 def test_click_exits_pass_through_the_command_wrapper(

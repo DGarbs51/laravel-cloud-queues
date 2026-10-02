@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "laravel-cloud-queues"
-version = "0.1.2"
+version = "0.1.3"
 description = "Laravel Cloud queues for Python: managed queues, plus SQS and Redis/Valkey on worker clusters, with a FastAPI adapter."
 readme = "README.md"
 license = "MIT"
@@ -33,6 +33,7 @@ dependencies = [
     "boto3>=1.35",
     "click>=8.2",
     "httpx>=0.27",
+    "laravel-cloud-logging>=0.0.2",
     "typing-extensions>=4.12",
 ]
 
@@ -128,6 +129,7 @@ unused-ignore-comment = "error"
 [tool.mypy]
 python_version = "3.10"
 files = ["src/laravel_cloud_queues"]
+mypy_path = "typings"
 strict = true
 disallow_any_explicit = true
 warn_unreachable = true

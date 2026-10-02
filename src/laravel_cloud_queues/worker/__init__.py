@@ -510,6 +510,8 @@ class Worker:
                 "attempt": delivery.attempt,
                 "duration_ms": duration,
             },
+            message=f"{job_name or 'Unknown job'} {status}.",
+            level=logging.ERROR if status == "failed" else logging.INFO,
             lock_timeout=lock_timeout,
         )
 
@@ -522,7 +524,7 @@ class Worker:
         *,
         lock_timeout: float | None = None,
     ) -> None:
-        """Write the failure record for a self-managed terminal failure to stdout.
+        """Log the failure record for a self-managed terminal failure.
 
         The record is only written in the ``sqs`` and ``redis`` modes, before ``complete``.
         """
@@ -537,7 +539,13 @@ class Worker:
             started_at=started_at,
             timestamp=_utcnow(),
         )
-        runtime.telemetry.log_line(record, lock_timeout=lock_timeout)
+        runtime.telemetry.log_line(
+            record,
+            message=f"Job failed on {delivery.queue}.",
+            level=logging.ERROR,
+            exception=exception,
+            lock_timeout=lock_timeout,
+        )
 
     # --- timeout (SIGALRM, D2) -----------------------------------------------------------
 

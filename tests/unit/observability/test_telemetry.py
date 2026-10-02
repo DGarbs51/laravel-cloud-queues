@@ -1,4 +1,4 @@
-"""Telemetry gates Cloud events and writes D6b lines to stdout."""
+"""Telemetry gates Cloud events and writes D6b lines as Laravel Cloud log lines."""
 
 from __future__ import annotations
 
@@ -57,48 +57,74 @@ def test_emit_swallows_sink_errors() -> None:
     telemetry.emit({"_cloud_event": "queue"})
 
 
-def test_log_line_writes_one_compact_json_line(capsys: pytest.CaptureFixture[str]) -> None:
+def _raise(exc: Exception) -> Exception:
+    try:
+        raise exc
+    except Exception as caught:
+        return caught
+
+
+def test_log_line_writes_one_monolog_line(capfd: pytest.CaptureFixture[str]) -> None:
     telemetry = Telemetry(sink=NullSink(), emits_cloud_events=False)
     telemetry.log_line(
-        {"laravel_cloud_queues": "failed_job", "queue": "emails", "n": 1.0, "path": "a/b"}
+        {"laravel_cloud_queues": "failed_job", "queue": "emails", "n": 1.0, "bad": "A\ud800"},
+        message="Job failed on emails.",
+        level=logging.ERROR,
+        exception=_raise(RuntimeError("boom")),
     )
-    captured = capsys.readouterr().out
+    captured = capfd.readouterr().out
     assert captured.count("\n") == 1
-    assert captured.startswith('{"laravel_cloud_queues":"failed_job","queue":"emails"')
-    assert "1.0" in captured
-    assert "a/b" in captured
-    assert "\\/" not in captured
-    assert json.loads(captured)["queue"] == "emails"
+    line = json.loads(captured)
+    assert list(line) == [
+        "message",
+        "context",
+        "level",
+        "level_name",
+        "channel",
+        "datetime",
+        "extra",
+    ]
+    assert line["message"] == "Job failed on emails."
+    assert (line["level"], line["level_name"]) == (400, "ERROR")
+    assert line["extra"] == {"logger": "laravel_cloud_queues.worker"}
+    context = line["context"]
+    assert context["laravel_cloud_queues"] == "failed_job"
+    assert context["queue"] == "emails"
+    assert context["n"] == 1.0
+    assert context["bad"] == "A\ufffd"
+    assert context["exception"]["class"] == "RuntimeError"
+    assert context["exception"]["message"] == "boom"
+    assert context["exception"]["trace"]
 
 
-def test_log_line_is_not_gated_on_cloud_events(capsys: pytest.CaptureFixture[str]) -> None:
+def test_log_line_is_not_gated_on_cloud_events(capfd: pytest.CaptureFixture[str]) -> None:
     telemetry = Telemetry(sink=NullSink(), emits_cloud_events=True)
-    telemetry.log_line({"ok": True})
-    assert json.loads(capsys.readouterr().out) == {"ok": True}
+    telemetry.log_line({"ok": True}, message="ok")
+    line = json.loads(capfd.readouterr().out)
+    assert line["context"] == {"ok": True}
+    assert line["level_name"] == "INFO"
 
 
-def test_log_line_swallows_encoding_and_write_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_log_line_swallows_record_and_write_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     telemetry = Telemetry(sink=NullSink(), emits_cloud_events=False)
-
-    class Odd:
-        pass
-
-    telemetry.log_line({"bad": Odd()})
+    telemetry.log_line({"bad": {1: "non-string key"}}, message="bad")
 
     class Closed:
-        def write(self, data: str) -> None:
+        @property
+        def buffer(self) -> Closed:
+            return self
+
+        def write(self, data: bytes) -> None:
             raise OSError("closed")
 
         def flush(self) -> None:
             raise OSError("closed")
 
-    monkeypatch.setattr(sys, "stdout", Closed())
-    telemetry.log_line({"queue": "emails"})
+    monkeypatch.setattr(sys, "__stdout__", Closed())
+    telemetry.log_line({"queue": "emails"}, message="closed")
 
 
-def test_log_line_logging_reentry_does_not_recurse_or_log_the_record(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_log_line_logging_reentry_does_not_recurse_or_log_the_record() -> None:
     telemetry = Telemetry(sink=NullSink(), emits_cloud_events=False)
     logger = logging.getLogger("laravel_cloud_queues.observability")
     messages: list[str] = []
@@ -111,21 +137,13 @@ def test_log_line_logging_reentry_does_not_recurse_or_log_the_record(
         def emit(self, record: logging.LogRecord) -> None:
             self.calls += 1
             messages.append(record.getMessage())
-            telemetry.log_line({"secret": "super-secret-payload"})
-
-    class Closed:
-        def write(self, data: str) -> None:
-            raise OSError("closed")
-
-        def flush(self) -> None:
-            return None
+            telemetry.log_line({"secret": {1: "super-secret-payload"}}, message="again")
 
     handler = Handler()
     logger.addHandler(handler)
     logger.setLevel(logging.WARNING)
-    monkeypatch.setattr(sys, "stdout", Closed())
     try:
-        telemetry.log_line({"secret": "super-secret-payload"})
+        telemetry.log_line({"secret": {1: "super-secret-payload"}}, message="first")
     finally:
         logger.removeHandler(handler)
     assert handler.calls == 1
@@ -146,11 +164,11 @@ def test_log_line_alarm_lock_timeout_never_uses_logging(monkeypatch: pytest.Monk
     telemetry._lock.acquire()
     try:
         started = time.monotonic()
-        telemetry.log_line({"status": "failed"}, lock_timeout=0.01)
+        telemetry.log_line({"status": "failed"}, message="failed", lock_timeout=0.01)
         assert time.monotonic() - started < 0.5
     finally:
         telemetry._lock.release()
-    telemetry.log_line({"invalid": object()}, lock_timeout=0.01)
+    telemetry.log_line({"invalid": {1: "key"}}, message="invalid", lock_timeout=0.01)
 
 
 def test_null_sink_accepts_and_discards_events() -> None:
@@ -161,9 +179,25 @@ def test_null_sink_accepts_and_discards_events() -> None:
 
 
 def test_log_line_alarm_path_writes_directly_to_the_descriptor(
-    capfd: pytest.CaptureFixture[str],
+    capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     telemetry = Telemetry(sink=NullSink(), emits_cloud_events=False)
-    telemetry.log_line({"status": "failed", "path": "a/b"}, lock_timeout=0.05)
+
+    def no_handler(record: logging.LogRecord) -> bool:
+        raise AssertionError("the alarm path must not take the handler lock")
+
+    monkeypatch.setattr(telemetry._handler, "handle", no_handler)
+    telemetry.log_line(
+        {"status": "failed", "path": "a/b"},
+        message="Job failed on emails.",
+        level=logging.ERROR,
+        exception=_raise(RuntimeError("timed out")),
+        lock_timeout=0.05,
+    )
     out = capfd.readouterr().out
-    assert out == '{"status":"failed","path":"a/b"}\n'
+    assert out.endswith("}\n")
+    assert out.count("\n") == 1
+    line = json.loads(out)
+    assert line["level_name"] == "ERROR"
+    assert line["context"]["path"] == "a/b"
+    assert line["context"]["exception"]["message"] == "timed out"

@@ -181,4 +181,4 @@ def test_sigterm_while_idle_exits_promptly(managed: Managed) -> None:
 def test_conflicting_queue_is_a_startup_error(managed: Managed) -> None:
     run = managed.workers.run("--queue", "other")
     assert run.code == 2, run.describe()
-    assert "conflicts" in run.result.stderr
+    assert "conflicts" in run.result.stdout

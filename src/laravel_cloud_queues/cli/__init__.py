@@ -19,6 +19,7 @@ from typing import Protocol, TypedDict
 from urllib.parse import unquote_plus
 
 import click
+from laravel_cloud_logging import configure
 from typing_extensions import ParamSpec
 
 from .._narrowing import is_list
@@ -170,11 +171,7 @@ def work(
 ) -> int:
     """Run a queue worker for TARGET (module:attribute, a registry or an app)."""
     if not logging.getLogger().handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            stream=sys.stderr,
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
+        configure()
     _import_path()
     options = WorkerOptions(
         queues=queue,

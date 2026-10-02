@@ -54,9 +54,11 @@ attempt, with its original retry policy.
 
 ### SQS and Redis Modes
 
-In `sqs` and `redis` mode, the worker writes the full failure record as **one JSON line
-to stdout**, which appears in Laravel Cloud's **Logs** tab, and then deletes the message.
-The record contains:
+In `sqs` and `redis` mode, the worker logs the full failure record as **one error-level
+log line**, which appears in Laravel Cloud's **Logs** tab, and then deletes the message.
+The line is written by [`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/)
+in Laravel's log format. The exception, with its trace and chain, is in `context.exception`.
+The record's fields are in `context`:
 
 | Field | Description |
 |---|---|
@@ -67,8 +69,9 @@ The record contains:
 | `job_name` | The job's wire name |
 | `started_at` / `failed_at` | When the attempt started and failed |
 | `exception_preview` | A short summary of the exception |
-| `exception` | The full exception and traceback |
 | `payload` | The original message body |
+
+Log lines are capped at 256 KiB. A longer record has each top-level field cut to 16 KiB.
 
 There is no failed-job store, dead-letter queue or retry command in these modes yet. To
 re-run a failed job, dispatch it again.

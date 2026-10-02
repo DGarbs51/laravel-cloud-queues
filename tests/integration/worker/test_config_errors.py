@@ -17,8 +17,8 @@ def test_missing_backend_exits_2_with_a_clear_message(run_process: Any, tmp_path
     for _ in range(2):
         run = workers.run("--max-jobs", "1", timeout=30)
         assert run.code == 2, run.describe()
-        assert "LARAVEL_CLOUD_QUEUES_BACKEND" in run.result.stderr
-        assert "Traceback" not in run.result.stderr
+        assert "LARAVEL_CLOUD_QUEUES_BACKEND" in run.result.stdout
+        assert "Traceback" not in run.result.stdout + run.result.stderr
 
 
 def test_unknown_target_exits_2(run_process: Any, tmp_path: Path) -> None:

@@ -396,7 +396,6 @@ def test_failure_log_record_is_full_and_has_no_receipt_handle() -> None:
         "started_at",
         "failed_at",
         "exception_preview",
-        "exception",
         "payload",
     ]
     assert record["laravel_cloud_queues"] == "failed_job"

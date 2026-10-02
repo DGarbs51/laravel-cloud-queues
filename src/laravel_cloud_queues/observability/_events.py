@@ -65,7 +65,7 @@ def _is_sequence(value: object) -> TypeIs[list[object] | tuple[object, ...]]:
     return isinstance(value, list | tuple)
 
 
-def _sanitize(value: object) -> object:
+def sanitize(value: object) -> object:
     """Replace lone surrogates throughout the given value, recursively.
 
     Tuples become lists. Raises a :class:`TypeError` if a mapping has a non-string key.
@@ -77,10 +77,10 @@ def _sanitize(value: object) -> object:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise TypeError("event keys must be strings")
-            cleaned[_replace_lone_surrogates(key)] = _sanitize(item)
+            cleaned[_replace_lone_surrogates(key)] = sanitize(item)
         return cleaned
     if _is_sequence(value):
-        return [_sanitize(item) for item in value]
+        return [sanitize(item) for item in value]
     return value
 
 
@@ -92,7 +92,7 @@ def encode_event_line(event: Mapping[str, object]) -> bytes:
     """
 
     payload = json.dumps(
-        _sanitize(event),
+        sanitize(event),
         ensure_ascii=False,
         separators=(",", ":"),
         allow_nan=False,
@@ -357,10 +357,11 @@ def failure_log_record(
     started_at: datetime,
     timestamp: datetime,
 ) -> dict[str, object]:
-    """Build the failure record logged to stdout in ``sqs`` and ``redis`` modes.
+    """Build the failure record logged in ``sqs`` and ``redis`` modes.
 
     The payload is included in full and the 16 KiB failed job limit is not applied, since
-    these lines go to the worker's own stdout rather than the Cloud failed job collector.
+    these lines go to the worker's logs rather than the Cloud failed job collector. The
+    exception is not included: :meth:`Telemetry.log_line` attaches it to the log line.
     There is no receipt handle field; pass the broker message id as ``message_id``. Job
     arguments should not contain secrets.
     """
@@ -374,6 +375,5 @@ def failure_log_record(
         "started_at": format_timestamp(started_at),
         "failed_at": format_timestamp(timestamp),
         "exception_preview": _exception_preview(exception),
-        "exception": _format_exception(exception),
         "payload": payload,
     }
