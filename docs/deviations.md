@@ -80,4 +80,7 @@ are documented in the README:
 - `JobContext.release()` always releases (Laravel parity); when attempts are exhausted the
   next delivery fails the pre-run check (D13.9).
 - Explicit `PayloadTooLargeError` in `redis` mode above the 16 MiB decode ceiling (D14.2).
+- Redis queue names ending in `:delayed`, `:reserved` or `:notify` raise
+  `ConfigurationError` before any Redis command. Laravel allows them, but their pending key
+  aliases another queue's internal key and corrupts that queue.
 - Maximum job timeout of 604,800 s (D14.1); larger values would overflow `setitimer`.
