@@ -52,6 +52,20 @@ def in_temp(build: Callable[[str], tuple[str, ...]]) -> tuple[bool, str]:
         return run(build(out))
 
 
+def packaging() -> tuple[bool, str]:
+    """Run the artifact tests, then ``twine check`` the wheel and sdist, like CI."""
+    ok, output = run((*RUN, "pytest", "-q", "-p", "no:cacheprovider", "-m", "packaging"))
+    if not ok:
+        return ok, output
+    with tempfile.TemporaryDirectory() as out:
+        built, build_output = run(("uv", "build", "-q", "--out-dir", out))
+        if not built:
+            return built, build_output
+        dist = [str(path) for pattern in ("*.whl", "*.tar.gz") for path in Path(out).glob(pattern)]
+        checked, check_output = run((*RUN, "twine", "check", "--strict", *dist))
+    return checked, check_output if not checked else output
+
+
 GATES: dict[str, Callable[[], tuple[bool, str]]] = {
     "ruff check": partial(run, (*RUN, "ruff", "check", *LINTED)),
     "ruff format": partial(run, (*RUN, "ruff", "format", "--check", *LINTED)),
@@ -77,7 +91,7 @@ GATES: dict[str, Callable[[], tuple[bool, str]]] = {
             out,
         ),
     ),
-    "packaging": partial(run, (*RUN, "pytest", "-q", "-p", "no:cacheprovider", "-m", "packaging")),
+    "packaging": packaging,
     "conformance": partial(
         in_temp,
         lambda out: (

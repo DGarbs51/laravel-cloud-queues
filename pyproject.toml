@@ -53,7 +53,10 @@ laravel-cloud-queues = "laravel_cloud_queues.cli:main"
 lcq = "laravel_cloud_queues.cli:main"
 
 [dependency-groups]
+# Only twine, so the publish build installs nothing else; uv.lock pins it.
+release = ["twine"]
 dev = [
+    { include-group = "release" },
     "boto3-stubs-lite[sqs]>=1.35",
     "coverage>=7.10",
     "fastapi>=0.121",
