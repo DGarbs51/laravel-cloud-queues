@@ -31,6 +31,7 @@ from typing import Literal
 
 import anyio
 import anyio.to_thread
+from laravel_cloud_logging import configure
 
 from ..config import QueueConfig
 from ..errors import (
@@ -189,8 +190,12 @@ class Worker:
         """Run the worker until a stop condition is reached and get the exit code.
 
         The exit code is 0, 1 or 2; a job timeout exits the process with 124 directly
-        from the timeout handler. The worker must run on the main thread.
+        from the timeout handler. The worker must run on the main thread. When the root
+        logger has no handlers yet, this calls ``laravel_cloud_logging.configure()``; an app
+        that sets up its own logging when imported keeps that configuration.
         """
+        if not logging.getLogger().handlers:
+            configure()
         return anyio.run(self._main, backend="asyncio")
 
     # --- process -------------------------------------------------------------------------
@@ -431,8 +436,8 @@ class Worker:
         """Report the outcome to the transport and write the completion records.
 
         Acknowledgement failures are never handler errors and never lead to a second
-        outcome. Self-managed terminal failures log their failure record first, since it is
-        the only record and must not be lost if the delete succeeds and the process dies.
+        outcome. Terminal failures log their failure record first, so it is not lost if the
+        delete succeeds and the process dies.
         """
         code: int | None = None
         if outcome.kind == "fail" and outcome.exception is not None:
@@ -510,6 +515,8 @@ class Worker:
                 "attempt": delivery.attempt,
                 "duration_ms": duration,
             },
+            message=f"{job_name or 'Unknown job'} {status}.",
+            level=logging.ERROR if status == "failed" else logging.INFO,
             lock_timeout=lock_timeout,
         )
 
@@ -522,12 +529,7 @@ class Worker:
         *,
         lock_timeout: float | None = None,
     ) -> None:
-        """Write the failure record for a self-managed terminal failure to stdout.
-
-        The record is only written in the ``sqs`` and ``redis`` modes, before ``complete``.
-        """
-        if runtime.config.emits_cloud_events:
-            return
+        """Log the failure record for a terminal failure, before ``complete``, in every mode."""
         record = failure_log_record(
             queue=delivery.queue,
             payload=delivery.body,
@@ -537,7 +539,13 @@ class Worker:
             started_at=started_at,
             timestamp=_utcnow(),
         )
-        runtime.telemetry.log_line(record, lock_timeout=lock_timeout)
+        runtime.telemetry.log_line(
+            record,
+            message=f"Job failed on {delivery.queue}.",
+            level=logging.ERROR,
+            exception=exception,
+            lock_timeout=lock_timeout,
+        )
 
     # --- timeout (SIGALRM, D2) -----------------------------------------------------------
 

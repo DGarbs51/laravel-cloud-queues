@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import functools
 import json
-import logging
 import os
 import re
 import subprocess
@@ -169,13 +168,8 @@ def work(
     rest: float,
 ) -> int:
     """Run a queue worker for TARGET (module:attribute, a registry or an app)."""
-    if not logging.getLogger().handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            stream=sys.stderr,
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
     _import_path()
+    resolved = resolve_target(target)
     options = WorkerOptions(
         queues=queue,
         max_jobs=max_jobs,
@@ -186,7 +180,7 @@ def work(
         sleep=sleep,
         rest=rest,
     )
-    return Worker(resolve_target(target), options).run()
+    return Worker(resolved, options).run()
 
 
 @cli.command(short_help="Show jobs and settings.")

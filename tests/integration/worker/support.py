@@ -28,6 +28,7 @@ def clean_env(values: Mapping[str, str]) -> dict[str, str | None]:
 
 
 def json_lines(text: str) -> list[dict[str, Any]]:
+    """Parse the JSON lines in the text; Monolog log lines yield their ``context``."""
     lines = []
     for raw in text.splitlines():
         try:
@@ -35,7 +36,7 @@ def json_lines(text: str) -> list[dict[str, Any]]:
         except ValueError:
             continue
         if isinstance(value, dict):
-            lines.append(value)
+            lines.append(value["context"] if "level_name" in value else value)
     return lines
 
 
@@ -119,9 +120,9 @@ class Workers:
     def wait_until_idle(self, process: Process, timeout: float = 30) -> None:
         """Until the worker logged its start (it then blocks in receive)."""
         deadline = time.monotonic() + timeout
-        while "Worker started" not in process.stderr_path.read_text(errors="replace"):
+        while "Worker started" not in process.stdout_path.read_text(errors="replace"):
             if process.process.poll() is not None or time.monotonic() > deadline:
-                raise TimeoutError(process.stderr_path.read_text(errors="replace"))
+                raise TimeoutError(process.stdout_path.read_text(errors="replace"))
             time.sleep(0.05)
         time.sleep(0.5)
 

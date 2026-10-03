@@ -1,7 +1,9 @@
-"""Alarm diagnostics bypass application logging, even in telemetry failure paths."""
+"""Alarm diagnostics bypass logging locks, even in telemetry failure paths."""
 
 from __future__ import annotations
 
+import json
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -17,17 +19,25 @@ def test_signal_safe_diagnostics_restore_normal_logging(monkeypatch: pytest.Monk
         with _guard.signal_safe():
             _guard.log_failure("socket failed")
         _guard.log_failure("stdout failed")
-    assert write.call_args_list == [((2, b"socket failed\n"),), ((2, b"stdout failed\n"),)]
+    lines = [(fd, json.loads(bytes(data))) for (fd, data), _ in write.call_args_list]
+    assert [(fd, line["message"], line["level_name"]) for fd, line in lines] == [
+        (1, "socket failed", "WARNING"),
+        (1, "stdout failed", "WARNING"),
+    ]
     logger.warning.assert_not_called()
     _guard.log_failure("normal diagnostic")
     logger.warning.assert_called_once_with("%s", "normal diagnostic")
 
 
 def test_raw_diagnostic_ignores_write_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    write = Mock(side_effect=OSError("stderr unavailable"))
+    write = Mock(side_effect=OSError("stdout unavailable"))
     monkeypatch.setattr(_guard.os, "write", write)
-    _guard.raw_diagnostic("timeout")
-    write.assert_called_once_with(2, b"timeout\n")
+    monkeypatch.setattr(logging.getLogger(), "handlers", [])
+    _guard.raw_diagnostic("timeout", logging.ERROR)
+    write.assert_called_once()
+    fd, data = write.call_args.args
+    line = json.loads(bytes(data))
+    assert (fd, line["message"], line["level_name"]) == (1, "timeout", "ERROR")
 
 
 @pytest.mark.parametrize("blocking", [False, True])

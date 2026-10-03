@@ -43,9 +43,12 @@ These all raise a `JobDefectError` subclass.
 
 ## Failure Records
 
+In every mode, the worker first logs the failure record as a log line; see
+[The Failure Log Line](#the-failure-log-line).
+
 ### Managed Mode
 
-In managed mode, the worker completes the message, then sends a `failed_job` event and a
+In managed mode, the worker then completes the message, then sends a `failed_job` event and a
 `failed` lifecycle event to Laravel Cloud, which owns failed-job inspection and retry. You
 may inspect and retry failed jobs from the Laravel Cloud **Queues** dashboard.
 
@@ -54,9 +57,16 @@ attempt, with its original retry policy.
 
 ### SQS and Redis Modes
 
-In `sqs` and `redis` mode, the worker writes the full failure record as **one JSON line
-to stdout**, which appears in Laravel Cloud's **Logs** tab, and then deletes the message.
-The record contains:
+In `sqs` and `redis` mode, the worker then deletes the message. There is no failed-job
+store, dead-letter queue or retry command in these modes yet. To re-run a failed job,
+dispatch it again.
+
+### The Failure Log Line
+
+In every mode, the worker logs the full failure record as **one error-level log line**,
+which appears in Laravel Cloud's **Logs** tab, before it completes the message. The line is written by [`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/)
+in Laravel's log format. The exception, with its trace and chain, is in `context.exception`.
+The record's fields are in `context`:
 
 | Field | Description |
 |---|---|
@@ -67,11 +77,9 @@ The record contains:
 | `job_name` | The job's wire name |
 | `started_at` / `failed_at` | When the attempt started and failed |
 | `exception_preview` | A short summary of the exception |
-| `exception` | The full exception and traceback |
 | `payload` | The original message body |
 
-There is no failed-job store, dead-letter queue or retry command in these modes yet. To
-re-run a failed job, dispatch it again.
+Log lines are capped at 256 KiB. A longer record has each top-level field cut to 16 KiB.
 
 :::{warning}
 **Never put secrets in job arguments.** Failure records carry the full payload, so that a
@@ -81,10 +89,10 @@ instead, and look secrets up inside the handler.
 
 ### Records Are Best-Effort
 
-In managed mode the message is completed before the record is written, so an outage of
-the log socket at that moment loses the record. Laravel makes the same trade-off. In
-`sqs` and `redis` modes the line is written before the message is deleted, but nothing
-stores it beyond your logs.
+The failure log line is written before the message is completed, but nothing stores it
+beyond your logs. In managed mode the `failed_job` event is sent after the message is
+completed, so an outage of the log socket at that moment loses the event. Laravel makes the
+same trade-off.
 
 ## Error Classes
 

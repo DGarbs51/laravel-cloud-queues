@@ -36,8 +36,8 @@ uv add "laravel-cloud-queues[fastapi,redis]"
 
 ### Optional Extras
 
-The core package depends only on `boto3`, `anyio`, `click`, `httpx` and
-`typing-extensions`. Everything else is opt-in:
+The core package depends only on `boto3`, `anyio`, `click`, `httpx`,
+`laravel-cloud-logging` and `typing-extensions`. Everything else is opt-in:
 
 | Extra | Installs | Use it when |
 |---|---|---|

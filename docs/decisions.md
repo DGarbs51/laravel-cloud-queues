@@ -153,3 +153,9 @@ Made by the lead while freezing the contract pack (`docs/contract/architecture.m
 2. **Redis payloads are bounded by the envelope decode ceiling (16 MiB).** The envelope decoder bounds decoded size at the trust boundary; a Redis dispatch above that ceiling is rejected at dispatch with `PayloadTooLargeError` instead of being accepted and failing on receipt. SQS and managed queues keep the 1 MiB limit. This refines the original scope's "no package-imposed limit" for Redis.
 3. **Envelopes must be valid UTF-8.** Arguments containing lone surrogates are rejected at dispatch with `SerializationError`.
 4. **Decoding work is bounded, not only decoding size:** union decoding must not be exponential in nesting depth.
+
+## D15 — All logging goes through laravel-cloud-logging, in every mode (2026-10-03)
+
+1. **Every record the package logs goes through Python's `logging` and `laravel-cloud-logging`**, including the job and failure lines that `Telemetry.log_line` writes. The private handler is gone, so an app's own logging configuration also receives these records. `Worker.run()` calls `configure()` when the root logger has no handlers, so the `work` command and programmatic workers behave the same.
+2. **The failure record is logged in every mode**, before the message is completed. This extends D6b to managed mode, which still emits `failed_job` and `failed` over the log socket after completion (D13.1). Lifecycle and `failed_job` events stay managed-only (D12): they are platform events, not logs.
+3. **`SIGALRM` paths still bypass logging locks.** Timeout lines and diagnostics are formatted with the root `CloudHandler`'s formatter (JSON when there is none) and written straight to stdout, so they match the other lines without risking a deadlock on a lock held by the interrupted code.

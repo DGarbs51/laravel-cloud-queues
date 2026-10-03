@@ -4,8 +4,8 @@
 
 Laravel Cloud Queues reports what your jobs are doing in a way that fits each backend.
 In managed mode, your Python jobs appear in the Laravel Cloud **Queues** dashboard, just
-like PHP jobs. In `sqs` and `redis` modes, the worker writes structured log lines you can
-search in the **Logs** tab. OpenTelemetry trace context can follow each job from the code
+like PHP jobs. In every mode, the worker writes structured log lines you can search in the
+**Logs** tab. OpenTelemetry trace context can follow each job from the code
 that dispatched it into the worker.
 
 Observability is always best-effort: an outage of the logging socket never turns a
@@ -36,12 +36,17 @@ trimmed first, then the payload, and a record with a trimmed payload is marked
 ## Worker Logs
 
 Laravel Cloud currently ingests queue lifecycle events for managed queues only, so in
-`sqs` and `redis` modes the package sends **no** events to the socket. Instead, the
+`sqs` and `redis` modes the package sends **no** events to the socket. In every mode, the
 worker logs:
 
-- one info line to stderr for each completed or released delivery, and
-- one JSON [failure record](failed-jobs.md#sqs-and-redis-modes) on stdout for each
+- one log line for each completed, released or failed delivery, and
+- one [failure record](failed-jobs.md#the-failure-log-line) at error level for each
   terminal failure.
+
+These, and every other record the package logs, go through Python's `logging` and
+[`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/): the fields are
+in `context`, so levels and exceptions show in the **Logs** tab like a Laravel app's. See
+[Logging](workers.md#logging) for where they go and how to configure them.
 
 Credentials, receipt handles and payloads are never logged by default. Payloads only
 appear inside failure records.

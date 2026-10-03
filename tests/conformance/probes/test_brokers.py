@@ -47,7 +47,10 @@ def test_sqs_processes(run_process, artifacts, sqs_endpoint, log_collector, evid
     assert not sqs_endpoint.client.receive_message(QueueUrl=url).get("Messages")
     if job == "demo.default_failure":
         records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
-        assert any("exception" in record and "payload" in record for record in records)
+        assert any(
+            "exception" in record["context"] and "payload" in record["context"]
+            for record in records
+        )
     evidence.record("producer_pid", sent["producer_pid"])
     evidence.record("original_message_id", sent["message_id"])
     evidence.record("retried_message_ids", [row["message_id"] for row in handlers[1:]])
@@ -125,7 +128,7 @@ def test_redis_processes(
     assert not log_collector.events
     if job == "demo.default_failure":
         assert any(
-            "exception" in json.loads(line)
+            "exception" in json.loads(line)["context"]
             for line in result.stdout.splitlines()
             if line.startswith("{")
         )

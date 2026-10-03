@@ -115,9 +115,20 @@ start.
 
 ## Logging
 
-The worker logs through Python's `logging` module, under the `laravel_cloud_queues`
-logger. When the root logger has no handlers yet, the `work` command configures basic
-`INFO` logging to stderr for you; otherwise, your existing configuration is used.
+All of the package's logging, in every mode, goes through Python's `logging` module under
+the `laravel_cloud_queues` loggers, including the job and failure lines. When the worker
+starts (`work` command or `Worker.run()`), it calls
+[`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/)'s `configure()`
+if the root logger has no handlers yet, so every record is one Laravel-style line with its
+level, context and exception chain, like a Laravel app's logs. On Laravel Cloud the lines
+are JSON and go to the log socket. Elsewhere they go to stdout, as readable lines when
+stdout is a terminal and JSON otherwise (`LOG_FORMAT=json` or `LOG_FORMAT=line` chooses).
+Set `LOG_LEVEL` to change the level (default `INFO`). If your app already calls
+`configure()`, or sets up any other logging, when it is imported, the worker keeps that
+configuration and does not configure logging again.
+
+Timeout diagnostics are written from the `SIGALRM` handler, where a logging lock may be
+held, so they are written straight to stdout instead, in the same format.
 
 Errors are reported as one actionable line. Pass `--debug` to see the full traceback.
 Credentials in URLs and query strings are redacted.
