@@ -41,6 +41,11 @@ ALLOWED_SDIST_ROOT_FILES = frozenset(
 )
 
 
+def _is_package_file(path: str) -> bool:
+    """Only modules and the typing marker ship, so a stray file such as ``.env`` cannot."""
+    return path.endswith(".py") or path.endswith("/py.typed")
+
+
 def _run(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True)
 
@@ -127,7 +132,9 @@ def test_wheel_contains_only_package_and_metadata(built_artifacts: dict[str, Pat
 
     assert names, "wheel is empty"
     for name in names:
-        allowed = name.startswith("laravel_cloud_queues/") or ".dist-info/" in name
+        allowed = (
+            name.startswith("laravel_cloud_queues/") and _is_package_file(name)
+        ) or ".dist-info/" in name
         assert allowed, f"unexpected wheel member: {name}"
     for forbidden in FORBIDDEN_DIR_PREFIXES:
         assert not any(forbidden in name for name in names), f"{forbidden} leaked into the wheel"
@@ -152,7 +159,9 @@ def test_sdist_contains_only_package_and_metadata(built_artifacts: dict[str, Pat
     for rest in stripped:
         if rest == "":
             continue  # the bare top-level directory entry
-        allowed = rest in ALLOWED_SDIST_ROOT_FILES or rest.startswith("src/laravel_cloud_queues/")
+        allowed = rest in ALLOWED_SDIST_ROOT_FILES or (
+            rest.startswith("src/laravel_cloud_queues/") and _is_package_file(rest)
+        )
         assert allowed, f"unexpected sdist member: {rest}"
     for forbidden in FORBIDDEN_DIR_PREFIXES:
         assert not any(forbidden in rest for rest in stripped), f"{forbidden} leaked into the sdist"
