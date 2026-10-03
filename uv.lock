@@ -1159,16 +1159,16 @@ wheels = [
 
 [[package]]
 name = "laravel-cloud-logging"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/07/fd/7853d6ed2b4bb2bd69da022ff1ba114deba6e0874c6b827690ec766784c4/laravel_cloud_logging-0.2.0.tar.gz", hash = "sha256:d147de7e2391a20313aa7e742329c1b9cbfa6623e28a996b40f7068587b85c5b", size = 16817, upload-time = "2026-10-03T15:09:21.92Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/22/26/ec4a1a817973ce3520d56e40f7026ea22d4e1a5d168d0636eb34f05ed531/laravel_cloud_logging-0.2.1.tar.gz", hash = "sha256:777181d8b27abfe39e5803db7664b7c64c2a10743394c6e654939c436e7717b9", size = 17150, upload-time = "2026-10-03T21:17:25.571Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/eb/5d3aa39558029802adca915029411b749f27761be70868365028a16d0a70/laravel_cloud_logging-0.2.0-py3-none-any.whl", hash = "sha256:593ab2521f7634266010f1df367fb9d968e3cd571042745541bc2eea01b5a6c7", size = 18670, upload-time = "2026-10-03T15:09:20.498Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/74/86ff1bc3f192173983f6042c1e390ab726f293d11b341a26ed2d36af8b5d/laravel_cloud_logging-0.2.1-py3-none-any.whl", hash = "sha256:48a35dc9e29e982df2d1a5437b057012762c485e956a7c8520a67f68b35a8531", size = 19083, upload-time = "2026-10-03T21:17:23.921Z" },
 ]
 
 [[package]]
 name = "laravel-cloud-queues"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -1228,7 +1228,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.2" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.121" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "laravel-cloud-logging", specifier = ">=0.2.0" },
+    { name = "laravel-cloud-logging", specifier = ">=0.2.1" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.27" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0" },
     { name = "typing-extensions", specifier = ">=4.12" },
