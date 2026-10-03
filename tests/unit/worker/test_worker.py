@@ -8,11 +8,17 @@ and ``:729-740``; backoff ``:817-827``; timeout handler ``:319-356``; stop condi
 
 from __future__ import annotations
 
+import logging
 import signal
+import sys
+import threading
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
+from laravel_cloud_logging import CloudHandler
 
+import laravel_cloud_queues.worker as worker_module
 from laravel_cloud_queues.errors import (
     AgentProtocolError,
     AgentUnavailableError,
@@ -27,7 +33,7 @@ from laravel_cloud_queues.errors import (
     MaxAttemptsExceededError,
     TransportError,
 )
-from laravel_cloud_queues.worker import EXIT_CONFIG, EXIT_FATAL, EXIT_OK, EXIT_TIMEOUT
+from laravel_cloud_queues.worker import EXIT_CONFIG, EXIT_FATAL, EXIT_OK, EXIT_TIMEOUT, Worker
 from tests.unit.worker.doubles import Exited, Harness, delivery
 
 
@@ -54,6 +60,52 @@ def _find(exc: BaseException) -> Exited | None:
 
 def types_of(h: Harness) -> list[str]:
     return [str(e.get("type", e["_cloud_event"])) for e in h.events()]
+
+
+# --- logging ------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def bare_root(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Empty the root logger; ``configure()`` hooks are restored afterwards.
+
+    Call it inside the test: pytest adds its capture handler to the root logger after setup.
+    """
+    monkeypatch.setattr(sys, "excepthook", sys.excepthook)
+    monkeypatch.setattr(threading, "excepthook", threading.excepthook)
+    monkeypatch.setattr(worker_module.anyio, "run", lambda *args, **kwargs: EXIT_OK)
+
+    def empty() -> logging.Logger:
+        root = logging.getLogger()
+        monkeypatch.setattr(root, "handlers", [])
+        monkeypatch.setattr(root, "level", logging.WARNING)
+        return root
+
+    return empty
+
+
+def test_run_configures_laravel_cloud_logging_when_the_root_logger_is_bare(
+    bare_root: Any,
+) -> None:
+    root = bare_root()
+    try:
+        assert Worker(Mock()).run() == EXIT_OK
+        assert root.level == logging.INFO
+        assert [type(handler) for handler in root.handlers] == [CloudHandler]
+    finally:
+        logging.captureWarnings(False)
+
+
+def test_run_keeps_logging_the_app_configured(
+    bare_root: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = bare_root()
+    handler = logging.NullHandler()
+    root.addHandler(handler)
+    monkeypatch.setattr(worker_module, "configure", Mock())
+    assert Worker(Mock()).run() == EXIT_OK
+    worker_module.configure.assert_not_called()
+    assert root.handlers == [handler]
 
 
 # --- outcome table --------------------------------------------------------------------------
@@ -102,7 +154,7 @@ def test_default_tries_is_one_so_first_error_is_terminal(make: Any) -> None:
     d = delivery("raise")
     h = make([d], mode="managed")
     h.run()
-    assert h.env.names() == ["event", "complete", "event", "event", "line"]
+    assert h.env.names() == ["event", "line", "complete", "event", "event", "line"]
     assert types_of(h) == ["started", "failed_job", "failed"]
     failed_job = h.events()[1]
     assert isinstance(failed_job["exception"], RuntimeError)
@@ -215,7 +267,7 @@ def _order(h: Harness) -> list[str]:
 def test_self_managed_terminal_failure_logs_record_before_complete(
     make: Any, mode: str, case: str
 ) -> None:
-    """D6b / D13.1 (revised): the stdout record is the only record, so it precedes the delete."""
+    """D6b / D13.1 (revised): the failure record precedes the delete."""
     h = make([_terminal(case)], mode=mode)
     assert h.run() == EXIT_OK
     assert _order(h) == ["line:failed_job", "complete", "line:job"]
@@ -226,22 +278,23 @@ def test_managed_terminal_failure_completes_before_failed_job(make: Any, case: s
     """Laravel order: complete, then failed_job, then failed (``Job::fail``)."""
     h = make([_terminal(case)], mode="managed")
     assert h.run() == EXIT_OK
-    assert _order(h) == ["started", "complete", "failed_job", "failed", "line:job"]
+    assert _order(h) == [
+        "started",
+        "line:failed_job",
+        "complete",
+        "failed_job",
+        "failed",
+        "line:job",
+    ]
 
 
-@pytest.mark.parametrize("mode", ["sqs", "redis"])
-def test_self_managed_record_is_written_even_when_complete_raises(make: Any, mode: str) -> None:
+@pytest.mark.parametrize("mode", ["sqs", "redis", "managed"])
+def test_failure_record_is_written_even_when_complete_raises(make: Any, mode: str) -> None:
     d = delivery("raise")
     h = make([d, delivery()], mode=mode, complete_error=AmbiguousAcknowledgementError("maybe"))
     assert h.run() == EXIT_FATAL
-    assert _order(h) == ["line:failed_job", "complete"]
+    assert [name for name in _order(h) if name != "started"] == ["line:failed_job", "complete"]
     assert h.lines()[0]["payload"] == d.body
-
-
-def test_managed_mode_does_not_log_failure_record(make: Any) -> None:
-    h = make([delivery("raise")], mode="managed")
-    h.run()
-    assert [line["laravel_cloud_queues"] for line in h.lines()] == ["job"]
 
 
 # --- acknowledgement failures ------------------------------------------------------------------
@@ -399,7 +452,7 @@ def test_timeout_on_last_attempt_completes_then_failed_job_then_failed(make: Any
     d = delivery("sleep:5", tries=2, attempt=2, timeout=0.2)
     h = make([d], mode="managed")
     assert exit_code(h) == EXIT_TIMEOUT
-    assert h.env.names() == ["event", "complete", "event", "event", "line"]
+    assert h.env.names() == ["event", "line", "complete", "event", "event", "line"]
     assert types_of(h) == ["started", "failed_job", "failed"]
     exception = h.events()[1]["exception"]
     assert isinstance(exception, JobTimeoutError)

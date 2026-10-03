@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import functools
 import json
-import logging
 import os
 import re
 import subprocess
@@ -19,7 +18,6 @@ from typing import Protocol, TypedDict
 from urllib.parse import unquote_plus
 
 import click
-from laravel_cloud_logging import configure
 from typing_extensions import ParamSpec
 
 from .._narrowing import is_list
@@ -172,10 +170,6 @@ def work(
     """Run a queue worker for TARGET (module:attribute, a registry or an app)."""
     _import_path()
     resolved = resolve_target(target)
-    # After the import, so an app that calls laravel_cloud_logging.configure() itself (or
-    # sets up any logging) keeps its configuration and is not configured a second time.
-    if not logging.getLogger().handlers:
-        configure()
     options = WorkerOptions(
         queues=queue,
         max_jobs=max_jobs,

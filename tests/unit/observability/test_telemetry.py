@@ -1,4 +1,4 @@
-"""Telemetry gates Cloud events and writes D6b lines as Laravel Cloud log lines."""
+"""Telemetry gates Cloud events and logs D6b lines through laravel-cloud-logging."""
 
 from __future__ import annotations
 
@@ -8,8 +8,20 @@ import sys
 from collections.abc import Mapping
 
 import pytest
+from laravel_cloud_logging import CloudHandler, LineFormatter, MonologFormatter
 
 from laravel_cloud_queues.observability import NullSink, Telemetry
+
+
+@pytest.fixture(autouse=True)
+def cloud_logging(monkeypatch: pytest.MonkeyPatch) -> CloudHandler:
+    """Install the handler and formatter that ``laravel_cloud_logging.configure()`` sets up."""
+    handler = CloudHandler()
+    handler.setFormatter(MonologFormatter())
+    root = logging.getLogger()
+    monkeypatch.setattr(root, "handlers", [handler])
+    monkeypatch.setattr(root, "level", logging.INFO)
+    return handler
 
 
 class RecordingSink:
@@ -95,6 +107,28 @@ def test_log_line_writes_one_monolog_line(capfd: pytest.CaptureFixture[str]) -> 
     assert context["exception"]["class"] == "RuntimeError"
     assert context["exception"]["message"] == "boom"
     assert context["exception"]["trace"]
+
+
+def test_log_line_goes_through_the_worker_logger() -> None:
+    records: list[logging.LogRecord] = []
+
+    class Handler(logging.Handler):  # skipcq: PY-A6006 - test-only capture handler
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger("laravel_cloud_queues.worker")
+    handler = Handler()
+    logger.addHandler(handler)
+    try:
+        Telemetry(sink=NullSink(), emits_cloud_events=False).log_line(
+            {"queue": "emails"}, message="App handlers see it.", level=logging.WARNING
+        )
+    finally:
+        logger.removeHandler(handler)
+    [record] = records
+    assert record.getMessage() == "App handlers see it."
+    assert record.levelno == logging.WARNING
+    assert record.__dict__["queue"] == "emails"
 
 
 def test_log_line_is_not_gated_on_cloud_events(capfd: pytest.CaptureFixture[str]) -> None:
@@ -186,7 +220,7 @@ def test_log_line_alarm_path_writes_directly_to_the_descriptor(
     def no_handler(record: logging.LogRecord) -> bool:
         raise AssertionError("the alarm path must not take the handler lock")
 
-    monkeypatch.setattr(telemetry._handler, "handle", no_handler)
+    monkeypatch.setattr(CloudHandler, "handle", no_handler)
     telemetry.log_line(
         {"status": "failed", "path": "a/b"},
         message="Job failed on emails.",
@@ -201,3 +235,26 @@ def test_log_line_alarm_path_writes_directly_to_the_descriptor(
     assert line["level_name"] == "ERROR"
     assert line["context"]["path"] == "a/b"
     assert line["context"]["exception"]["message"] == "timed out"
+
+
+def test_log_line_alarm_path_uses_the_configured_formatter(
+    capfd: pytest.CaptureFixture[str], cloud_logging: CloudHandler
+) -> None:
+    cloud_logging.setFormatter(LineFormatter(color=False))
+    Telemetry(sink=NullSink(), emits_cloud_events=False).log_line(
+        {"queue": "emails"}, message="Job failed.", level=logging.ERROR, lock_timeout=0.05
+    )
+    out = capfd.readouterr().out
+    assert "ERROR" in out
+    assert "Job failed.  queue=emails" in out
+    assert not out.startswith("{")
+
+
+def test_log_line_alarm_path_falls_back_to_json_without_a_cloud_handler(
+    capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(logging.getLogger(), "handlers", [logging.NullHandler()])
+    Telemetry(sink=NullSink(), emits_cloud_events=False).log_line(
+        {"queue": "emails"}, message="Job failed.", lock_timeout=0.05
+    )
+    assert json.loads(capfd.readouterr().out)["context"] == {"queue": "emails"}

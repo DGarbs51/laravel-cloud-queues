@@ -75,7 +75,7 @@ because managed mode sends through SQS but receives through the Laravel Cloud ag
 
 **Observability** (`observability/`). Laravel Cloud lifecycle events and `failed_job`
 records as NDJSON over the log socket in managed mode (with the size policy from D1);
-structured stdout failure records in `sqs`/`redis` modes; optional OpenTelemetry trace
+job and failure log lines through `laravel-cloud-logging` in every mode; optional OpenTelemetry trace
 propagation. All best-effort: a telemetry failure is logged and never raised.
 
 **Worker and CLI** (`worker/`, `cli/`). One process, one in-flight delivery, AnyIO on

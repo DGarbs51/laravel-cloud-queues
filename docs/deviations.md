@@ -72,9 +72,9 @@ These follow from project decisions rather than from a Laravel behavior being ch
 are documented in the README:
 
 - In `sqs` and `redis` modes no lifecycle or `failed_job` events are sent to the log
-  socket (D12: Laravel Cloud ingests them for managed queues only); the worker writes a
-  structured failure record to stdout **before** deleting the message (D6b), whereas managed
-  mode completes the message first, then emits `failed_job` and `failed` (Laravel order).
+  socket (D12: Laravel Cloud ingests them for managed queues only). In every mode the worker
+  logs a structured failure record **before** completing the message (D6b); managed mode
+  then emits `failed_job` and `failed` after completion (Laravel order).
 - Retry policy travels in the message (D4); Laravel reads it from the worker command and
   job class at run time.
 - `JobContext.release()` always releases (Laravel parity); when attempts are exhausted the

@@ -357,7 +357,7 @@ def failure_log_record(
     started_at: datetime,
     timestamp: datetime,
 ) -> dict[str, object]:
-    """Build the failure record logged in ``sqs`` and ``redis`` modes.
+    """Build the failure record logged for each terminal failure, in every mode.
 
     The payload is included in full and the 16 KiB failed job limit is not applied, since
     these lines go to the worker's logs rather than the Cloud failed job collector. The

@@ -793,19 +793,20 @@ instead of guessing. Design handlers to be **idempotent**: key side effects on t
 terminal timeout, or on a deterministic defect (malformed message, unknown job, argument
 mismatch, Laravel overflow `@pointer` body).
 
+- In **every mode** the worker first logs the full failure record as **one error-level
+  log line** (visible in Laravel Cloud's Logs tab).
 - In **managed mode** the message is completed, then a `failed_job` event and a `failed`
   lifecycle event are sent to Laravel Cloud, which owns failed-job inspection and retry.
   A dashboard retry re-queues the envelope verbatim; the worker runs it as a fresh first
   attempt with its original retry policy.
-- In **`sqs` and `redis` modes** the worker logs the full failure record as **one
-  error-level log line** (visible in Laravel Cloud's Logs tab) and then deletes the message. There
+- In **`sqs` and `redis` modes** the worker then deletes the message. There
   is no Python failed-job store, dead-letter queue or retry command in v1; re-running a
   failed job means dispatching it again.
 
-**Failure records are best-effort.** In managed mode the message is completed before the
-record is written, so a log-socket outage at that moment loses the record (the same trade
-Laravel makes). In `sqs`/`redis` modes the line is written before deletion, but nothing
-stores it beyond your logs.
+**Failure records are best-effort.** The log line is written before the message is
+completed, but nothing stores it beyond your logs. In managed mode the `failed_job` event is
+sent after completion, so a log-socket outage at that moment loses the event (the same trade
+Laravel makes).
 
 **Error classes.** Every package error has one classification, exported from
 `laravel_cloud_queues`:
@@ -829,14 +830,16 @@ exception is trimmed, then the payload, in which case the record is marked
 `"replayable": false`. Observability is best-effort: a socket outage never turns a
 successful job into a failed one.
 
-**`sqs` and `redis` modes.** Laravel Cloud currently ingests queue lifecycle events for
-managed queues only, so the package sends **no** socket events in these modes. The worker
-logs Laravel-style lines through
-[`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/) instead: one line
+**Logs.** Laravel Cloud currently ingests queue lifecycle events for managed queues only,
+so the package sends **no** socket events in `sqs` and `redis` modes. In every mode, all of
+the package's logging goes through Python's `logging` and
+[`laravel-cloud-logging`](https://pypi.org/project/laravel-cloud-logging/): one line
 per completed, released or failed delivery, and one error-level failure record per terminal
 failure with `queue`, `message_id`, `attempts`, `job_name`, `started_at`, `failed_at`,
 `exception_preview` and the original `payload` in `context`, and the exception in
 `context.exception`. Lines go to the log socket on Laravel Cloud, or to stdout elsewhere.
+Timeout diagnostics, written from the `SIGALRM` handler, bypass logging locks but use the
+same format.
 
 **Tracing.** With the `[otel]` extra installed, dispatch injects W3C trace context
 (`traceparent`/`tracestate`) into the envelope and the worker extracts and activates it

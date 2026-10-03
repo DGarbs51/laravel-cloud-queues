@@ -14,6 +14,8 @@ import time
 from collections.abc import Generator
 from contextlib import contextmanager
 
+from laravel_cloud_logging import CloudHandler, MonologFormatter
+
 _logger = logging.getLogger("laravel_cloud_queues.observability")
 """The logger that receives observability failures."""
 _local = threading.local()
@@ -53,12 +55,39 @@ def raw_write(fd: int, data: bytes, *, timeout: float = 0) -> None:
         return
 
 
-def raw_diagnostic(message: str) -> None:
-    """Write the diagnostic message to stderr without logging or stream locks.
+def _formatter() -> logging.Formatter:
+    """Get the formatter of the root ``laravel-cloud-logging`` handler.
+
+    Falls back to a JSON ``MonologFormatter`` when the root logger has no such handler.
+    Reading the handler list takes no lock, so this is safe in an alarm handler.
+    """
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, CloudHandler) and handler.formatter is not None:
+            return handler.formatter
+    return MonologFormatter()
+
+
+def raw_log(record: logging.LogRecord, *, timeout: float = 0) -> None:
+    """Write the record to stdout as a ``laravel-cloud-logging`` line, without logging locks.
+
+    The line has the same format as the app's other log lines. This is safe to call from
+    an alarm handler, where a handler lock may be held by the interrupted code.
+    ``MonologFormatter.format`` never raises.
+    """
+    line = _formatter().format(record) + "\n"
+    raw_write(1, line.encode("utf-8", errors="replace"), timeout=timeout)
+
+
+def raw_diagnostic(message: str, level: int = logging.WARNING) -> None:
+    """Write the diagnostic message as a log line without logging or stream locks.
 
     This is a single best-effort write that is safe to call from an alarm handler.
     """
-    raw_write(2, (message + "\n").encode("utf-8", errors="replace"))
+    raw_log(
+        logging.LogRecord(
+            "laravel_cloud_queues.observability", level, __file__, 0, message, None, None
+        )
+    )
 
 
 @contextmanager

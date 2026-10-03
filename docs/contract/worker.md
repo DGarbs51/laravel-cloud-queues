@@ -37,20 +37,21 @@ Decisions D2, D4, D6b, D7, D12, D13. Laravel references: `Illuminate\Queue\Worke
    - `release(delay)` (explicit) -> release(delay).
    - `fail(reason)` (explicit) -> terminal with `JobFailedError`/given exception.
    - `error` -> `is_last_attempt(attempt)` ? terminal : release(`retry_delay(attempt)`).
-6. **reporting**: one transport outcome, with bounded retries. Managed mode: report to the
-   transport, then emit completion events. For terminal `sqs`/`redis` failures, write the
-   structured failure record to stdout **before** completing the message (D6b); no socket events.
+6. **reporting**: one transport outcome, with bounded retries. For terminal failures in every
+   mode, log the structured failure record **before** completing the message (D6b, D15).
+   Managed mode: report to the transport, then emit completion events. `sqs`/`redis`: no
+   socket events.
 7. **completed** or **ambiguous** (below).
 
 ## Outcome table
 
-| Outcome | Managed mode (agent or direct SQS; log socket) | Self-managed `sqs` / `redis` (stdout) |
+| Outcome | Managed mode (agent or direct SQS; log socket) | Self-managed `sqs` / `redis` (log lines only) |
 |---|---|---|
 | success | `complete` -> `processed` | `complete` -> info line |
 | retry (error or explicit release) | `release(delay)` -> `released` | `release(delay)` -> info line |
-| terminal (error on last attempt, explicit fail, pre-run exceeded, job defect) | `complete` -> `failed_job` -> `failed` (same timestamp) | failure record line -> `complete` (D6b) |
+| terminal (error on last attempt, explicit fail, pre-run exceeded, job defect) | failure record line -> `complete` -> `failed_job` -> `failed` (same timestamp) | failure record line -> `complete` (D6b) |
 | timeout, retryable | no transport call; `released` -> exit 124 | no transport call; info line -> exit 124 |
-| timeout, terminal (last attempt or `fail_on_timeout`) | `complete` -> `failed_job` (`JobTimeoutError`) -> `failed` (same timestamp) -> exit 124 | failure record line -> `complete` -> exit 124 |
+| timeout, terminal (last attempt or `fail_on_timeout`) | failure record line -> `complete` -> `failed_job` (`JobTimeoutError`) -> `failed` (same timestamp) -> exit 124 | failure record line -> `complete` -> exit 124 |
 
 Timeout path runs inside the SIGALRM handler: apply the terminal check, then follow the
 mode-specific sequence above, ending with `os._exit(124)`. A retryable timeout makes no release

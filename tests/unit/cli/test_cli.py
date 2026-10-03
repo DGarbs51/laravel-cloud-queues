@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import subprocess
 import sys
 import uuid
@@ -11,7 +10,6 @@ from typing import Any
 
 import click
 import pytest
-from laravel_cloud_logging import CloudHandler
 
 import laravel_cloud_queues.cli as cli
 from laravel_cloud_queues.worker import WorkerOptions
@@ -391,42 +389,6 @@ def test_group_mounts_in_a_host_cli(app: str) -> None:
     missing = runner.invoke(host, ["queues", "work", f"{app}:missing"])
     assert missing.exit_code == 2
     assert "error:" in missing.output
-
-
-def test_work_configures_logging_when_the_root_logger_is_bare(
-    app: str, captured: list[tuple[Any, WorkerOptions]], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = logging.getLogger()
-    monkeypatch.setattr(root, "handlers", [])
-    monkeypatch.setattr(root, "level", logging.WARNING)
-    assert cli.main(["work", f"{app}:sqs"]) == 7
-    assert root.level == logging.INFO
-    assert [type(handler) for handler in root.handlers] == [CloudHandler]
-
-
-def test_work_keeps_logging_the_app_configured_on_import(
-    app: str,
-    captured: list[tuple[Any, WorkerOptions]],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    root = logging.getLogger()
-    monkeypatch.setattr(root, "handlers", [])
-    calls: list[object] = []
-    monkeypatch.setattr(cli, "configure", lambda *args, **kwargs: calls.append(args))
-    configured = f"{app}_configured"
-    (tmp_path / f"{configured}.py").write_text(
-        f"from {app} import *\n"
-        "from laravel_cloud_logging import configure\n"
-        "configure(level='debug')\n"
-    )
-    try:
-        assert cli.main(["work", f"{configured}:sqs"]) == 7
-    finally:
-        sys.modules.pop(configured, None)
-    assert calls == []
-    assert root.level == logging.DEBUG
-    assert [type(handler) for handler in root.handlers] == [CloudHandler]
 
 
 def test_click_exits_pass_through_the_command_wrapper(
