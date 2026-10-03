@@ -126,7 +126,9 @@ def test_retry_then_terminal_failure_events(managed: Managed) -> None:
     assert failed_job["attempts"] == 3
     assert json.loads(failed_job["payload"])["displayName"] == "always_fails"
     assert failed["timestamp"] >= failed_job["started_at"]
-    assert run.failure_records == []
+    [record] = run.failure_records
+    assert record["job_name"] == "always_fails"
+    assert record["attempts"] == 3
 
 
 def test_timeout_releases_then_redelivers_with_next_attempt(managed: Managed) -> None:
@@ -181,4 +183,4 @@ def test_sigterm_while_idle_exits_promptly(managed: Managed) -> None:
 def test_conflicting_queue_is_a_startup_error(managed: Managed) -> None:
     run = managed.workers.run("--queue", "other")
     assert run.code == 2, run.describe()
-    assert "conflicts" in run.result.stderr
+    assert "conflicts" in run.result.stdout

@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-import sys
+import logging
 import threading
 from collections.abc import Mapping
 from typing import Protocol
 
-from ._events import encode_event_line
+from ._events import sanitize
 from ._guard import begin_call, end_call, log_failure
 
 # Same bound as the socket write timeout, so a SIGALRM handler cannot deadlock
-# forever on a stdout lock held by the interrupted thread.
-_STDOUT_LOCK_TIMEOUT_SECONDS = 2.0
-"""The number of seconds to wait for the stdout lock."""
+# forever on a log lock held by the interrupted thread.
+_LOG_LOCK_TIMEOUT_SECONDS = 2.0
+"""The number of seconds to wait for the log lock."""
+_logger = logging.getLogger("laravel_cloud_queues.worker")
+"""The logger that receives job and failure records."""
 
 
 class EventSink(Protocol):
@@ -49,8 +51,8 @@ class Telemetry:
     """The mode-aware telemetry facade used by the dispatch pipeline and the worker.
 
     ``emit`` sends Cloud lifecycle events only when ``emits_cloud_events`` is set, which
-    is the case in managed mode. ``log_line`` writes failure records to stdout and is
-    never gated.
+    is the case in managed mode. ``log_line`` logs job and failure records through
+    ``laravel-cloud-logging`` in every mode.
     """
 
     def __init__(self, *, sink: EventSink, emits_cloud_events: bool) -> None:
@@ -72,13 +74,22 @@ class Telemetry:
         except Exception:
             log_failure("observability emit failed")
 
-    def log_line(self, record: Mapping[str, object], *, lock_timeout: float | None = None) -> None:
-        """Write the record to stdout as a single JSON line and flush it.
+    def log_line(
+        self,
+        record: Mapping[str, object],
+        *,
+        message: str,
+        level: int = logging.INFO,
+        exception: BaseException | None = None,
+        lock_timeout: float | None = None,
+    ) -> None:
+        """Log the record on the worker logger, with its fields as ``extra``.
 
-        The wait for the stdout lock is bounded and this method never raises. When a
-        ``lock_timeout`` is given, the line is written directly to the descriptor.
+        ``laravel-cloud-logging`` puts the fields in ``context``. The wait for the log lock is
+        bounded and this method never raises. When a ``lock_timeout`` is given, the line is
+        written directly to the stdout descriptor in the same format, without logging locks.
         """
-        from ._guard import raw_diagnostic, raw_write
+        from ._guard import raw_diagnostic, raw_log
 
         if not begin_call():
             return
@@ -86,24 +97,26 @@ class Telemetry:
         acquired = False
         try:
             acquired = self._lock.acquire(
-                timeout=_STDOUT_LOCK_TIMEOUT_SECONDS if lock_timeout is None else lock_timeout
+                timeout=_LOG_LOCK_TIMEOUT_SECONDS if lock_timeout is None else lock_timeout
             )
             if not acquired:
-                diagnostic("observability stdout lock timed out")
+                diagnostic("observability log lock timed out")
                 return
+            exc_info = (
+                None if exception is None else (type(exception), exception, exception.__traceback__)
+            )
             try:
-                line = encode_event_line(record)
+                extra = {key: sanitize(value) for key, value in record.items()}
+                if lock_timeout is None:
+                    _logger.log(level, "%s", message, exc_info=exc_info, extra=extra)
+                    return
+                entry = _logger.makeRecord(
+                    _logger.name, level, __file__, 0, message, (), exc_info, extra=extra
+                )
             except Exception:
-                diagnostic("observability stdout encoding failed")
+                diagnostic("observability log record failed")
                 return
-            try:
-                if lock_timeout is not None:
-                    raw_write(1, line, timeout=lock_timeout)
-                else:
-                    sys.stdout.write(line.decode("utf-8"))
-                    sys.stdout.flush()
-            except Exception:
-                diagnostic("observability stdout write failed")
+            raw_log(entry, timeout=lock_timeout)
         finally:
             if acquired:
                 self._lock.release()

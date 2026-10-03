@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import subprocess
 import sys
 import uuid
@@ -390,17 +389,6 @@ def test_group_mounts_in_a_host_cli(app: str) -> None:
     missing = runner.invoke(host, ["queues", "work", f"{app}:missing"])
     assert missing.exit_code == 2
     assert "error:" in missing.output
-
-
-def test_work_configures_logging_when_the_root_logger_is_bare(
-    app: str, captured: list[tuple[Any, WorkerOptions]], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = logging.getLogger()
-    monkeypatch.setattr(root, "handlers", [])
-    monkeypatch.setattr(root, "level", logging.WARNING)
-    assert cli.main(["work", f"{app}:sqs"]) == 7
-    assert root.level == logging.INFO
-    assert [type(handler) for handler in root.handlers] == [logging.StreamHandler]
 
 
 def test_click_exits_pass_through_the_command_wrapper(

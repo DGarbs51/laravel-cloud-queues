@@ -61,7 +61,7 @@ class RecordingTelemetry(Telemetry):
             raise self.error
         self.events.append(dict(event))
 
-    def log_line(self, record: Mapping[str, object]) -> None:
+    def log_line(self, record: Mapping[str, object], **options: object) -> None:
         return None
 
 

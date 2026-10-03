@@ -8,6 +8,7 @@ that follow their contracts. A message body is a JSON script: ``{"do": ..., "pol
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import signal
@@ -258,7 +259,15 @@ class FakeTelemetry:
         if self.emits:
             self.env.journal.append(("event", dict(event)))
 
-    def log_line(self, record: Mapping[str, object], *, lock_timeout: float | None = None) -> None:
+    def log_line(
+        self,
+        record: Mapping[str, object],
+        *,
+        message: str,
+        level: int = logging.INFO,
+        exception: BaseException | None = None,
+        lock_timeout: float | None = None,
+    ) -> None:
         self.lock_timeouts.append(lock_timeout)
         self.env.journal.append(("line", dict(record)))
 
