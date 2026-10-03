@@ -121,7 +121,8 @@ logger. After it imports your app, the `work` command calls
 if the root logger has no handlers yet,
 so every record is one Laravel-style JSON line with its level, context and exception chain,
 like a Laravel app's logs. On Laravel Cloud the lines go to the log socket; elsewhere they go
-to stdout. Set `LOG_LEVEL` to change the level (default `INFO`). If your app already calls
+to stdout, as readable lines instead of JSON when stdout is a terminal (`LOG_FORMAT=json`
+or `LOG_FORMAT=line` chooses). Set `LOG_LEVEL` to change the level (default `INFO`). If your app already calls
 `configure()` itself, or sets up any other logging, when it is imported, the worker keeps
 that configuration and does not configure logging again.
 
