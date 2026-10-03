@@ -50,6 +50,10 @@ plus delayed and reserved sorted sets, atomic Lua scripts to reserve, release an
 jobs, and an attempt counter per reservation. Several workers, even across clusters, can
 share a queue without double delivery.
 
+Redis queue names must not end with `:delayed`, `:reserved`, or `:notify`. These
+suffixes are reserved for internal keys; using them raises `ConfigurationError`
+before any Redis command is sent. Other colons in queue names are allowed.
+
 :::{note}
 FIFO and fair-queue options are SQS features. In `redis` mode they raise
 `InvalidQueueOptionError`.

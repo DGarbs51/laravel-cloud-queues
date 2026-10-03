@@ -23,6 +23,31 @@ CONFIG = RedisConfig(url="redis://user:secret@127.0.0.1:6379/15")
 DELIVERY = Delivery("id", "default", "opaque", 1, receipt="private receipt")
 
 
+@pytest.mark.parametrize("operation", ["send", "receive", "complete", "release", "renew"])
+@pytest.mark.parametrize(
+    "queue",
+    ["orders:delayed", "orders:reserved", "orders:notify", "orders:reserved:notify", ":reserved"],
+)
+def test_internal_key_aliases_are_rejected_before_any_command(operation, queue):
+    transport = RedisProducer(CONFIG) if operation == "send" else RedisConsumer(CONFIG)
+    transport._command = Mock()
+    delivery = Delivery("id", queue, "opaque", 1, receipt="receipt")
+    args = {
+        "send": (OutgoingMessage("opaque", queue),),
+        # Validate every queue before even polling a valid one.
+        "receive": (["orders", queue], 0),
+        "complete": (delivery,),
+        "release": (delivery, 3),
+        "renew": (delivery, 60),
+    }[operation]
+    try:
+        with pytest.raises(ConfigurationError, match="Redis queue names must not end with"):
+            getattr(transport, operation)(*args)
+        transport._command.assert_not_called()
+    finally:
+        transport.close()
+
+
 @pytest.mark.parametrize("constructor", [RedisProducer, RedisConsumer])
 def test_optional_import_is_lazy(monkeypatch, constructor):
     original = builtins.__import__
