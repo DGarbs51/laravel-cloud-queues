@@ -13,7 +13,7 @@ import time
 from ..errors import LeaseLostError
 from ..transports import Consumer, Delivery
 
-logger = logging.getLogger("laravel_cloud_queues.worker")
+logger: logging.Logger = logging.getLogger("laravel_cloud_queues.worker")
 """The logger used by the worker."""
 
 JOIN_TIMEOUT = 30.0

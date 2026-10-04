@@ -14,7 +14,7 @@ from ._guard import begin_call, end_call, log_failure
 # forever on a log lock held by the interrupted thread.
 _LOG_LOCK_TIMEOUT_SECONDS = 2.0
 """The number of seconds to wait for the log lock."""
-_logger = logging.getLogger("laravel_cloud_queues.worker")
+_logger: logging.Logger = logging.getLogger("laravel_cloud_queues.worker")
 """The logger that receives job and failure records."""
 
 

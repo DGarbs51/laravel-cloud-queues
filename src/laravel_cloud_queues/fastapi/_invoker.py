@@ -73,7 +73,7 @@ if _version_tuple(_fastapi_version) < _MIN_FASTAPI:
         "exit stacks from the request scope starting in that release."
     )
 
-logger = logging.getLogger("laravel_cloud_queues.fastapi")
+logger: logging.Logger = logging.getLogger("laravel_cloud_queues.fastapi")
 """The logger for the FastAPI integration."""
 
 TEARDOWN_DEADLINE_SECONDS = 10.0

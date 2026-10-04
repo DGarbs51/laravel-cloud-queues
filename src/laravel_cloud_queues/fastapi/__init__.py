@@ -54,11 +54,11 @@ from ..registry import Registry
 
 try:
     from fastapi import FastAPI
-except ImportError as exc:
+except ImportError as _exc:
     raise ImportError(
         "FastAPI support requires the optional dependency: "
         'pip install "laravel-cloud-queues[fastapi]"'
-    ) from exc
+    ) from _exc
 
 from ._depends import inspecting, reject_request_dependencies
 from ._invoker import FastAPIInvoker
