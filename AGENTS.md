@@ -58,9 +58,9 @@ Fix the type first, with `cast`, a `TypeIs` helper (`_narrowing.py`) or a `Proto
 | pyright | `# pyright: ignore[rule]` |
 | pyright, ty | `# pyright: ignore[rule]  # ty: ignore[ty-code]` |
 | ty | `# ty: ignore[ty-code]` |
-| mypy, or mypy and ty | Change the code. Pyright reads every `# type: ignore` as a blanket ignore and reports it as unnecessary. |
+| mypy, or mypy and ty | Change the code. Pyright reads every `# type: ignore` as a blanket ignore and reports it as unnecessary. As a last resort, put `# pyright: reportUnnecessaryTypeIgnoreComment=false` at the top of the file, then use the mypy (and ty) comment. |
 
-- Never write a bare `# type: ignore`. mypy rejects it (`ignore-without-code`), and ty only warns on it, which fails because of `error-on-warning`.
+- Never write a bare `# type: ignore`, because mypy rejects it (`ignore-without-code`).
 - ty ignores `# type: ignore[code]`. mypy ignores `# pyright:` and `# ty:` comments.
 - `tests/harness` is checked by ty only, so use `# ty: ignore[code]` there. The other test directories are not type-checked.
 - For ruff, use `# noqa: CODE` only. For DeepSource, use `# skipcq: CODE - reason`.
