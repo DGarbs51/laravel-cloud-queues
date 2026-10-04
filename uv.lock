@@ -1173,11 +1173,11 @@ wheels = [
 
 [[package]]
 name = "laravel-cloud-logging"
-version = "0.2.2"
+version = "0.2.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a0/bb/eb0d686ff2f6f17760796f85f22aa8a77ca7f80d25e850f07463d937a1f3/laravel_cloud_logging-0.2.2.tar.gz", hash = "sha256:b9272d44112cdfcc07d8a4f8505a75d10ecaedacd06732072870eec023362dac", size = 17245, upload-time = "2026-10-04T00:06:19.164Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/9a/7160b0e12bbcd2ceaec0015af3a22aeb85849ecc2501809eac5f4a2a2902/laravel_cloud_logging-0.2.3.tar.gz", hash = "sha256:97bd9a97b13ae490ca4bfeabcdc2e1cd81e5553e750b833a5b1e8e7f2f987b00", size = 17265, upload-time = "2026-10-04T01:05:52.483Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/c3/a60a720492583a259f98401a97c847ec68c279367dad4a741b52ac04f6a5/laravel_cloud_logging-0.2.2-py3-none-any.whl", hash = "sha256:bf36ba89fe545a71f9cab3ced999dbf94811eec95f69da11fce57d25a8b5d08f", size = 19183, upload-time = "2026-10-04T00:06:17.889Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/f4/b477237d283440ed9d5efc451b7ed58e632b6a553fa6dc249b8b1fcef203/laravel_cloud_logging-0.2.3-py3-none-any.whl", hash = "sha256:0aa63fd06413cbd544e2ea9421051d25ca164ec591d0f6274109cb23b408f4f8", size = 19194, upload-time = "2026-10-04T01:05:51.133Z" },
 ]
 
 [[package]]
@@ -1242,7 +1242,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.2" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.121" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "laravel-cloud-logging", specifier = ">=0.2.2" },
+    { name = "laravel-cloud-logging", specifier = ">=0.2.3" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.27" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0" },
     { name = "typing-extensions", specifier = ">=4.12" },

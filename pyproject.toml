@@ -33,7 +33,7 @@ dependencies = [
     "boto3>=1.35",
     "click>=8.2",
     "httpx>=0.27",
-    "laravel-cloud-logging>=0.2.2",
+    "laravel-cloud-logging>=0.2.3",
     "typing-extensions>=4.12",
 ]
 
