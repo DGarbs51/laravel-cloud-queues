@@ -38,7 +38,7 @@ from .job import AnyJob, DispatchOptions, DispatchReceipt
 from .policy import normalize_delay
 from .signature import encode_arguments
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 """The logger for the dispatch pipeline."""
 
 _SQS_ID = re.compile(r"[!-~]{1,128}")

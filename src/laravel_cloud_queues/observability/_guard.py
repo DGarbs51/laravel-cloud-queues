@@ -16,7 +16,7 @@ from contextlib import contextmanager
 
 from laravel_cloud_logging import CloudHandler, MonologFormatter
 
-_logger = logging.getLogger("laravel_cloud_queues.observability")
+_logger: logging.Logger = logging.getLogger("laravel_cloud_queues.observability")
 """The logger that receives observability failures."""
 _local = threading.local()
 """The per-thread re-entry and signal-safety state."""

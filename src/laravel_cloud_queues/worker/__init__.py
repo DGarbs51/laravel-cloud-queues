@@ -74,7 +74,7 @@ ALARM_LOCK_TIMEOUT = 0.5
 The wait is bounded because the handler may have interrupted a write holding the lock.
 """
 
-logger = logging.getLogger("laravel_cloud_queues.worker")
+logger: logging.Logger = logging.getLogger("laravel_cloud_queues.worker")
 """The logger used by the worker."""
 
 Status = Literal["processed", "released", "failed"]

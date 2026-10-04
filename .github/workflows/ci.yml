@@ -34,7 +34,7 @@ jobs:
           # docs: ruff >=0.16 also formats fenced ```python
           # blocks inside Markdown, and pre-existing prose in those files trips it.
           targets=()
-          for dir in src tests .github/scripts; do
+          for dir in src tests .github/scripts scripts; do
             [ -d "$dir" ] && targets+=("$dir")
           done
           uv run ruff check "${targets[@]}"
@@ -60,6 +60,8 @@ jobs:
       # mypy --strict and pyright strict over the shipped package ([tool.mypy]/[tool.pyright]).
       - run: uv run mypy
       - run: uv run pyright
+      # Public API type completeness: must stay at 100%.
+      - run: uv run pyright --verifytypes laravel_cloud_queues --ignoreexternal
 
   test:
     # Laravel Cloud runs Python on Debian 12 (bookworm) arm64 with CPython under
