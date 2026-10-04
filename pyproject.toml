@@ -142,6 +142,9 @@ include = ["src/laravel_cloud_queues"]
 pythonVersion = "3.10"
 typeCheckingMode = "strict"
 reportUnnecessaryTypeIgnoreComment = "error"
+# Pyright honors only `# pyright: ignore[rule]`, so each checker owns its own suppression
+# comment and a mypy-only `# type: ignore[code]` is not flagged as unnecessary.
+enableTypeIgnoreComments = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

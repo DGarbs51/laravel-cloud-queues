@@ -14,6 +14,7 @@ uv run pytest tests/unit -q                # fast loop; tests that need a servic
 uv run pytest -m redis                     # one marker (markers: [tool.pytest.ini_options])
 uv run --isolated --python 3.10 pytest tests/unit   # another interpreter in a throwaway env
 uv run ty check && uv run mypy && uv run pyright     # the three type checkers
+uv run pyright --verifytypes laravel_cloud_queues --ignoreexternal   # public API type completeness (must be 100%)
 uv run --no-project scripts/update_pythons.py        # upgrade uv-managed Pythons
 ```
 
@@ -36,9 +37,10 @@ Use uv commands. Never hand-edit `pyproject.toml` or `uv.lock` for versions or d
 
 CI (`.github/workflows/ci.yml`) requires all of these. `scripts/check.py` mirrors them locally.
 
-- ruff check and format, on `src tests .github/scripts` in CI. Rules are in `[tool.ruff]`.
+- ruff check and format, on `src tests .github/scripts scripts`. Rules are in `[tool.ruff]`.
 - actionlint on the workflows.
 - ty on `src` and `tests/harness`. mypy strict and pyright strict on `src/laravel_cloud_queues` only. See `[tool.ty]`, `[tool.mypy]` and `[tool.pyright]`.
+- The public API must score 100% on `pyright --verifytypes`. Annotate attributes assigned in `__init__` and public module-level variables (`logger: logging.Logger = ...`), since inferred types can differ between type checkers. Name an import guard's exception `_exc`, not `exc`, because a module-level `except ... as exc` becomes a public symbol.
 - pytest on Python 3.10 to 3.14 inside `python:<v>-slim-bookworm` arm64 (Laravel Cloud's runtime), against LocalStack, Valkey, Redis and TLS Valkey.
 - 100% line and branch coverage of the shipped package, combined across all versions (`[tool.coverage]`). Some branches run on only one Python version, so check coverage with `scripts/check.py`, not a single run.
 - Packaging tests and `twine check --strict` on the built wheel and sdist.
@@ -49,19 +51,14 @@ Locally, tests use moto for SQS and Herd's Valkey at `127.0.0.1:6379/15`. LocalS
 
 ## Type-checker suppressions
 
-Fix the type first, with `cast`, a `TypeIs` helper (`_narrowing.py`) or a `Protocol` for an untyped library. Suppress only when that fails. All three checkers run on `src`, and each one errors on unused suppressions, so match the comment to the checkers that actually fail:
+Fix the type first, with `cast`, a `TypeIs` helper (`_narrowing.py`) or a `Protocol` for an untyped library. Suppress only when that fails. All three checkers run on `src`, and each one errors on unused suppressions. Each checker reads only its own comment (pyright has `enableTypeIgnoreComments = false`), so add one comment per checker that actually fails, in this order:
 
-| Fails in | Comment |
-|---|---|
-| mypy, pyright, ty | `# type: ignore[mypy-code]  # ty: ignore[ty-code]` |
-| mypy, pyright | `# type: ignore[mypy-code]` |
-| pyright | `# pyright: ignore[rule]` |
-| pyright, ty | `# pyright: ignore[rule]  # ty: ignore[ty-code]` |
-| ty | `# ty: ignore[ty-code]` |
-| mypy, or mypy and ty | Change the code. Pyright reads every `# type: ignore` as a blanket ignore and reports it as unnecessary. As a last resort, put `# pyright: reportUnnecessaryTypeIgnoreComment=false` at the top of the file, then use the mypy (and ty) comment. |
+```python
+value = call()  # type: ignore[mypy-code]  # pyright: ignore[rule]  # ty: ignore[ty-code]
+```
 
 - Never write a bare `# type: ignore`, because mypy rejects it (`ignore-without-code`).
-- ty ignores `# type: ignore[code]`. mypy ignores `# pyright:` and `# ty:` comments.
+- Never add a comment for a checker that does not fail. That checker reports it as unused.
 - `tests/harness` is checked by ty only, so use `# ty: ignore[code]` there. The other test directories are not type-checked.
 - For ruff, use `# noqa: CODE` only. For DeepSource, use `# skipcq: CODE - reason`.
 
