@@ -173,6 +173,11 @@ lifespan. A custom `lifespan=` replaces them, as it does in FastAPI itself.
 When a worker is recycled, for example with `--max-jobs`, the lifespan runs again in the
 new process.
 
+The worker closes the registry's async producer after your lifespan's shutdown. Your web
+server runs the lifespan without the integration, so the web process should close it
+itself: add `await queues.registry.aclose_producer()` after the `yield` in your lifespan.
+See [Closing the Async Producer](dispatching.md#closing-the-async-producer).
+
 ## Calling Jobs Directly
 
 Calling a job directly runs the raw function without dependency injection. Pass injected

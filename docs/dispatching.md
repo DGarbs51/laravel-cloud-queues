@@ -14,8 +14,10 @@ async def signup(user_id: int) -> dict[str, str]:
     return {"message_id": receipt.message_id, "queue": receipt.queue}
 ```
 
-Use `await job.dispatch_async(...)` in async code. It never blocks the event loop: every
-blocking SQS or Redis call runs in a worker thread.
+Use `await job.dispatch_async(...)` in async code. It never blocks the event loop. On the
+`redis` backend it sends with a native asyncio client and never leaves the loop. SQS has no
+asyncio client, so `sqs` and `managed` sends run in a worker thread. See
+[Native Async Paths](#native-async-paths).
 
 Use `job.dispatch(...)` in scripts, sync code and tests. Inside a running event loop it
 still works, and it never starts a nested loop, but it blocks that loop while it talks to
@@ -25,6 +27,43 @@ the broker.
 Prefer keyword arguments when dispatching. Keyword arguments survive changes to the
 handler's signature better than positional ones.
 :::
+
+## Native Async Paths
+
+`dispatch_async` and the worker always await one interface. A backend with a native
+asyncio client uses it; otherwise its sync transport runs in an AnyIO worker thread:
+
+| Backend | `dispatch_async` | Worker receive and acknowledgement |
+|---|---|---|
+| `redis` | native (`redis.asyncio`) | native (`redis.asyncio`) |
+| `managed`, agent enabled | worker thread (SQS) | native (`httpx` over the agent socket) |
+| `managed`, agent disabled, or `sqs` | worker thread (SQS) | worker thread (SQS) |
+| A custom backend without async factories | worker thread | worker thread |
+
+The first `dispatch_async` in a process builds the configuration and backend in a worker
+thread; after that, a native path never leaves the event loop. Without a running asyncio
+loop (for example under trio), the whole dispatch runs in a worker thread.
+
+## Closing the Async Producer
+
+`dispatch_async` keeps one async producer (a Redis connection pool, for example) per
+running event loop, because an asyncio client must never be shared between loops. The
+worker closes its producer for you when it stops. In a FastAPI web app, close it from your
+lifespan's shutdown, on the same loop (`queues` is your `LaravelCloudQueues` binding):
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    await queues.registry.aclose_producer()
+```
+
+Without FastAPI, call `await registry.aclose_producer()`, or wrap your async entry point
+in `async with registry.lifespan():`, which closes it on exit.
+
+If your code starts a new event loop for each call, for example `asyncio.run()` per
+dispatch, close the producer before that loop ends. A producer left open is only dropped
+once its loop has closed, and its connections are then freed by garbage collection.
 
 ## Dispatch Receipts
 

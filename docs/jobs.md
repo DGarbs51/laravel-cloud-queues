@@ -115,16 +115,27 @@ yourself.
 
 ## Sync and Async Handlers
 
-Both kinds of handler are supported, and you may mix them freely in one application:
+Both kinds of handler are supported, and you may mix them freely in one application.
 
-- **Async handlers** (`async def`) run on the worker's event loop, which lives for the
-  whole worker process. Async clients and connection pools created at startup keep
-  working across jobs.
-- **Sync handlers** (`def`) run directly on the worker's main thread, so the timeout
-  signal can interrupt them.
+An **async handler** (`async def`):
 
-A worker runs **one job at a time**. Async jobs do not run concurrently inside one worker;
-to process more jobs in parallel, run more worker processes.
+- Runs on the worker's own event loop, which lives for the whole worker process. Async
+  clients and connection pools created at startup keep working across jobs.
+- Runs one job at a time. The loop is not shared with other jobs, so async jobs never run
+  concurrently inside one worker.
+- Has its lease renewed by a task on the same loop, which only runs while your handler
+  awaits. A long blocking call inside an `async def` handler (CPU work, `time.sleep`, a
+  sync client) stops renewals, and on the `sqs` and `redis` backends the message may be
+  redelivered to another worker. Move blocking work to a thread with
+  `anyio.to_thread.run_sync`, or make the handler a `def`.
+- Still has the [timeout](retries-and-timeouts.md#timeouts): when it expires, the worker
+  records the outcome and exits with code `124`. There is no per-job cancellation.
+
+A **sync handler** (`def`) works as before. It runs directly on the worker's main thread,
+so the timeout signal can interrupt it, and a separate watchdog thread renews its lease
+while it blocks the loop.
+
+To process more jobs in parallel, run more worker processes.
 
 ## Handler Parameters
 

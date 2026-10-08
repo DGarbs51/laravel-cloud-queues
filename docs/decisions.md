@@ -106,7 +106,7 @@ Smaller choices made when applying D1–D6 and the audit fixes to the original s
   - `timeout=0` (unlimited) is allowed because the lease keeps renewing.
 - AnyIO on the asyncio backend only.
 - Packaging: `hatchling`; extras `fastapi`, `redis`, `otel`; Pydantic support activates when installed.
-- CI: CPython 3.10–3.14 on Linux; macOS not required.
+- CI: CPython 3.10–3.14 on Linux; macOS not required. (2026-10-08: the floor is now 3.11; see D16.)
 - Worker targets may be a FastAPI app or a core registry object.
 
 ## D8 — Worker lifecycle on worker clusters (2026-09-28)
@@ -126,7 +126,7 @@ Local development and agents use `moto` for SQS tests (no Docker required). CI u
 ## D11 — CI provider (2026-09-28)
 
 GitHub Actions:
-- Full gate on every push to `main` and on pull requests: Python 3.10–3.14 matrix on Linux, with LocalStack and Valkey/Redis service containers.
+- Full gate on every push to `main` and on pull requests: Python 3.10–3.14 matrix on Linux, with LocalStack and Valkey/Redis service containers. (2026-10-08: the matrix is now 3.11–3.14; see D16.)
 - Upstream drift check on a weekly schedule, advisory only.
 
 ## D12 — No lifecycle events outside managed queues (2026-09-28)
@@ -159,3 +159,13 @@ Made by the lead while freezing the contract pack (`docs/contract/architecture.m
 1. **Every record the package logs goes through Python's `logging` and `laravel-cloud-logging`**, including the job and failure lines that `Telemetry.log_line` writes. The private handler is gone, so an app's own logging configuration also receives these records. `Worker.run()` calls `configure()` when the root logger has no handlers, so the `work` command and programmatic workers behave the same.
 2. **The failure record is logged in every mode**, before the message is completed. This extends D6b to managed mode, which still emits `failed_job` and `failed` over the log socket after completion (D13.1). Lifecycle and `failed_job` events stay managed-only (D12): they are platform events, not logs.
 3. **`SIGALRM` paths still bypass logging locks.** Timeout lines and diagnostics are formatted with the root `CloudHandler`'s formatter (JSON when there is none) and written straight to stdout, so they match the other lines without risking a deadlock on a lock held by the interrupted code.
+
+## D16 — Async-first transports and worker (2026-10-08)
+
+1. **Python 3.11 is the floor.** `asyncio.timeout` and `TaskGroup` are available; Laravel Cloud still runs 3.10, but this package no longer supports it. The 3.10 entries in D7, D11 and D13.6 are historical.
+2. **Separate async protocols.** `AsyncProducer` and `AsyncConsumer` sit beside the unchanged sync `Producer` and `Consumer`, so custom transports keep working. `Backend` has optional async factories; without them, `ThreadedProducer`/`ThreadedConsumer` run the sync transport through `anyio.to_thread`, so the worker and `dispatch_async` have one async path for every backend.
+3. **Native paths:** `redis` (dispatch and worker, `redis.asyncio`, the same Lua scripts and data layout, so sync and async producers and consumers interoperate) and the agent (worker only; the agent has no producer). SQS stays threaded (no asyncio client in boto3), and managed dispatch goes through SQS.
+4. **One async producer per running event loop,** created on first use and closed by `Registry.lifespan()`, the FastAPI worker lifespan, or `Registry.aclose_producer()`. Without a running asyncio loop (trio), `dispatch_async` runs the whole dispatch in a worker thread.
+5. **Lease renewal follows the handler.** `async def` handlers get a renewal task on the loop; every other handler keeps the watchdog thread on the consumer's sync twin (`AsyncConsumer.blocking`). Sync handlers keep running on the main thread, and `SIGALRM` with exit 124 stays the timeout for both.
+6. **The `SIGALRM` path flushes logging** with `laravel_cloud_logging.flush(0.5)` before `os._exit(124)`, never through atexit.
+7. **One job per worker stays.** Running several async jobs per worker is deferred until worker throughput is measured on Laravel Cloud.

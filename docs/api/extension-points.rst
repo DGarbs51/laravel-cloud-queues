@@ -44,4 +44,4 @@ Transports
 ----------
 
 .. automodule:: laravel_cloud_queues.transports.base
-   :members: Producer, Consumer, OutgoingMessage, SentMessage, Delivery
+   :members: Producer, Consumer, AsyncProducer, AsyncConsumer, OutgoingMessage, SentMessage, Delivery

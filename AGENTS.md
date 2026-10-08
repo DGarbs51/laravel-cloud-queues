@@ -2,7 +2,7 @@
 
 ## What this is
 
-`laravel-cloud-queues` is a typed Python library (`py.typed`, Python 3.11 to 3.14) for Laravel Cloud queues. It has three backends (`managed`, `sqs` and `redis`), a FastAPI adapter, and a worker CLI (`laravel-cloud-queues`, alias `lcq`). It is built with hatchling and managed with uv. Read `docs/architecture.md` and `docs/contract/architecture.md` before you change behavior. `docs/decisions.md` records the decisions (D1 to D15) that comments refer to.
+`laravel-cloud-queues` is a typed Python library (`py.typed`, Python 3.11 to 3.14) for Laravel Cloud queues. It has three backends (`managed`, `sqs` and `redis`), a FastAPI adapter, and a worker CLI (`laravel-cloud-queues`, alias `lcq`). It is built with hatchling and managed with uv. Read `docs/architecture.md` and `docs/contract/architecture.md` before you change behavior. `docs/decisions.md` records the decisions (D1 to D16) that comments refer to.
 
 ## Commands
 
@@ -64,7 +64,7 @@ value = call()  # type: ignore[mypy-code]  # pyright: ignore[rule]  # ty: ignore
 
 ## Architecture
 
-- Transports are synchronous and never see envelopes or jobs: they handle `str` bodies only. Async code calls them through `anyio.to_thread.run_sync`.
+- Transports never see envelopes or jobs: they handle `str` bodies only. `Producer`/`Consumer` are sync. `AsyncProducer`/`AsyncConsumer` are the native asyncio variants (redis, agent), and backends without one fall back to `transports/_threaded.py` (`anyio.to_thread`). An async client belongs to one event loop: never share it across loops. `AsyncConsumer.blocking` is the sync twin that the watchdog thread and the `SIGALRM` path use.
 - There is one dispatch pipeline (`jobs/dispatch.py`) and one execution path (`jobs/execution.py`). The worker and eager test mode share that path. Never add a second one.
 - Argument decoding uses the handler's type annotations. Payloads never name a Python type, module or callable, because a payload is untrusted input.
 - Job lookup goes through the registry only. Never import a module named in a message.

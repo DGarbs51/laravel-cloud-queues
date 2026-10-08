@@ -55,17 +55,19 @@ keys and Laravel overflow `@pointer` bodies.
 pipeline: resolve the queue (options > job default > backend default), validate options
 against the queue kind and backend (FIFO/fair/delay rules), encode arguments, build the
 envelope, check the size limit, send, then emit `queued` in managed mode. The async form
-runs the blocking part in a worker thread.
+prepares on the event loop and sends through the loop's async producer (see
+[Native async paths](#native-async-paths)).
 
 **Execution path** (`jobs/execution.py`). `prepare_execution` decodes and validates a body
 against the registry (job defects surface here); `run_prepared` activates trace context,
 sets the current `JobContext`, calls the invoker (handler plus per-job teardown) and returns
 the outcome. The worker and eager test mode use exactly this path.
 
-**Transports** (`transports/`). Synchronous, body-opaque `Producer` and `Consumer`
-protocols over `str` bodies and `Delivery` records (message ID, receipt, logical queue,
-attempt count). They never see envelopes or jobs. `Producer` and `Consumer` are separate
-because managed mode sends through SQS but receives through the Laravel Cloud agent.
+**Transports** (`transports/`). Body-opaque `Producer` and `Consumer` protocols over
+`str` bodies and `Delivery` records (message ID, receipt, logical queue, attempt count),
+with native asyncio counterparts `AsyncProducer` and `AsyncConsumer`. They never see
+envelopes or jobs. `Producer` and `Consumer` are separate because managed mode sends
+through SQS but receives through the Laravel Cloud agent.
 
 | Backend | Producer | Consumer | Retry | Attempt count |
 |---|---|---|---|---|
@@ -73,15 +75,26 @@ because managed mode sends through SQS but receives through the Laravel Cloud ag
 | `managed`, agent disabled; `sqs` | SQS `SendMessage` | SQS `ReceiveMessage` (long poll, one message), delete / `ChangeMessageVisibility` | visibility change on the same message | `ApproximateReceiveCount` |
 | `redis` | `RPUSH` / `ZADD` delayed | Lua reserve (migrate due delayed + expired reserved, pop, count attempt, reserve) | move reserved -> delayed, same job ID | reservation counter |
 
+### Native async paths
+
+`redis` dispatch and worker I/O and the agent worker are native asyncio; SQS (including
+managed dispatch) and custom backends without async factories run their sync transport in
+an AnyIO worker thread. Each running event loop gets its own async producer. The table and
+the producer lifetime rules are in
+[Native Async Paths](dispatching.md#native-async-paths).
+
 **Observability** (`observability/`). Laravel Cloud lifecycle events and `failed_job`
 records as NDJSON over the log socket in managed mode (with the size policy from D1);
 job and failure log lines through `laravel-cloud-logging` in every mode; optional OpenTelemetry trace
 propagation. All best-effort: a telemetry failure is logged and never raised.
 
 **Worker and CLI** (`worker/`, `cli/`). One process, one in-flight delivery, AnyIO on
-asyncio on the main thread. Per delivery: receive, decode, pre-run attempt check, arm
-`setitimer`, start the lease watchdog thread, run, disarm, report exactly one outcome.
-Timeouts exit the process with 124 from the signal handler. `SIGTERM` finishes the current
+asyncio on the main thread. The worker awaits an `AsyncConsumer` (native or threaded, as
+above). Per delivery: receive, decode, pre-run attempt check, arm `setitimer`, start lease
+renewal, run, disarm, report exactly one outcome. An `async def` handler's lease is renewed
+by a task on the loop; a sync handler blocks the loop, so its lease is renewed by a watchdog
+thread through the consumer's sync twin (`AsyncConsumer.blocking`). Timeouts exit the
+process with 124 from the signal handler, which settles through the same sync twin. `SIGTERM` finishes the current
 job before exiting. Exit codes 0/1/2/124 are documented in the README. The CLI is a `click`
 group (`cli.cli`); `cli.main(argv)` wraps it for the console script and returns the exit
 code.
@@ -120,9 +133,11 @@ transports or the worker:
 `CodecRegistry` to serialize an application type; the tag is only ever resolved through
 the trusted annotation, never from payload content.
 
-**Transports**: a new broker implements `Producer`/`Consumer` from `transports/base.py`.
-Only the SQS, agent and Redis transports are part of the product; the transport interface
-may still change during 0.x.
+**Transports**: a new broker implements `Producer`/`Consumer` from `transports/base.py`,
+and optionally `AsyncProducer`/`AsyncConsumer` through the `Backend` async factories.
+Without them, async callers run the sync transport in a worker thread. Only the SQS, agent
+and Redis transports are part of the product; the transport interface may still change
+during 0.x.
 
 ## Where the Laravel Cloud contract lives
 

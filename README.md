@@ -14,7 +14,7 @@ observability events), not Laravel's PHP API.
 `uv sync --group docs --all-extras && uv run sphinx-build -b html docs docs/_build/html`).
 
 > **Platform status (verified 2026-09-27).** Laravel Cloud runs Python 3.10–3.14
-> applications, including FastAPI, but **managed queues are not yet available for
+> applications (this package requires 3.11+), including FastAPI, but **managed queues are not yet available for
 > Python**: the Cloud API rejects managed-queue creation for FastAPI applications, and
 > Python containers receive no managed queue configuration, no queue agent and no AWS
 > credentials. **Worker clusters do run Python today**, so this package ships two
@@ -97,8 +97,10 @@ async def signup(user_id: int) -> dict[str, str]:
     return {"message_id": receipt.message_id, "queue": receipt.queue}
 ```
 
-- `await job.dispatch_async(...)` never blocks the event loop: every blocking SQS or Redis
-  call runs in a worker thread. Use it in async code.
+- `await job.dispatch_async(...)` never blocks the event loop. Use it in async code. On
+  `redis` it sends with a native asyncio client; SQS sends (`sqs`, `managed`) run in a
+  worker thread. Web apps close it with `await queues.registry.aclose_producer()` in their
+  lifespan shutdown ([details](https://laravel-cloud-queues.readthedocs.io/en/latest/dispatching.html#closing-the-async-producer)).
 - `job.dispatch(...)` is the blocking form for scripts, sync code and tests. Inside a
   running event loop it still works (it never starts a nested loop) but it blocks that
   loop; async code should use `dispatch_async`.
@@ -243,9 +245,10 @@ credential provider explicitly, never the default chain.
 #### Visibility and long jobs
 
 There is no Laravel Cloud queue agent outside managed mode, so the worker renews the
-message's visibility timeout itself: it receives with a 60-second lease and a watchdog
-thread extends it every 20 seconds while the job runs, even while a sync handler blocks
-the event loop. A renewal failure (the message was deleted or reassigned) is a lost lease:
+message's visibility timeout itself: it receives with a 60-second lease and extends it
+every 20 seconds while the job runs. A sync handler's lease is renewed by a watchdog thread,
+even while it blocks the event loop; an `async def` handler's lease is renewed by a task on
+the loop while it awaits, so never block the loop inside an async handler. A renewal failure (the message was deleted or reassigned) is a lost lease:
 the worker never reports success for a job it no longer owns, and exits 1.
 
 ### Worker clusters are supervised services
@@ -269,7 +272,7 @@ as a **long-lived service and restarts it whenever it exits**, for any reason. C
 ### Live smoke test on Laravel Cloud
 
 Two canary applications run the released package from PyPI on Laravel Cloud, one branch
-per Python version (3.10–3.14), in `redis` mode against a Laravel Valkey:
+per supported Python version (3.11–3.14), in `redis` mode against a Laravel Valkey:
 [`fastapi-cloud-queues`](https://github.com/DGarbs51/fastapi-cloud-queues) (FastAPI) and
 [`python-cloud-queues`](https://github.com/DGarbs51/python-cloud-queues) (plain Python).
 Each has a dashboard whose **Run check** dispatches one job per case (quick, async, slow,
@@ -751,9 +754,12 @@ A mounted group keeps the same options, error handling and exit codes.
 
 Behavior:
 
-- **One in-flight job per process.** Async handlers run on the AnyIO/asyncio loop; sync
-  handlers run directly on the main thread so the timeout signal can interrupt them.
-  Scale horizontally with more worker processes or instances.
+- **One in-flight job per process.** Async handlers run on the AnyIO/asyncio loop, one at
+  a time; sync handlers run directly on the main thread so the timeout signal can interrupt
+  them. The timeout (exit 124) applies to both. Scale horizontally with more worker
+  processes or instances.
+- **Native async I/O.** The worker awaits its transport on the loop: natively for `redis`
+  and the Laravel Cloud agent, through a worker thread for SQS.
 - **Polling.** A single SQS queue long-polls (`WaitTimeSeconds=20`,
   `MaxNumberOfMessages=1`) with no extra sleep after an empty poll. Several `--queue`
   entries are short-polled in priority order, then the worker sleeps `--sleep` if all were
