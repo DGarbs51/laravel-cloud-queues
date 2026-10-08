@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -10,6 +11,8 @@ from .base import (
     MAX_FRESH_DELAY_SECONDS,
     MAX_VISIBILITY_SECONDS,
     SQS_MAX_PAYLOAD_BYTES,
+    AsyncConsumer,
+    AsyncProducer,
     Consumer,
     Delivery,
     OutgoingMessage,
@@ -21,6 +24,9 @@ __all__ = [
     "MAX_FRESH_DELAY_SECONDS",
     "MAX_VISIBILITY_SECONDS",
     "SQS_MAX_PAYLOAD_BYTES",
+    "AsyncConsumer",
+    "AsyncConsumerFactory",
+    "AsyncProducer",
     "Backend",
     "Consumer",
     "ConsumerFactory",
@@ -40,6 +46,14 @@ class ConsumerFactory(Protocol):
         ...
 
 
+class AsyncConsumerFactory(Protocol):
+    """A callable that creates the worker's async consumer."""
+
+    def __call__(self, *, lease_seconds: int = 60) -> AsyncConsumer:
+        """Create a new async consumer with the given lease duration."""
+        ...
+
+
 @dataclass(frozen=True)
 class Backend:
     """The producer and consumer factory for a configured queue mode."""
@@ -53,6 +67,36 @@ class Backend:
 
     Web processes never open a consumer.
     """
+    async_producer_factory: Callable[[], AsyncProducer] | None = None
+    """The factory that creates a native async producer for the running event loop.
+
+    When ``None``, async dispatch sends through :attr:`producer` in a worker thread.
+    """
+    async_consumer_factory: AsyncConsumerFactory | None = None
+    """The factory that creates the worker's native async consumer.
+
+    When ``None``, the worker runs a consumer from :attr:`consumer_factory` in a worker
+    thread.
+    """
+
+    def open_async_producer(self) -> AsyncProducer:
+        """Create a new async producer, which belongs to the running event loop.
+
+        This never performs I/O, so it is safe to call on the loop.
+        """
+        if self.async_producer_factory is None:
+            from ._threaded import ThreadedProducer
+
+            return ThreadedProducer(self.producer)
+        return self.async_producer_factory()
+
+    def open_async_consumer(self, *, lease_seconds: int = 60) -> AsyncConsumer:
+        """Create a new async consumer with the given lease duration."""
+        if self.async_consumer_factory is None:
+            from ._threaded import ThreadedConsumer
+
+            return ThreadedConsumer(self.consumer_factory(lease_seconds=lease_seconds))
+        return self.async_consumer_factory(lease_seconds=lease_seconds)
 
 
 def create_backend(config: QueueConfig) -> Backend:
