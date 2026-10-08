@@ -28,7 +28,7 @@ import re
 import uuid as uuidlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ..errors import InvalidQueueOptionError, PayloadTooLargeError
 from ..observability import inject_trace_context, lifecycle_event
@@ -101,7 +101,7 @@ def prepare_dispatch(
             kwargs=kwargs_json,
             policy=job.policy,
             queue=queue,
-            dispatched_at=datetime.now(timezone.utc).isoformat(timespec="microseconds"),
+            dispatched_at=datetime.now(UTC).isoformat(timespec="microseconds"),
             context=inject_trace_context(),
         )
     )
@@ -184,9 +184,7 @@ def send_prepared(job: AnyJob, prepared: PreparedDispatch) -> DispatchReceipt:
     registry = job.registry
     sent = registry.backend.producer.send(prepared.message)
     try:
-        registry.telemetry.emit(
-            lifecycle_event("queued", sent.queue, timestamp=datetime.now(timezone.utc))
-        )
+        registry.telemetry.emit(lifecycle_event("queued", sent.queue, timestamp=datetime.now(UTC)))
     except Exception:
         # The message is already sent: a telemetry failure must not look like a failed
         # dispatch (callers would retry and duplicate the job).

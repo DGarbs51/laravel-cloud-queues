@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import anyio
@@ -63,7 +63,7 @@ def test_dispatch_sends_envelope_and_returns_receipt() -> None:
     assert envelope.dispatched_at is not None
     dispatched_at = datetime.fromisoformat(envelope.dispatched_at)
     assert dispatched_at.utcoffset() == timedelta(0)
-    assert abs(datetime.now(timezone.utc) - dispatched_at) < timedelta(minutes=1)
+    assert abs(datetime.now(UTC) - dispatched_at) < timedelta(minutes=1)
 
 
 def test_policy_section_only_has_declared_fields() -> None:

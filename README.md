@@ -988,7 +988,7 @@ from a checkout instead of failing obscurely. The
 
 | | |
 |---|---|
-| Python | CPython 3.10, 3.11, 3.12, 3.13, 3.14 (CI on Linux) |
+| Python | CPython 3.11, 3.12, 3.13, 3.14 (CI on Linux) |
 | Operating systems | Linux (production runtime on Laravel Cloud), macOS (development). Windows: best effort, not a release gate |
 | Frameworks | FastAPI >= 0.121 (Pydantic v2) via `laravel_cloud_queues.fastapi`; plain Python via `Registry`. Django and Flask adapters are planned, not shipped, and have no extras yet |
 | Async | AnyIO on the asyncio backend. Trio is not supported |

@@ -15,9 +15,9 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import suppress
+from typing import Self
 
 import pytest
-from typing_extensions import Self
 
 from laravel_cloud_queues.observability import SocketEventSink, encode_event_line
 

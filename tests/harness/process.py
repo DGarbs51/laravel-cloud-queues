@@ -11,8 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-
-from typing_extensions import Self
+from typing import Self
 
 
 @dataclass(frozen=True)

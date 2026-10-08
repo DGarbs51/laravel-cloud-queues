@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import traceback
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -20,8 +20,8 @@ from laravel_cloud_queues.observability import (
     uuid7,
 )
 
-_TS = datetime(2026, 9, 27, 12, 0, 0, 123456, tzinfo=timezone.utc)
-_STARTED = datetime(2026, 9, 27, 11, 59, 59, tzinfo=timezone.utc)
+_TS = datetime(2026, 9, 27, 12, 0, 0, 123456, tzinfo=UTC)
+_STARTED = datetime(2026, 9, 27, 11, 59, 59, tzinfo=UTC)
 
 
 class SampleError(Exception):
@@ -183,7 +183,7 @@ def test_uuid7_embeds_timestamp_version_and_variant() -> None:
     first = uuid.UUID(uuid7(_TS))
     second = uuid.UUID(uuid7(_TS))
     naive = uuid.UUID(uuid7(datetime(2026, 9, 27, 12, 0, 0, 123456)))
-    delta = _TS - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    delta = _TS - datetime(1970, 1, 1, tzinfo=UTC)
     unix_ms = delta.days * 86_400_000 + delta.seconds * 1000 + delta.microseconds // 1000
     assert first.version == 7
     assert first.variant is uuid.RFC_4122

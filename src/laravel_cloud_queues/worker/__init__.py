@@ -26,7 +26,7 @@ import threading
 import time
 import types
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import anyio
@@ -650,7 +650,7 @@ def _choose(result: HandlerResult, policy: ResolvedPolicy, attempt: int, job_nam
 
 def _utcnow() -> datetime:
     """Get the current time in UTC."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _traceback(frame: types.FrameType | None) -> types.TracebackType | None:

@@ -8,8 +8,9 @@ typed way to read the delivery context.
 
 from __future__ import annotations
 
+from typing import assert_type
+
 from fastapi import Depends, FastAPI
-from typing_extensions import assert_type
 
 from laravel_cloud_queues import DispatchReceipt, JobContext, current_job
 from laravel_cloud_queues.fastapi import LaravelCloudQueues

@@ -9,7 +9,7 @@ import os
 import platform
 import subprocess
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -168,7 +168,7 @@ def run_metadata(sqs: str) -> dict[str, Any]:
             versions[name] = None
     return {
         "revision": revision,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "environment": {
             "os": platform.platform(),
             "python": platform.python_version(),

@@ -12,7 +12,7 @@ import json
 import secrets
 import traceback
 from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Final, Literal
 
 from typing_extensions import TypeIs
@@ -31,7 +31,7 @@ EXCEPTION_PREVIEW_LIMIT: Final = 1001
 
 _DURATION_TYPES: Final = frozenset({"processed", "released", "failed"})
 """The lifecycle stages that carry a duration."""
-_EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 """The Unix epoch as an aware UTC datetime."""
 
 
@@ -43,7 +43,7 @@ def format_timestamp(moment: datetime) -> str:
     """
 
     if moment.tzinfo is not None and moment.tzinfo.utcoffset(moment) is not None:
-        moment = moment.astimezone(timezone.utc)
+        moment = moment.astimezone(UTC)
     return moment.strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
@@ -134,9 +134,9 @@ def uuid7(timestamp: datetime) -> str:
 
     moment = timestamp
     if moment.tzinfo is None or moment.tzinfo.utcoffset(moment) is None:
-        moment = moment.replace(tzinfo=timezone.utc)
+        moment = moment.replace(tzinfo=UTC)
     else:
-        moment = moment.astimezone(timezone.utc)
+        moment = moment.astimezone(UTC)
     delta = moment - _EPOCH
     unix_ms = delta.days * 86_400_000 + delta.seconds * 1000 + delta.microseconds // 1000
     raw = bytearray((unix_ms & 0xFFFFFFFFFFFF).to_bytes(6, "big"))

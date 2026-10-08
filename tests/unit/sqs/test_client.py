@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -65,7 +65,7 @@ def test_static_configuration_ignores_ambient_aws(hostile_aws):
 @pytest.mark.parametrize("mode", ["ecs", "instance"])
 def test_selected_provider_is_refreshable_and_exclusive(mode, hostile_aws, monkeypatch):
     """Queue/Connectors/SqsConnector.php:101: explicit ecs/instance providers, D13.4."""
-    expiry = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    expiry = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
     metadata = {
         "access_key": "role-key",
         "secret_key": "role-secret",
@@ -87,7 +87,7 @@ def test_selected_provider_is_refreshable_and_exclusive(mode, hostile_aws, monke
         assert client.meta.endpoint_url == "https://sqs.us-east-1.amazonaws.com"
         assert client._request_signer._credentials is credentials
         assert credentials.get_frozen_credentials().access_key == "role-key"
-        credentials._expiry_time = datetime.now(timezone.utc) - timedelta(seconds=1)
+        credentials._expiry_time = datetime.now(UTC) - timedelta(seconds=1)
         assert credentials.get_frozen_credentials().access_key == "refreshed-key"
         load.assert_called_once()
         refresh.assert_called_once()
