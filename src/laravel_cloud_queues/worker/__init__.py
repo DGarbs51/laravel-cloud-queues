@@ -234,7 +234,9 @@ class Worker:
             for signum in (signal.SIGTERM, signal.SIGINT):
                 loop.remove_signal_handler(signum)
             try:
-                await runtime.consumer.aclose()
+                # Shielded: a cancelled worker must still release the consumer's connections.
+                with anyio.CancelScope(shield=True):
+                    await runtime.consumer.aclose()
             except Exception as exc:
                 logger.warning("Closing the consumer failed (%s).", type(exc).__name__)
         logger.info("Worker stopped (exit %d).", code)

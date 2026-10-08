@@ -34,6 +34,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import anyio
+
 from ..errors import InvalidQueueOptionError, PayloadTooLargeError
 from ..observability import inject_trace_context, lifecycle_event
 from ..transports.base import AsyncProducer, OutgoingMessage, SentMessage
@@ -202,11 +204,17 @@ async def send_prepared_async(
     """Send the prepared dispatch through the given async producer.
 
     The ``queued`` event leaves the loop only when it is emitted (managed mode). It raises
-    the same errors as :func:`send_prepared`.
+    the same errors as :func:`send_prepared`, and a cancellation before or during the send
+    propagates. Once the message is sent, the dispatch always returns its receipt.
     """
     sent = await producer.send(prepared.message)
-    # aemit never raises, so a sent message is never reported as a failed dispatch.
-    await job.registry.telemetry.aemit(_queued_event(sent))
+    # The message is already sent: neither a telemetry failure nor the caller's cancellation
+    # may look like a failed dispatch (callers would retry and duplicate the job).
+    with anyio.CancelScope(shield=True):
+        try:
+            await job.registry.telemetry.aemit(_queued_event(sent))
+        except Exception:
+            logger.warning("Could not emit the queued event for job %s.", job.name, exc_info=True)
     return _receipt(prepared, sent)
 
 

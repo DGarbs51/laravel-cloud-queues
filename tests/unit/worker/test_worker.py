@@ -909,3 +909,16 @@ def test_timeout_exits_even_when_the_flush_raises(
         h.run()
     assert h.env.exits == [EXIT_TIMEOUT]
     assert _find(raised.value) is not None
+
+
+def test_cancelled_worker_still_closes_the_consumer(make: Any) -> None:
+    h = make([delivery(), delivery()], native=True, stop_when_empty=False)
+    assert h.native is not None
+
+    async def main() -> None:
+        with worker_module.anyio.CancelScope() as scope:
+            h.native.on_receive = scope.cancel  # type: ignore[union-attr]
+            await h.worker._main()
+
+    worker_module.anyio.run(main, backend="asyncio")
+    assert h.native.closed

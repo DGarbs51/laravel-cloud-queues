@@ -285,3 +285,66 @@ def test_async_watchdog_stop_without_start_only_checks_the_lease() -> None:
 
     assert anyio.run(main) is False
     assert renewer.calls == []
+
+
+def test_async_watchdog_drains_a_cancelled_renewal_before_returning(monkeypatch: Any) -> None:
+    from laravel_cloud_queues.worker import _watchdog
+
+    monkeypatch.setattr(_watchdog, "JOIN_TIMEOUT", 0.01)
+    events: list[str] = []
+
+    class StuckRenewer(AsyncRenewer):
+        async def renew(self, delivery: Delivery, lease_seconds: int) -> None:  # type: ignore[override]
+            try:
+                await asyncio.sleep(5)
+            finally:
+                await asyncio.sleep(0)
+                events.append("renew cleanup")
+
+    async def body(watchdog: AsyncWatchdog) -> None:
+        await asyncio.sleep(0.1)  # the first renewal starts at 0.05 s and hangs
+        await watchdog.stop()
+        events.append("stopped")
+
+    assert run_async(StuckRenewer(), cast(float, 0.15), body).lost
+    assert events == ["renew cleanup", "stopped"]
+
+
+def test_async_watchdog_drain_is_bounded(monkeypatch: Any) -> None:
+    """A threaded renewal cannot be interrupted, so stop gives up on it after a bound."""
+    from laravel_cloud_queues.worker import _watchdog
+
+    monkeypatch.setattr(_watchdog, "JOIN_TIMEOUT", 0.01)
+    monkeypatch.setattr(_watchdog, "CANCEL_DRAIN_TIMEOUT", 0.05)
+
+    class UninterruptibleRenewer(AsyncRenewer):
+        async def renew(self, delivery: Delivery, lease_seconds: int) -> None:  # type: ignore[override]
+            try:
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                await asyncio.sleep(0.5)  # keeps going, like a sync call in a thread
+                raise
+
+    async def body(watchdog: AsyncWatchdog) -> None:
+        await asyncio.sleep(0.1)
+        started = time.monotonic()
+        await watchdog.stop()
+        assert time.monotonic() - started < 0.3
+        assert watchdog._task is not None and not watchdog._task.done()
+
+    assert run_async(UninterruptibleRenewer(), cast(float, 0.15), body).lost
+
+
+def test_async_watchdog_stop_finishes_when_the_caller_is_cancelled() -> None:
+    renewer = AsyncRenewer(delay=0.2)
+
+    async def body(watchdog: AsyncWatchdog) -> None:
+        await asyncio.sleep(0.07)  # the renewal is in flight
+        with anyio.CancelScope() as scope:
+            scope.cancel()
+            await watchdog.stop()
+        assert watchdog._task is not None and watchdog._task.done()
+
+    watchdog = run_async(renewer, 0.15, body)
+    assert watchdog.renewals == 1
+    assert not watchdog.lost

@@ -13,6 +13,8 @@ import logging
 import threading
 import time
 
+import anyio
+
 from ..errors import LeaseLostError
 from ..transports import AsyncConsumer, Consumer, Delivery
 
@@ -23,6 +25,11 @@ JOIN_TIMEOUT = 30.0
 """The minimum number of seconds to wait for an in-flight renewal when stopping.
 
 The watchdog always waits for at least one full lease window.
+"""
+CANCEL_DRAIN_TIMEOUT = 5.0
+"""The number of seconds to wait for a renewal task to finish after cancelling it.
+
+The wait is bounded because a threaded renewal cannot be interrupted.
 """
 
 
@@ -163,13 +170,23 @@ class AsyncWatchdog(_Lease):
         self._signalled = True
 
     async def stop(self) -> None:
-        """Stop the task, wait for an in-flight renewal, and confirm ownership if it lapsed."""
+        """Stop the task, wait for an in-flight renewal, and confirm ownership if it lapsed.
+
+        This is shielded from the caller's cancellation, so the renewal task never outlives
+        it and the consumer is never closed under an in-flight renewal.
+        """
+        with anyio.CancelScope(shield=True):
+            await self._stop_renewing()
+
+    async def _stop_renewing(self) -> None:
+        """Stop the task and confirm ownership, as described in :meth:`stop`."""
         self._stop.set()
         task = self._task
         if task is not None:
             done, _ = await asyncio.wait({task}, timeout=max(self._lease, JOIN_TIMEOUT))
             if not done:
                 task.cancel()
+                await asyncio.wait({task}, timeout=CANCEL_DRAIN_TIMEOUT)
                 self._lose("renewal is still in flight after the shutdown deadline")
                 return
         if not self._lapsed():

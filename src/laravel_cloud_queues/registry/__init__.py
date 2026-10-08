@@ -19,6 +19,7 @@ from contextlib import (
 from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Protocol, TypeVar, overload, runtime_checkable
 
+import anyio
 import anyio.to_thread
 from typing_extensions import ParamSpec
 
@@ -389,7 +390,9 @@ class Registry:
         with self._lock:
             producer = self._async_producers.pop(loop, None)
         if producer is not None:
-            await producer.aclose()
+            # Shielded: a cancelled shutdown must still release the producer's connections.
+            with anyio.CancelScope(shield=True):
+                await producer.aclose()
 
     def lifespan(self) -> AbstractAsyncContextManager[None]:
         """Get the lifespan context of the worker process.

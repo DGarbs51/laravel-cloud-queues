@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import anyio
+import anyio.lowlevel
 import anyio.to_thread
 import pytest
 
@@ -512,6 +513,91 @@ def test_async_telemetry_failure_never_fails_a_sent_dispatch() -> None:
     receipt = anyio.run(registry.job(name="a")(lambda: None).dispatch_async)
     assert receipt.message_id == "msg-1"
     assert len(producer.sent) == 1
+
+
+class SuspendingProducer(FakeAsyncProducer):
+    """A native producer whose send suspends, then calls ``on_sent`` once it is accepted."""
+
+    def __init__(self, sync: FakeProducer) -> None:
+        super().__init__(sync)
+        self.on_sent: Any = None
+
+    async def send(self, message: Any) -> Any:
+        await anyio.lowlevel.checkpoint()
+        sent = await super().send(message)
+        if self.on_sent is not None:
+            self.on_sent()
+        return sent
+
+
+def _suspending_registry(
+    *, config: QueueConfig | None, telemetry: Telemetry | None
+) -> tuple[Registry, SuspendingProducer]:
+    sync = FakeProducer()
+    native = SuspendingProducer(sync)
+    registry = Registry(
+        config=config,
+        backend=Backend(
+            mode="sqs",
+            producer=sync,
+            consumer_factory=lambda **_: None,  # type: ignore[arg-type,return-value]
+            async_producer_factory=lambda: native,
+        ),
+        telemetry=telemetry,
+    )
+    return registry, native
+
+
+def test_cancellation_after_the_send_still_returns_the_receipt() -> None:
+    """The queued event is shielded: an accepted message is never reported as failed."""
+    telemetry = RecordingTelemetry()
+    registry, native = _suspending_registry(config=QueueConfig(mode="sqs"), telemetry=telemetry)
+    job = registry.job(name="a", queue="q")(lambda: None)
+    receipts: list[DispatchReceipt] = []
+
+    async def main() -> None:
+        with anyio.CancelScope() as scope:
+            native.on_sent = scope.cancel
+            receipts.append(await job.dispatch_async())
+
+    anyio.run(main)
+    assert [receipt.message_id for receipt in receipts] == ["msg-1"]
+    assert [event["type"] for event in telemetry.events] == ["queued"]
+
+
+def test_cancellation_before_the_send_propagates() -> None:
+    registry, native = _suspending_registry(
+        config=QueueConfig(mode="sqs"), telemetry=RecordingTelemetry()
+    )
+    job = registry.job(name="a", queue="q")(lambda: None)
+
+    async def main() -> None:
+        with anyio.CancelScope() as scope:
+            scope.cancel()
+            await job.dispatch_async()
+            raise AssertionError("the cancelled dispatch returned")
+
+    anyio.run(main)
+    assert native.sync.sent == []
+
+
+def test_telemetry_lookup_failure_never_fails_a_sent_async_dispatch(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A supplied backend sends, then the lazy telemetry fails to load its configuration."""
+    from laravel_cloud_queues import registry as registry_module
+    from laravel_cloud_queues.errors import ConfigurationError
+
+    def missing() -> QueueConfig:
+        raise ConfigurationError("missing configuration")
+
+    monkeypatch.setattr(registry_module, "load_config", missing)
+    registry, native = _suspending_registry(config=None, telemetry=None)
+    job = registry.job(name="a", queue="q")(lambda: None)
+    receipt = anyio.run(job.dispatch_async)
+    assert receipt.message_id == "msg-1"
+    assert len(native.sync.sent) == 1
+    assert "Could not emit the queued event for job a." in caplog.text
 
 
 def test_native_send_failure_propagates_without_queued_event() -> None:

@@ -266,6 +266,33 @@ def test_no_async_producer_without_an_asyncio_loop() -> None:
     assert producer.opened == []
 
 
+def test_cancelled_lifespan_still_closes_the_async_producer() -> None:
+    class SlowClose:
+        closed = 0
+
+        async def aclose(self) -> None:
+            await anyio.lowlevel.checkpoint()
+            self.closed += 1
+
+    registry, producer, _ = make_registry()
+    native = SlowClose()
+    registry._backend = Backend(
+        mode="sqs",
+        producer=producer,
+        consumer_factory=lambda **_: None,  # type: ignore[arg-type,return-value]
+        async_producer_factory=lambda: native,  # type: ignore[arg-type,return-value]
+    )
+
+    async def main() -> None:
+        with anyio.CancelScope() as scope:
+            async with registry.lifespan():
+                await registry.async_producer()
+                scope.cancel()
+
+    anyio.run(main)
+    assert native.closed == 1
+
+
 def test_lifespan_closes_the_loops_async_producer() -> None:
     registry, producer, _ = make_registry(native_async=True)
 

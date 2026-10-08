@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import anyio
+import anyio.lowlevel
 import pytest
 
 import laravel_cloud_queues.worker as worker_module
@@ -271,6 +272,7 @@ class FakeAsyncConsumer:
         self.calls: list[tuple[str, bool]] = []  # (method, ran on the main thread)
         self.interrupted = 0
         self.closed = False
+        self.on_receive: Callable[[], None] | None = None
 
     def _call(self, name: str) -> None:
         self.calls.append((name, threading.current_thread() is threading.main_thread()))
@@ -285,6 +287,8 @@ class FakeAsyncConsumer:
 
     async def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
         self._call("receive")
+        if self.on_receive is not None:
+            self.on_receive()
         return self.sync.receive(queues, wait_seconds)
 
     async def complete(self, delivery: Delivery) -> None:
@@ -303,6 +307,7 @@ class FakeAsyncConsumer:
         self.interrupted += 1
 
     async def aclose(self) -> None:
+        await anyio.lowlevel.checkpoint()  # a real close suspends
         self.closed = True
 
 
