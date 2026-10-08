@@ -15,6 +15,7 @@ from laravel_cloud_queues.fastapi import LaravelCloudQueues
 from laravel_cloud_queues.fastapi._depends import parameter_is_injected
 from laravel_cloud_queues.fastapi._invoker import FastAPIInvoker
 from laravel_cloud_queues.jobs.signature import inspect_handler
+from tests.unit.jobs.fakes import make_registry
 
 
 class _Registry:
@@ -140,3 +141,30 @@ def test_included_router_lifespan_is_entered() -> None:
 
     _run(scenario)
     assert events == ["router-start", "jobs", "router-stop"]
+
+
+@pytest.mark.parametrize("shutdown_fails", [False, True])
+def test_async_producer_is_closed_after_the_app_shutdown(shutdown_fails: bool) -> None:
+    registry, producer, _ = make_registry(native_async=True)
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        yield
+        events.append(f"stop, closed={producer.opened[0].closed}")
+        if shutdown_fails:
+            raise RuntimeError("shutdown failed")
+
+    queues = LaravelCloudQueues(FastAPI(lifespan=lifespan), registry=registry)
+
+    async def scenario() -> None:
+        async with queues.lifespan():
+            await registry.async_producer()
+
+    if shutdown_fails:
+        with pytest.raises(RuntimeError, match="shutdown failed"):
+            _run(scenario)
+    else:
+        _run(scenario)
+    assert events == ["stop, closed=0"]
+    assert producer.opened[0].closed == 1

@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import threading
 from collections.abc import Mapping
 
+import anyio
+import anyio.to_thread
 import pytest
 from laravel_cloud_logging import CloudHandler, LineFormatter, MonologFormatter
 
@@ -67,6 +70,44 @@ def test_emit_forwards_lock_timeout_in_managed_mode() -> None:
 def test_emit_swallows_sink_errors() -> None:
     telemetry = Telemetry(sink=RaisingSink(), emits_cloud_events=True)
     telemetry.emit({"_cloud_event": "queue"})
+
+
+def test_aemit_never_leaves_the_loop_outside_managed_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_thread(*args: object, **kwargs: object) -> None:
+        raise AssertionError("aemit must not hop to a thread")
+
+    monkeypatch.setattr(anyio.to_thread, "run_sync", no_thread)
+    sink = RecordingSink()
+    anyio.run(Telemetry(sink=sink, emits_cloud_events=False).aemit, {"_cloud_event": "queue"})
+    assert sink.events == []
+
+
+def test_aemit_emits_from_a_worker_thread_in_managed_mode() -> None:
+    threads: list[int] = []
+
+    class ThreadSink(RecordingSink):
+        def emit(self, event: Mapping[str, object], *, lock_timeout: float | None = None) -> bool:
+            threads.append(threading.get_ident())
+            return super().emit(event, lock_timeout=lock_timeout)
+
+    sink = ThreadSink()
+    event: dict[str, object] = {"_cloud_event": "queue", "type": "queued"}
+    anyio.run(Telemetry(sink=sink, emits_cloud_events=True).aemit, event)
+    assert sink.events == [event]
+    assert sink.timeouts == [None]
+    assert threads[0] != threading.get_ident()
+
+
+def test_aemit_never_raises() -> None:
+    telemetry = Telemetry(sink=NullSink(), emits_cloud_events=True)
+
+    def broken(event: Mapping[str, object], *, lock_timeout: float | None = None) -> None:
+        raise RuntimeError("emit broke")
+
+    telemetry.emit = broken  # type: ignore[method-assign]
+    anyio.run(telemetry.aemit, {"_cloud_event": "queue"})
 
 
 def _raise(exc: Exception) -> Exception:

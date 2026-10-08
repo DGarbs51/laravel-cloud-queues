@@ -8,6 +8,12 @@ Each delivery moves through a single state machine with exactly one owner of its
 
 The full contract lives in ``docs/contract/worker.md``.
 
+The worker awaits an :class:`~laravel_cloud_queues.transports.AsyncConsumer` on its event
+loop: a native one when the backend has it, else the sync consumer in a worker thread. A
+sync handler blocks the loop, so its lease is renewed by a watchdog thread through the
+consumer's blocking twin, and a timeout completes through that twin from ``SIGALRM``. An
+``async def`` handler's lease is renewed by a task on the loop instead.
+
 When the worker is idle, ``SIGTERM`` and ``SIGINT`` call ``consumer.interrupt()``, so agent
 and Redis receives return promptly. A single-queue SQS long poll (``WaitTimeSeconds=20``) is
 not aborted, because an aborted ReceiveMessage may still dequeue a message and burn an
@@ -18,7 +24,9 @@ message it hands over, and then stops.
 from __future__ import annotations
 
 import asyncio
+import functools
 import importlib
+import inspect
 import logging
 import os
 import signal
@@ -30,8 +38,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import anyio
+import anyio.lowlevel
 import anyio.to_thread
-from laravel_cloud_logging import configure
+from laravel_cloud_logging import configure, flush
 
 from ..config import QueueConfig
 from ..errors import (
@@ -52,8 +61,8 @@ from ..jobs.policy import ResolvedPolicy, WorkerDefaults
 from ..observability import Telemetry, failed_job_event, failure_log_record, lifecycle_event
 from ..observability._guard import raw_diagnostic, signal_safe
 from ..registry import Registry, WorkerTarget
-from ..transports import Consumer, Delivery
-from ._watchdog import Watchdog
+from ..transports import AsyncConsumer, Delivery
+from ._watchdog import AsyncWatchdog, Watchdog
 
 EXIT_OK = 0
 """The exit code used when the worker stops normally."""
@@ -73,6 +82,8 @@ ALARM_LOCK_TIMEOUT = 0.5
 
 The wait is bounded because the handler may have interrupted a write holding the lock.
 """
+ALARM_FLUSH_TIMEOUT = 0.5
+"""The number of seconds the ``SIGALRM`` handler waits for queued log lines to be written."""
 
 logger: logging.Logger = logging.getLogger("laravel_cloud_queues.worker")
 """The logger used by the worker."""
@@ -129,7 +140,7 @@ class _Runtime:
     """The queue configuration."""
     telemetry: Telemetry
     """The telemetry sink for lifecycle events and log lines."""
-    consumer: Consumer
+    consumer: AsyncConsumer
     """The consumer that receives and acknowledges messages."""
     queues: tuple[str, ...]
     """The queues to process, in priority order."""
@@ -170,7 +181,7 @@ class _Running:
     """The name of the running job."""
     started_at: datetime
     """The time the delivery started processing."""
-    watchdog: Watchdog | None
+    watchdog: Watchdog | AsyncWatchdog | None
     """The watchdog renewing the delivery's lease, if the consumer supports renewal."""
 
 
@@ -223,7 +234,7 @@ class Worker:
             for signum in (signal.SIGTERM, signal.SIGINT):
                 loop.remove_signal_handler(signum)
             try:
-                runtime.consumer.close()
+                await runtime.consumer.aclose()
             except Exception as exc:
                 logger.warning("Closing the consumer failed (%s).", type(exc).__name__)
         logger.info("Worker stopped (exit %d).", code)
@@ -244,7 +255,7 @@ class Worker:
             # ``GET /next`` itself; Laravel still sleeps ``--sleep`` after an empty pop.
             wait, sleep_when_empty = 0.0, True
         telemetry = registry.telemetry
-        consumer = registry.backend.consumer_factory(lease_seconds=self._options.lease_seconds)
+        consumer = registry.backend.open_async_consumer(lease_seconds=self._options.lease_seconds)
         logger.info(
             "Worker started (mode %s%s, queues %s).",
             config.mode,
@@ -300,8 +311,13 @@ class Worker:
             loop.add_signal_handler(signum, stop, signum)
 
     async def _pause(self, runtime: _Runtime, seconds: float) -> None:
-        """Sleep for the given number of seconds, waking early on a stop signal."""
+        """Sleep for the given number of seconds, waking early on a stop signal.
+
+        A zero pause still yields to the loop, so stop signals are handled between polls
+        even when the consumer answers without suspending.
+        """
         if seconds <= 0 or self._stopping.is_set():
+            await anyio.lowlevel.checkpoint()
             return
         with anyio.move_on_after(seconds):
             await runtime.wake.wait()
@@ -318,9 +334,7 @@ class Worker:
             pause = options.sleep if runtime.sleep_when_empty else 0.0
             receive_failed = False
             try:
-                delivery = await anyio.to_thread.run_sync(
-                    runtime.consumer.receive, runtime.queues, runtime.wait
-                )
+                delivery = await runtime.consumer.receive(runtime.queues, runtime.wait)
             except FatalWorkerError as exc:
                 self._log_fatal("receiving", exc)
                 return exc.exit_code
@@ -371,7 +385,8 @@ class Worker:
     async def _deliver(self, runtime: _Runtime, delivery: Delivery) -> int | None:
         """Process a single delivery and get an exit code if the worker must stop."""
         started_at = _utcnow()
-        runtime.telemetry.emit(lifecycle_event("started", delivery.queue, timestamp=started_at))
+        started = lifecycle_event("started", delivery.queue, timestamp=started_at)
+        await runtime.telemetry.aemit(started)
         try:
             prepared = prepare_execution(runtime.registry, delivery.body)
         except JobDefectError as exc:
@@ -401,9 +416,13 @@ class Worker:
             attempt=delivery.attempt,
             max_tries=policy.tries,
         )
-        watchdog = None
+        watchdog: Watchdog | AsyncWatchdog | None = None
         if runtime.consumer.supports_renewal:
-            watchdog = Watchdog(runtime.consumer, delivery, self._options.lease_seconds)
+            consumer, lease = runtime.consumer, self._options.lease_seconds
+            if inspect.iscoroutinefunction(prepared.job.func):
+                watchdog = AsyncWatchdog(consumer, delivery, lease)
+            else:
+                watchdog = Watchdog(consumer.blocking, delivery, lease)
             watchdog.start()
         self._running = _Running(delivery, policy, job_name, started_at, watchdog)
         if policy.timeout > 0:
@@ -413,8 +432,11 @@ class Worker:
         finally:
             signal.setitimer(signal.ITIMER_REAL, 0)
             self._running = None
-            if watchdog is not None:
-                watchdog.stop()
+            if isinstance(watchdog, AsyncWatchdog):
+                await watchdog.stop()
+            elif watchdog is not None:
+                # The join may wait for an in-flight renewal, so it leaves the loop.
+                await anyio.to_thread.run_sync(watchdog.stop)
 
         if watchdog is not None and watchdog.lost:
             logger.error(
@@ -444,9 +466,9 @@ class Worker:
             self._log_failure(runtime, delivery, outcome.exception, started_at)
         try:
             if outcome.kind == "release":
-                await anyio.to_thread.run_sync(runtime.consumer.release, delivery, outcome.delay)
+                await runtime.consumer.release(delivery, outcome.delay)
             else:
-                await anyio.to_thread.run_sync(runtime.consumer.complete, delivery)
+                await runtime.consumer.complete(delivery)
         except AgentProtocolError as exc:
             logger.error(
                 "The agent rejected the outcome for message %s (%s); not reporting it again.",
@@ -467,9 +489,20 @@ class Worker:
                 exc,
             )
             return EXIT_FATAL
-        self._record(
-            runtime, delivery, _STATUS[outcome.kind], outcome.exception, started_at, job_name
+        record = functools.partial(
+            self._record,
+            runtime,
+            delivery,
+            _STATUS[outcome.kind],
+            outcome.exception,
+            started_at,
+            job_name,
         )
+        if runtime.config.emits_cloud_events:
+            # The socket writes may block for their timeouts, so they leave the loop.
+            await anyio.to_thread.run_sync(record)
+        else:
+            record()
         return code
 
     def _record(
@@ -558,7 +591,12 @@ class Worker:
             with signal_safe():
                 self._timed_out(runtime, running, frame)
         finally:
-            os._exit(EXIT_TIMEOUT)
+            # os._exit skips atexit, so queued log lines are flushed here; the nested
+            # finally exits even if the flush misbehaves.
+            try:
+                flush(ALARM_FLUSH_TIMEOUT)
+            finally:
+                os._exit(EXIT_TIMEOUT)
 
     def _timed_out(
         self, runtime: _Runtime, running: _Running, frame: types.FrameType | None
@@ -591,7 +629,7 @@ class Worker:
                 runtime, delivery, exception, running.started_at, lock_timeout=ALARM_LOCK_TIMEOUT
             )
             try:
-                runtime.consumer.complete(delivery)
+                runtime.consumer.blocking.complete(delivery)
             except Exception as exc:
                 raw_diagnostic(
                     f"Could not complete timed-out message {delivery.message_id} "

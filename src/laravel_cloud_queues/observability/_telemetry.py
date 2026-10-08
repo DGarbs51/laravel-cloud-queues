@@ -7,6 +7,8 @@ import threading
 from collections.abc import Mapping
 from typing import Protocol
 
+import anyio.to_thread
+
 from ._events import sanitize
 from ._guard import begin_call, end_call, log_failure
 
@@ -71,6 +73,19 @@ class Telemetry:
             return
         try:
             self._sink.emit(event, lock_timeout=lock_timeout)
+        except Exception:
+            log_failure("observability emit failed")
+
+    async def aemit(self, event: Mapping[str, object]) -> None:
+        """Send the Cloud event to the sink from a worker thread, off the event loop.
+
+        This does nothing (and never leaves the loop) unless ``emits_cloud_events`` is set,
+        and never raises.
+        """
+        if not self._emits_cloud_events:
+            return
+        try:
+            await anyio.to_thread.run_sync(self.emit, event)
         except Exception:
             log_failure("observability emit failed")
 

@@ -12,6 +12,7 @@ import logging
 import math
 import os
 import signal
+import threading
 import time
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager
@@ -95,10 +96,22 @@ class FakePolicy:
         return min(43_200, math.ceil(value))
 
 
+async def _async_handler() -> None: ...
+
+
+def _sync_handler() -> None: ...
+
+
 @dataclass(frozen=True)
 class FakePrepared:
     script: Mapping[str, Any]
     envelope: SimpleNamespace
+
+    @property
+    def job(self) -> SimpleNamespace:
+        """An ``async-*`` action stands for an ``async def`` handler."""
+        is_async = self.script["do"].startswith("async-")
+        return SimpleNamespace(func=_async_handler if is_async else _sync_handler)
 
     def policy(self, defaults: WorkerDefaults) -> FakePolicy:
         declared = self.script["policy"]
@@ -128,6 +141,8 @@ class Env:
     ran: list[str] = field(default_factory=list)
     contexts: list[FakeContext] = field(default_factory=list)
     lifespan: list[str] = field(default_factory=list)
+    flushes: list[float] = field(default_factory=list)
+    exits: list[int] = field(default_factory=list)
 
     def names(self) -> list[str]:
         return [name for name, _ in self.journal]
@@ -161,6 +176,8 @@ def install_core(monkeypatch: pytest.MonkeyPatch, env: Env) -> None:
                 pass
         if action == "async-sleep":
             await anyio.sleep(float(arg))
+        if action == "async-block":  # an async handler that blocks the loop
+            time.sleep(float(arg))  # noqa: ASYNC251
         if action == "sigterm":
             os.kill(os.getpid(), signal.SIGTERM)
             time.sleep(0.05)  # noqa: ASYNC251
@@ -246,6 +263,49 @@ class FakeConsumer:
         self.closed = True
 
 
+class FakeAsyncConsumer:
+    """A native async consumer: settles through the sync double's journal, on the loop."""
+
+    def __init__(self, sync: FakeConsumer) -> None:
+        self.sync = sync
+        self.calls: list[tuple[str, bool]] = []  # (method, ran on the main thread)
+        self.interrupted = 0
+        self.closed = False
+
+    def _call(self, name: str) -> None:
+        self.calls.append((name, threading.current_thread() is threading.main_thread()))
+
+    @property
+    def supports_renewal(self) -> bool:
+        return self.sync.supports_renewal
+
+    @property
+    def blocking(self) -> FakeConsumer:
+        return self.sync
+
+    async def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
+        self._call("receive")
+        return self.sync.receive(queues, wait_seconds)
+
+    async def complete(self, delivery: Delivery) -> None:
+        self._call("complete")
+        self.sync.complete(delivery)
+
+    async def release(self, delivery: Delivery, delay_seconds: int) -> None:
+        self._call("release")
+        self.sync.release(delivery, delay_seconds)
+
+    async def renew(self, delivery: Delivery, lease_seconds: int) -> None:
+        self._call("renew")
+        self.sync.renew(delivery, lease_seconds)
+
+    def interrupt(self) -> None:
+        self.interrupted += 1
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 class FakeTelemetry:
     """Telemetry per its contract: ``emit`` is a no-op unless ``emits_cloud_events``."""
 
@@ -253,9 +313,16 @@ class FakeTelemetry:
         self.env = env
         self.emits = emits_cloud_events
         self.lock_timeouts: list[float | None] = []
+        self.async_emits = 0
+        self.emit_on_main: list[bool] = []
+
+    async def aemit(self, event: Mapping[str, object]) -> None:
+        self.async_emits += 1
+        self.emit(event)
 
     def emit(self, event: Mapping[str, object], *, lock_timeout: float | None = None) -> None:
         self.lock_timeouts.append(lock_timeout)
+        self.emit_on_main.append(threading.current_thread() is threading.main_thread())
         if self.emits:
             self.env.journal.append(("event", dict(event)))
 
@@ -274,7 +341,11 @@ class FakeTelemetry:
 
 class FakeRegistry:
     def __init__(
-        self, config: QueueConfig | Exception, telemetry: FakeTelemetry, consumer: FakeConsumer
+        self,
+        config: QueueConfig | Exception,
+        telemetry: FakeTelemetry,
+        consumer: FakeConsumer,
+        native: FakeAsyncConsumer | None = None,
     ) -> None:
         self._config = config
         self.telemetry = telemetry
@@ -285,7 +356,16 @@ class FakeRegistry:
             self.leases.append(lease_seconds)
             return consumer
 
-        self.backend = Backend(mode="sqs", producer=None, consumer_factory=factory)  # type: ignore[arg-type]
+        def async_factory(*, lease_seconds: int = 60) -> FakeAsyncConsumer | None:
+            self.leases.append(lease_seconds)
+            return native
+
+        self.backend = Backend(
+            mode="sqs",
+            producer=None,  # type: ignore[arg-type]
+            consumer_factory=factory,
+            async_consumer_factory=None if native is None else async_factory,  # type: ignore[arg-type]
+        )
 
     @property
     def registry(self) -> FakeRegistry:
@@ -322,6 +402,7 @@ class Harness:
     telemetry: FakeTelemetry
     registry: FakeRegistry
     worker: Worker
+    native: FakeAsyncConsumer | None = None
 
     def run(self) -> int:
         return self.worker.run()
@@ -348,9 +429,16 @@ def make(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., Harness]]:
     install_core(monkeypatch, env)
 
     def fake_exit(code: int) -> None:
+        env.exits.append(code)
         raise Exited(code)
 
+    def fake_flush(timeout: float = 1.0) -> bool:
+        assert env.exits == [], "flush must run before os._exit"
+        env.flushes.append(timeout)
+        return True
+
     monkeypatch.setattr(os, "_exit", fake_exit)
+    monkeypatch.setattr(worker_module, "flush", fake_flush)
 
     def build(
         items: Sequence[Any] = (),
@@ -362,6 +450,7 @@ def make(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., Harness]]:
         complete_error: BaseException | None = None,
         release_error: BaseException | None = None,
         renew_error: BaseException | None = None,
+        native: bool = False,
         **options: Any,
     ) -> Harness:
         resolved = config if config is not None else config_for(mode, agent=agent)
@@ -375,10 +464,11 @@ def make(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., Harness]]:
             renew_error=renew_error,
         )
         telemetry = FakeTelemetry(env, emits)
-        registry = FakeRegistry(resolved, telemetry, consumer)
+        async_consumer = FakeAsyncConsumer(consumer) if native else None
+        registry = FakeRegistry(resolved, telemetry, consumer, async_consumer)
         options.setdefault("stop_when_empty", True)
         worker = Worker(FakeTarget(registry, env), WorkerOptions(**options))  # type: ignore[arg-type]
-        return Harness(env, consumer, telemetry, registry, worker)
+        return Harness(env, consumer, telemetry, registry, worker, async_consumer)
 
     yield build
     signal.setitimer(signal.ITIMER_REAL, 0)

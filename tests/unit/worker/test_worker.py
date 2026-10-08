@@ -793,3 +793,119 @@ def test_timeout_with_a_healthy_watchdog_still_reports(make: Any) -> None:
     h = make([d], renewal=True, lease_seconds=30)
     assert exit_code(h) == EXIT_TIMEOUT
     assert h.env.of("complete") == [d.message_id]
+
+
+# --- async consumer path ------------------------------------------------------------------------
+
+
+def _forbid_threads(monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_thread(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the worker loop must not hop to a thread")
+
+    monkeypatch.setattr(worker_module.anyio.to_thread, "run_sync", no_thread)
+
+
+def test_native_async_consumer_is_awaited_on_the_loop(
+    make: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = delivery(), delivery("raise", tries=3, backoff=[4])
+    h = make([first, second], native=True, lease_seconds=7)
+    _forbid_threads(monkeypatch)
+    assert h.run() == EXIT_OK
+    assert h.native is not None
+    assert h.native.calls == [
+        ("receive", True),
+        ("complete", True),
+        ("receive", True),
+        ("release", True),
+        ("receive", True),
+    ]
+    assert h.env.of("complete") == [first.message_id]
+    assert h.env.of("release") == [(second.message_id, 4)]
+    assert h.native.closed
+    assert not h.consumer.closed  # aclose belongs to the async consumer
+    assert h.registry.leases == [7]
+
+
+def test_lifecycle_events_leave_the_loop(make: Any) -> None:
+    h = make([delivery("raise")], mode="managed")
+    assert h.run() == EXIT_OK
+    assert types_of(h) == ["started", "failed_job", "failed"]
+    assert h.telemetry.async_emits == 1  # "started"
+    assert h.telemetry.emit_on_main[1:] == [False, False]  # the reporting records
+
+
+def test_timeout_events_are_emitted_synchronously_from_sigalrm(make: Any) -> None:
+    h = make([delivery("sleep:5", tries=3, timeout=0.2)], mode="managed")
+    assert exit_code(h) == EXIT_TIMEOUT
+    assert types_of(h) == ["started", "released"]
+    assert h.telemetry.async_emits == 1  # only "started"
+
+
+def test_stop_signal_interrupts_the_async_consumer(make: Any) -> None:
+    h = make([delivery("sigterm"), delivery()], native=True, stop_when_empty=False)
+    assert h.run() == EXIT_OK
+    assert h.native is not None
+    assert h.native.interrupted == 1
+
+
+def test_async_handler_renews_through_the_async_consumer_on_the_loop(make: Any) -> None:
+    d = delivery("async-sleep:0.8")
+    h = make([d], native=True, renewal=True, lease_seconds=1)
+    assert h.run() == EXIT_OK
+    assert h.native is not None
+    renewals = [call for call in h.native.calls if call[0] == "renew"]
+    assert renewals and all(on_main for _, on_main in renewals)
+    assert h.env.of("renew")[0] == (d.message_id, 1)
+    names = h.env.names()
+    assert "renew" not in names[names.index("complete") :]
+
+
+def test_async_handler_lost_lease_reports_nothing(make: Any) -> None:
+    h = make(
+        [delivery("async-sleep:0.6")],
+        native=True,
+        renewal=True,
+        lease_seconds=1,
+        renew_error=LeaseLostError("gone"),
+    )
+    assert h.run() == EXIT_FATAL
+    assert h.env.of("complete") == []
+
+
+def test_sync_handler_renews_through_the_blocking_twin_off_the_loop(make: Any) -> None:
+    h = make([delivery("sleep:0.8")], native=True, renewal=True, lease_seconds=1)
+    assert h.run() == EXIT_OK
+    assert h.native is not None
+    assert "renew" in h.env.names()
+    assert [name for name, _ in h.native.calls if name == "renew"] == []
+
+
+def test_async_handler_timeout_completes_through_the_blocking_twin(make: Any) -> None:
+    d = delivery("async-sleep:5", timeout=0.3)
+    h = make([d], native=True, renewal=True, lease_seconds=30)
+    assert exit_code(h) == EXIT_TIMEOUT
+    assert h.env.of("complete") == [d.message_id]
+    assert h.native is not None
+    assert "complete" not in [name for name, _ in h.native.calls]
+
+
+def test_timeout_flushes_logging_before_exiting(make: Any) -> None:
+    h = make([delivery("sleep:5", tries=3, timeout=0.2)])
+    assert exit_code(h) == EXIT_TIMEOUT
+    assert h.env.flushes == [0.5]
+    assert h.env.exits == [EXIT_TIMEOUT]
+
+
+def test_timeout_exits_even_when_the_flush_raises(
+    make: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(timeout: float = 1.0) -> bool:
+        raise RuntimeError("flush broke")
+
+    h = make([delivery("sleep:5", tries=3, timeout=0.2)])
+    monkeypatch.setattr(worker_module, "flush", broken)
+    with pytest.raises(BaseException) as raised:
+        h.run()
+    assert h.env.exits == [EXIT_TIMEOUT]
+    assert _find(raised.value) is not None

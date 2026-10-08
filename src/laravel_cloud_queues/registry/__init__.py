@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
 import pkgutil
 import threading
+import weakref
 from collections import OrderedDict
 from collections.abc import AsyncGenerator, Callable, Generator, Mapping, Sequence
 from contextlib import (
@@ -17,6 +19,7 @@ from contextlib import (
 from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Protocol, TypeVar, overload, runtime_checkable
 
+import anyio.to_thread
 from typing_extensions import ParamSpec
 
 from ..codecs import CodecRegistry, default_codecs
@@ -26,7 +29,7 @@ from ..jobs.context import JobContext
 from ..jobs.job import AnyJob, Job
 from ..jobs.policy import RetryPolicy
 from ..observability import NullSink, SocketEventSink, Telemetry
-from ..transports import SQS_MAX_PAYLOAD_BYTES, Backend, create_backend
+from ..transports import SQS_MAX_PAYLOAD_BYTES, AsyncProducer, Backend, create_backend
 
 if TYPE_CHECKING:
     from ..testing import DispatchRecorder, TestingSession
@@ -140,7 +143,12 @@ def bind_injected(
 
 
 class Registry:
-    """A standalone job registry for plain Python apps and the core of every framework adapter."""
+    """A standalone job registry for plain Python apps and the core of every framework adapter.
+
+    ``dispatch_async`` sends through one async producer per running asyncio event loop. The
+    worker closes its loop's producer when :meth:`lifespan` exits; other apps call
+    :meth:`aclose_producer` from their own shutdown, on the same loop.
+    """
 
     def __init__(
         self,
@@ -171,6 +179,10 @@ class Registry:
         self._loaded = False
         self._lock = threading.RLock()
         self._testing_session: TestingSession | None = None
+        # Weak keys: a loop that is garbage collected drops its producer.
+        self._async_producers: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, AsyncProducer
+        ] = weakref.WeakKeyDictionary()
 
     @property
     def registry(self) -> Registry:
@@ -342,9 +354,57 @@ class Registry:
                     importlib.import_module(info.name)
             self._loaded = True
 
+    async def async_producer(self) -> AsyncProducer | None:
+        """Get the async producer of the running asyncio event loop, creating it on first use.
+
+        The first call builds the configuration and backend in a worker thread if they are
+        not built yet. Returns ``None`` when no asyncio event loop is running (trio).
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return None
+        backend = self._backend
+        if backend is None:
+            backend = await anyio.to_thread.run_sync(lambda: self.backend)
+        with self._lock:
+            # A producer's connections usually reference their loop, which then never dies
+            # on its own: drop the producers of closed loops (asyncio.run per call).
+            for stale in [other for other in self._async_producers if other.is_closed()]:
+                del self._async_producers[stale]
+            producer = self._async_producers.get(loop)
+            if producer is None:
+                producer = self._async_producers[loop] = backend.open_async_producer()
+        return producer
+
+    async def aclose_producer(self) -> None:
+        """Close the async producer of the running event loop, if one was created.
+
+        A later ``dispatch_async`` on the loop creates a new one.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        with self._lock:
+            producer = self._async_producers.pop(loop, None)
+        if producer is not None:
+            await producer.aclose()
+
     def lifespan(self) -> AbstractAsyncContextManager[None]:
-        """Get the lifespan context of the worker process, which is a no-op here."""
-        return _noop_lifespan()
+        """Get the lifespan context of the worker process.
+
+        On exit it closes the async producer of the running event loop.
+        """
+        return self._lifespan()
+
+    @asynccontextmanager
+    async def _lifespan(self) -> AsyncGenerator[None, None]:
+        """Yield for the worker, then close the loop's async producer."""
+        try:
+            yield
+        finally:
+            await self.aclose_producer()
 
     def testing(self, *, eager: bool = True) -> AbstractContextManager[DispatchRecorder]:
         """Swap dispatching for the test double within the returned context.
@@ -387,12 +447,6 @@ class Registry:
         if self._config is not None and self._config.mode == "redis":
             return False, None
         return True, SQS_MAX_PAYLOAD_BYTES
-
-
-@asynccontextmanager
-async def _noop_lifespan() -> AsyncGenerator[None, None]:
-    """Enter and exit an empty worker lifespan."""
-    yield
 
 
 __all__ = ["DefaultInvoker", "Invoker", "Registry", "WorkerTarget"]

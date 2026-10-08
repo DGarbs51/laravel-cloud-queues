@@ -1,8 +1,12 @@
 """The single pipeline through which every job is dispatched.
 
-``Job.dispatch`` and ``Job.dispatch_async`` both call :func:`prepare_dispatch` and then
-:func:`send_prepared` (the async variant runs them in a worker thread), so validation,
-serialization, routing, tracing and transport behavior are identical.
+``Job.dispatch`` calls :func:`prepare_dispatch` and then :func:`send_prepared`.
+``Job.dispatch_async`` calls :func:`prepare_dispatch` on the event loop and then awaits
+:func:`send_prepared_async` with the loop's async producer, so validation, serialization,
+routing, tracing and transport behavior are identical. Only the first async dispatch leaves
+the loop, to build the configuration and backend in a worker thread. A backend without a
+native async producer (SQS) sends in a worker thread, and without a running asyncio loop
+(trio) the whole dispatch runs in a worker thread.
 
 A dispatch runs through these steps in order:
 
@@ -32,7 +36,7 @@ from datetime import UTC, datetime
 
 from ..errors import InvalidQueueOptionError, PayloadTooLargeError
 from ..observability import inject_trace_context, lifecycle_event
-from ..transports.base import OutgoingMessage
+from ..transports.base import AsyncProducer, OutgoingMessage, SentMessage
 from .envelope import MAX_BODY_BYTES, Envelope, encode_envelope
 from .job import AnyJob, DispatchOptions, DispatchReceipt
 from .policy import normalize_delay
@@ -184,9 +188,33 @@ def send_prepared(job: AnyJob, prepared: PreparedDispatch) -> DispatchReceipt:
     registry = job.registry
     sent = registry.backend.producer.send(prepared.message)
     try:
-        registry.telemetry.emit(lifecycle_event("queued", sent.queue, timestamp=datetime.now(UTC)))
+        registry.telemetry.emit(_queued_event(sent))
     except Exception:
         # The message is already sent: a telemetry failure must not look like a failed
         # dispatch (callers would retry and duplicate the job).
         logger.warning("Could not emit the queued event for job %s.", job.name, exc_info=True)
+    return _receipt(prepared, sent)
+
+
+async def send_prepared_async(
+    job: AnyJob, producer: AsyncProducer, prepared: PreparedDispatch
+) -> DispatchReceipt:
+    """Send the prepared dispatch through the given async producer.
+
+    The ``queued`` event leaves the loop only when it is emitted (managed mode). It raises
+    the same errors as :func:`send_prepared`.
+    """
+    sent = await producer.send(prepared.message)
+    # aemit never raises, so a sent message is never reported as a failed dispatch.
+    await job.registry.telemetry.aemit(_queued_event(sent))
+    return _receipt(prepared, sent)
+
+
+def _queued_event(sent: SentMessage) -> dict[str, object]:
+    """Build the ``queued`` lifecycle event for the sent message."""
+    return lifecycle_event("queued", sent.queue, timestamp=datetime.now(UTC))
+
+
+def _receipt(prepared: PreparedDispatch, sent: SentMessage) -> DispatchReceipt:
+    """Create the receipt for the sent message."""
     return DispatchReceipt(message_id=sent.message_id, queue=sent.queue, uuid=prepared.uuid)

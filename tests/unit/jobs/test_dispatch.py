@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import anyio
+import anyio.to_thread
 import pytest
 
 from laravel_cloud_queues import JobContext
@@ -23,8 +24,15 @@ from laravel_cloud_queues.jobs import dispatch as dispatch_module
 from laravel_cloud_queues.jobs.dispatch import prepare_dispatch, send_prepared
 from laravel_cloud_queues.jobs.envelope import ENVELOPE_KEY, MAX_BODY_BYTES, decode_envelope
 from laravel_cloud_queues.jobs.job import DispatchOptions, DispatchReceipt
+from laravel_cloud_queues.observability import NullSink, Telemetry
+from laravel_cloud_queues.registry import Registry
 from laravel_cloud_queues.transports import Backend
-from tests.unit.jobs.fakes import FakeProducer, RecordingTelemetry, make_registry
+from tests.unit.jobs.fakes import (
+    FakeAsyncProducer,
+    FakeProducer,
+    RecordingTelemetry,
+    make_registry,
+)
 
 
 def section(body: str) -> dict[str, Any]:
@@ -418,6 +426,116 @@ def test_dispatch_async_raises_dispatch_errors() -> None:
 
     anyio.run(main)
     assert producer.sent == []
+
+
+def _forbid_threads(monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_thread(*args: object, **kwargs: object) -> None:
+        raise AssertionError("dispatch_async must stay on the loop")
+
+    monkeypatch.setattr(anyio.to_thread, "run_sync", no_thread)
+
+
+def test_dispatch_async_with_a_native_producer_never_leaves_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    telemetry = RecordingTelemetry(emits=False)  # redis mode
+    registry, producer, _ = make_registry(mode="redis", native_async=True, telemetry=telemetry)
+    job = registry.job(name="a", queue="q")(lambda x: None)
+    _forbid_threads(monkeypatch)
+
+    async def main() -> list[DispatchReceipt]:
+        return [await job.dispatch_async(1), await job.dispatch_async(2)]
+
+    first, second = anyio.run(main)
+    assert (first.message_id, second.message_id) == ("msg-1", "msg-2")
+    assert first.uuid == decode_envelope(producer.sent[0].body).uuid
+    assert producer.threads == [threading.get_ident()] * 2
+    [native] = producer.opened
+    assert len(native.loops) == 2
+
+
+def test_dispatch_async_builds_the_backend_once_in_a_worker_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from laravel_cloud_queues import registry as registry_module
+
+    producer = FakeProducer(supports_fifo=False, max_payload_bytes=None)
+    threads: list[int] = []
+
+    def fake_create_backend(config: QueueConfig) -> Backend:
+        threads.append(threading.get_ident())
+        return Backend(
+            mode="redis",
+            producer=producer,
+            consumer_factory=lambda **_: None,  # type: ignore[arg-type,return-value]
+            async_producer_factory=lambda: FakeAsyncProducer(producer),
+        )
+
+    monkeypatch.setattr(registry_module, "create_backend", fake_create_backend)
+    registry = Registry(
+        config=QueueConfig(mode="redis"),
+        telemetry=Telemetry(sink=NullSink(), emits_cloud_events=False),
+    )
+    job = registry.job(name="a")(lambda: None)
+    hops: list[object] = []
+    original = anyio.to_thread.run_sync
+
+    async def counting(func: Any, *args: Any, **kwargs: Any) -> Any:
+        hops.append(func)
+        return await original(func, *args, **kwargs)
+
+    monkeypatch.setattr(anyio.to_thread, "run_sync", counting)
+
+    async def main() -> None:
+        await job.dispatch_async()
+        await job.dispatch_async()
+
+    anyio.run(main)
+    assert len(threads) == 1 and threads[0] != threading.get_ident()
+    assert len(hops) == 1
+    assert producer.threads == [threading.get_ident()] * 2
+
+
+def test_dispatch_async_emits_queued_off_the_loop_after_the_native_send() -> None:
+    registry, producer, telemetry = make_registry(native_async=True)
+    job = registry.job(name="a", queue="emails")(lambda: None)
+    anyio.run(job.dispatch_async)
+    assert [event["type"] for event in telemetry.events] == ["queued"]
+    assert telemetry.events[0]["queue"] == "emails"
+    assert telemetry.threads[0] != threading.get_ident()
+    assert producer.threads == [threading.get_ident()]
+
+
+def test_async_telemetry_failure_never_fails_a_sent_dispatch() -> None:
+    telemetry = RecordingTelemetry(error=RuntimeError("socket gone"))
+    registry, producer, _ = make_registry(native_async=True, telemetry=telemetry)
+    receipt = anyio.run(registry.job(name="a")(lambda: None).dispatch_async)
+    assert receipt.message_id == "msg-1"
+    assert len(producer.sent) == 1
+
+
+def test_native_send_failure_propagates_without_queued_event() -> None:
+    producer = FakeProducer(error=ManagedQueueNotFoundError("missing"))
+    registry, _, telemetry = make_registry(producer=producer, native_async=True)
+    with pytest.raises(ManagedQueueNotFoundError):
+        anyio.run(registry.job(name="a")(lambda: None).dispatch_async)
+    assert telemetry.events == []
+
+
+def test_dispatch_async_without_an_asyncio_loop_runs_in_a_worker_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under trio there is no asyncio loop: the whole dispatch takes one thread hop."""
+    registry, producer, _ = make_registry(native_async=True)
+    job = registry.job(name="a")(lambda: None)
+
+    async def no_loop() -> None:
+        return None
+
+    monkeypatch.setattr(registry, "async_producer", no_loop)
+    anyio.run(job.dispatch_async)
+    assert producer.threads[0] != threading.get_ident()
+    assert producer.opened == []
 
 
 def test_sync_dispatch_inside_a_running_loop() -> None:

@@ -11,6 +11,10 @@ Verified against FastAPI 0.141.1 and Starlette 1.7.0:
   requests. Queue jobs have no request, so yielded identifier keys are copied onto
   ``app.state`` for dependencies to read. Assigning ``app.state`` inside the lifespan
   body is visible the same way.
+
+After the app's shutdown, the bound registry's async producer for the running loop is
+closed, since jobs may have dispatched through it. A web server never runs this context, so
+web apps call ``registry.aclose_producer()`` from their own lifespan.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .._narrowing import is_mapping
+from ..registry import Registry
 
 _RESERVED_STATE_KEY = "laravel_cloud_queues"
 """The ``app.state`` key that holds the adapter binding."""
@@ -34,17 +39,22 @@ async def enter_lifespan(app: FastAPI) -> AsyncGenerator[None]:
     which would skip an app's shutdown not wrapped in ``finally``, the error is caught,
     the app lifespan is left normally so its shutdown still runs, and the error is then
     re-raised. This matches an ASGI server, which sends lifespan shutdown as its own
-    message rather than as an exception.
+    message rather than as an exception. The bound registry's async producer is closed last.
     """
 
-    async with app.router.lifespan_context(app) as maybe_state:
-        publish_lifespan_state(app, maybe_state)
-        try:
-            yield
-        except BaseException as exc:
-            pending: BaseException | None = exc
-        else:
-            pending = None
+    try:
+        async with app.router.lifespan_context(app) as maybe_state:
+            publish_lifespan_state(app, maybe_state)
+            try:
+                yield
+            except BaseException as exc:
+                pending: BaseException | None = exc
+            else:
+                pending = None
+    finally:
+        registry = getattr(getattr(app.state, _RESERVED_STATE_KEY, None), "registry", None)
+        if isinstance(registry, Registry):
+            await registry.aclose_producer()
     if pending is not None:
         raise pending
 
