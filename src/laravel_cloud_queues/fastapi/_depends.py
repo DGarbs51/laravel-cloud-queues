@@ -233,14 +233,8 @@ def request_kind(annotation: object) -> str | None:
             return name
         return None
     for cls, label in _REQUEST_TYPES:
-        if annotation is cls:
+        if annotation is cls or (isinstance(annotation, type) and issubclass(annotation, cls)):
             return label
-        if isinstance(annotation, type):
-            try:
-                if issubclass(annotation, cls):
-                    return label
-            except TypeError:
-                continue
     return None
 
 
