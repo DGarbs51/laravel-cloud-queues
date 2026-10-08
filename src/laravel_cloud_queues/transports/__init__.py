@@ -108,7 +108,7 @@ def create_backend(config: QueueConfig) -> Backend:
     from ..errors import ConfigurationError
 
     if config.mode == "redis":
-        from .redis import RedisConsumer, RedisProducer
+        from .redis import AsyncRedisConsumer, AsyncRedisProducer, RedisConsumer, RedisProducer
 
         redis_config = config.redis
         if redis_config is None:
@@ -118,7 +118,17 @@ def create_backend(config: QueueConfig) -> Backend:
             """Create a new Redis consumer."""
             return RedisConsumer(redis_config, lease_seconds=lease_seconds)
 
-        return Backend(config.mode, RedisProducer(redis_config), redis_consumer)
+        def async_redis_consumer(*, lease_seconds: int = 60) -> AsyncConsumer:
+            """Create a new native async Redis consumer."""
+            return AsyncRedisConsumer(redis_config, lease_seconds=lease_seconds)
+
+        return Backend(
+            config.mode,
+            RedisProducer(redis_config),
+            redis_consumer,
+            async_producer_factory=lambda: AsyncRedisProducer(redis_config),
+            async_consumer_factory=async_redis_consumer,
+        )
 
     from .sqs import SqsConsumer, SqsProducer
 
@@ -130,13 +140,22 @@ def create_backend(config: QueueConfig) -> Backend:
         if managed is None:
             raise ConfigurationError("Managed backend requires managed configuration.")
         if managed.agent.enabled:
-            from .agent import AgentConsumer
+            from .agent import AgentConsumer, AsyncAgentConsumer
 
             def agent_consumer(*, lease_seconds: int = 60) -> Consumer:
                 """Create a new agent consumer, which ignores the lease duration."""
                 return AgentConsumer(managed)
 
-            return Backend(config.mode, SqsProducer(connection), agent_consumer)
+            def async_agent_consumer(*, lease_seconds: int = 60) -> AsyncConsumer:
+                """Create a new native async agent consumer, which ignores the lease duration."""
+                return AsyncAgentConsumer(managed)
+
+            return Backend(
+                config.mode,
+                SqsProducer(connection),
+                agent_consumer,
+                async_consumer_factory=async_agent_consumer,
+            )
 
     def sqs_consumer(*, lease_seconds: int = 60) -> Consumer:
         """Create a new SQS consumer."""
