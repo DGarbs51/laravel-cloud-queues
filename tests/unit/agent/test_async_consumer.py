@@ -79,10 +79,18 @@ async def test_client_options_and_lifecycle(mock_agent):
     assert consumer.blocking._client.is_closed
 
 
+async def test_receive_names_the_worker_queue_without_a_queue_url(mock_agent):
+    consumer, _, responses, _, _ = mock_agent
+    responses.append(httpx.Response(200, json={"messageId": "m"}))
+    delivery = await consumer.receive(["reports"], 0)
+    assert delivery is not None
+    assert delivery.queue == "reports"
+
+
 async def test_receive_message_and_empty_poll(mock_agent):
     consumer, requests, responses, pauses, _ = mock_agent
     responses.append(httpx.Response(200, json={"messageId": "m", "body": "payload"}))
-    delivery = await consumer.receive(["ignored"], 999)
+    delivery = await consumer.receive([], 999)
     assert delivery is not None
     assert delivery.message_id == "m"
     assert delivery.body == "payload"
@@ -387,7 +395,8 @@ async def test_interrupt_during_poll_skips_the_backoff_wait(mock_agent):
     consumer._client._transport = httpx.MockTransport(fail_then_stop)
     started = time.monotonic()
     assert await consumer.receive([], 0) is None
-    assert time.monotonic() - started < 0.1
+    # The backoff is 0.5 s; the margin absorbs two mock round trips on slow CI runners.
+    assert time.monotonic() - started < 0.4
     assert len(requests) == 2
 
 

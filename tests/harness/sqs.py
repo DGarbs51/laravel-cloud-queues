@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -46,7 +46,7 @@ class SQSEndpoint:
 
 
 @contextmanager
-def sqs_endpoint() -> Iterator[SQSEndpoint]:
+def sqs_endpoint() -> Generator[SQSEndpoint]:
     mode = os.environ.get("LARAVEL_CLOUD_QUEUES_TEST_SQS", "moto")
     if mode not in {"moto", "localstack"}:
         raise ValueError("LARAVEL_CLOUD_QUEUES_TEST_SQS must be moto or localstack")

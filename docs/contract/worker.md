@@ -94,8 +94,8 @@ The exit-1 ambiguous-ack rule applies only to direct brokers; agent unavailabili
 
 ## Loop and stop conditions
 
-- Queues: agent mode ignores `--queue`; a `--queue` that differs from the Cloud assignment is
-  a startup `ConfigurationError` (exit 2). Direct modes: CLI priority list or the backend
+- Queues: managed mode uses `--queue`, else the top-level `queue`. Agent mode accepts one
+  queue; a `--queue` naming several is a startup `ConfigurationError` (exit 2). Direct modes: CLI priority list or the backend
   default queue. Single SQS queue: `WaitTimeSeconds=20`, with no extra `--sleep` after an
   empty long poll. Several queues: `WaitTimeSeconds=0` in priority order, then `--sleep`
   only when all are empty. Redis: bounded blocking wait of `--sleep` seconds, with no extra

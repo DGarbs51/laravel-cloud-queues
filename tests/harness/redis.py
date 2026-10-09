@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -54,7 +54,7 @@ def cleanup(client: Redis, prefix: str) -> None:
 
 
 @contextmanager
-def redis_service(url: str | None = None) -> Iterator[tuple[Redis, str]]:
+def redis_service(url: str | None = None) -> Generator[tuple[Redis, str]]:
     client = connect(url)
     prefix = unique_prefix()
     try:

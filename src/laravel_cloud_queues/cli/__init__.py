@@ -35,7 +35,7 @@ P = ParamSpec("P")
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the console application and return its exit code.
 
-    The available commands are ``work TARGET``, ``inspect TARGET`` and ``conformance ...``.
+    The available commands are ``work [TARGET]``, ``inspect [TARGET]`` and ``conformance ...``.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     try:
@@ -142,7 +142,7 @@ def _import_path() -> None:
 
 
 @cli.command(short_help="Run a queue worker.")
-@click.argument("target", metavar="TARGET")
+@click.argument("target", metavar="[TARGET]", required=False)
 @click.option("--queue", type=_Queues(), help="Comma-separated priority list.")
 @click.option("--max-jobs", type=click.IntRange(min=1), help="Stop after N deliveries.")
 @click.option("--max-time", type=SECONDS, help="Stop after S seconds.")
@@ -157,7 +157,7 @@ def _import_path() -> None:
 @click.option("--rest", type=SECONDS, default=0.0, show_default=True, help="Pause between jobs.")
 @_command
 def work(
-    target: str,
+    target: str | None,
     queue: tuple[str, ...] | None,
     max_jobs: int | None,
     max_time: float | None,
@@ -167,7 +167,10 @@ def work(
     sleep: float,
     rest: float,
 ) -> int:
-    """Run a queue worker for TARGET (module:attribute, a registry or an app)."""
+    """Run a queue worker for TARGET (module:attribute, a registry or an app).
+
+    Without TARGET, the pyproject.toml target or a conventional module is used.
+    """
     _import_path()
     resolved = resolve_target(target)
     options = WorkerOptions(
@@ -184,10 +187,10 @@ def work(
 
 
 @cli.command(short_help="Show jobs and settings.")
-@click.argument("target", metavar="TARGET")
+@click.argument("target", metavar="[TARGET]", required=False)
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable output.")
 @_command
-def inspect(target: str, as_json: bool) -> int:
+def inspect(target: str | None, as_json: bool) -> int:
     """Show the mode, queues, registered jobs and non-secret settings of TARGET."""
     _import_path()
     registry = resolve_target(target).registry

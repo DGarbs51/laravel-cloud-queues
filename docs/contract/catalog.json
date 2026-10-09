@@ -639,8 +639,8 @@
     },
     {
       "id": "agent.receive_selection",
-      "title": "Agent-only receive when the agent is enabled",
-      "expected": "In managed mode with agent.enabled true the worker receives only through GET /next on the agent socket for its assigned queue and never calls ReceiveMessage. Requested queue names are ignored on this path; a CLI queue selection that conflicts with the assignment is a startup ConfigurationError (exit 2), not a silent override. With agent.enabled false the worker uses direct SQS receive.",
+      "title": "Agent-only receive for the worker queue when the agent is enabled",
+      "expected": "In managed mode the worker queue is the CLI --queue, else the top-level queue, else default; connection.queue stays the dispatch default. With agent.enabled true the worker receives only through GET /next on the agent socket and never calls ReceiveMessage; a CLI queue list naming several queues is a startup ConfigurationError (exit 2). With agent.enabled false the worker uses direct SQS receive on the selected queues.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -668,18 +668,18 @@
         }
       ],
       "deviation": {
-        "label": "agent-receive-ignores-queues",
-        "follows": "symfony",
-        "summary": "Laravel uses the agent only when the requested queue equals the worker queue (and the command is queue:work), otherwise pops SQS directly; a multi-queue worker never uses the agent. Symfony always uses the agent when enabled. The project follows Symfony and fails fast on a conflicting CLI queue.",
+        "label": "agent-rejects-multiple-queues",
+        "follows": "project",
+        "summary": "Laravel uses the agent only when the popped queue equals the worker queue (--queue, else the config queue), so a multi-queue worker pops SQS directly and never uses the agent. The project fails fast on a multi-queue agent worker instead, because a direct pop bypasses the agent's visibility heartbeat.",
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_managed.py::test_agent_queue_assignment", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": ["tests/conformance/probes/test_managed.py::test_agent_queue_selection", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
     },
     {
       "id": "agent.next_protocol",
       "title": "GET /next request and response handling",
-      "expected": "GET /next over the Unix socket (httpx Unix transport, base URL http://localhost, redirects disabled, bounded response size) with a 65-second request timeout. 204: no work. 200: body must decode to a JSON object or array, else fatal; missing, empty or non-string messageId is an empty poll; non-string receiptHandle becomes null; non-string body becomes \"\"; attributes.ApproximateReceiveCount is the attempt count; queueUrl is used for telemetry queue normalization, falling back to the configured queue when missing. Any other status, or an unreachable socket after retries, is fatal (AgentUnavailableError).",
+      "expected": "GET /next over the Unix socket (httpx Unix transport, base URL http://localhost, redirects disabled, bounded response size) with a 65-second request timeout. 204: no work. 200: body must decode to a JSON object or array, else fatal; missing, empty or non-string messageId is an empty poll; non-string receiptHandle becomes null; non-string body becomes \"\"; attributes.ApproximateReceiveCount is the attempt count; queueUrl is used for telemetry queue normalization, falling back to the worker queue when missing. Any other status, or an unreachable socket after retries, is fatal (AgentUnavailableError).",
       "tier": "emulated",
       "required": true,
       "laravel_source": [

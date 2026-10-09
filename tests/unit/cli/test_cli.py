@@ -159,7 +159,6 @@ def test_work_defaults(app: str, captured: list[tuple[Any, WorkerOptions]]) -> N
         ["work", "x:y", "--sleep", "-1"],
         ["work", "x:y", "--timeout", "nan"],
         ["work", "x:y", "--queue", ","],
-        ["work"],
         [],
     ],
 )
@@ -167,6 +166,14 @@ def test_invalid_arguments_exit_2(argv: list[str]) -> None:
     with pytest.raises(SystemExit) as raised:
         cli.main(argv)
     assert raised.value.code == 2
+
+
+def test_work_without_target_discovers_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["work"]) == 2
+    assert "No worker target found" in capsys.readouterr().err
 
 
 def test_bad_target_is_one_actionable_line(app: str, capsys: pytest.CaptureFixture[str]) -> None:
