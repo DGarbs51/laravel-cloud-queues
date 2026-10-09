@@ -18,17 +18,28 @@ to see the full traceback. Credentials in URLs and query strings are redacted ei
 Runs a queue worker for `TARGET`:
 
 ```text
-laravel-cloud-queues work TARGET [--queue Q[,Q...]] [--max-jobs N] [--max-time S]
+laravel-cloud-queues work [TARGET] [--queue Q[,Q...]] [--max-jobs N] [--max-time S]
                                  [--stop-when-empty] [--stop-when-empty-for S]
                                  [--timeout S] [--sleep S] [--rest S] [--debug]
 ```
 
 `TARGET` is a `module:attribute` path to a FastAPI app with `LaravelCloudQueues` bound, a
-`Registry`, or any [worker target](extending.md#worker-targets).
+`Registry`, or any [worker target](extending.md#worker-targets). When you omit it, the
+worker uses the target in your `pyproject.toml`:
+
+```toml
+[tool.laravel-cloud-queues]
+target = "myapp.main:app"
+```
+
+Without that setting, the worker looks for an `app`, `api` or `registry` attribute in the
+`main`, `app`, `api`, `app.main` and `app.api` modules of the current directory, in that
+order, and uses the first worker target it finds. `inspect` resolves its target the same
+way.
 
 | Option | Default | Description |
 |---|---|---|
-| `--queue Q[,Q...]` | backend default | The queues to process, in priority order (`sqs` and `redis`). In agent mode, it must match the Laravel Cloud assignment or be omitted |
+| `--queue Q[,Q...]` | backend default | The queues to process, in priority order. In managed mode, it defaults to the configuration's `queue`. With the queue agent enabled, it names one queue |
 | `--max-jobs N` | off | Stop after N deliveries, with exit code `0` |
 | `--max-time S` | off | Stop after S seconds, checked between jobs, with exit code `0` |
 | `--stop-when-empty` | off | Stop on the first empty poll. **Not for supervised worker clusters** |

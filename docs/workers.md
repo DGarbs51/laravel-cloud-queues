@@ -47,9 +47,9 @@ checks the first queue, then the second, and so on:
 laravel-cloud-queues work myapp.main:app --queue high,default,low
 ```
 
-Queue priorities apply to the `sqs` and `redis` backends. In managed mode with the queue
-agent enabled, Laravel Cloud assigns the queue, and a `--queue` that differs from the
-assignment is a configuration error.
+In managed mode, the worker processes the configuration's `queue` unless you pass
+`--queue`. With the queue agent enabled, a worker processes one queue, so run one worker
+per queue; a `--queue` that names several is a configuration error.
 
 ## Worker Options
 

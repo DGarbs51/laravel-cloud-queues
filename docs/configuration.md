@@ -121,7 +121,7 @@ LARAVEL_CLOUD_QUEUES_SQS_CREDENTIALS=default
 In managed mode, Laravel Cloud injects `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` into your
 containers. The package detects it automatically, so there is no AWS or queue wiring for
 you to do: the queue URL prefix and suffix, the region, the credential provider, the
-worker's queue assignment and whether the in-container queue agent is enabled all come
+worker's default queue and whether the in-container queue agent is enabled all come
 from that document.
 
 | Variable | Default | Description |

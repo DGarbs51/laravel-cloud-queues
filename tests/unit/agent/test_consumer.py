@@ -73,7 +73,7 @@ def test_receive_shapes(mock_agent, monkeypatch, case):
     normalizer = Mock(return_value="emails")  # L3a owns the still-stubbed helper.
     monkeypatch.setattr(agent, "normalize_queue", normalizer)
     responses.append(response(case))
-    delivery = consumer.receive(["ignored"], 0)
+    delivery = consumer.receive([], 0)
     if case["expected"] is None:
         assert delivery is None
     else:
@@ -361,9 +361,9 @@ def test_interrupt_preserves_full_response_and_reporting(mock_agent, monkeypatch
     consumer, requests, responses, _ = mock_agent
     decode = consumer._delivery
 
-    def interrupt_then_decode(body):
+    def interrupt_then_decode(queues, body):
         consumer.interrupt()
-        return decode(body)
+        return decode(queues, body)
 
     monkeypatch.setattr(consumer, "_delivery", interrupt_then_decode)
     responses.extend([httpx.Response(200, json={"messageId": "m"}), httpx.Response(200)])

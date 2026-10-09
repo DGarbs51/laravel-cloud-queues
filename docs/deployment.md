@@ -110,8 +110,9 @@ socket, so your jobs appear in the **Queues** dashboard, and failed jobs can be 
 and retried there. The agent extends a running job's visibility in three-minute increments
 and manages the worker's lifetime and scaling.
 
-The Laravel Cloud queue assignment is authoritative. Passing a `--queue` that differs from
-it is a startup configuration error, not an override.
+The worker processes `--queue`, or the configuration's `queue` when you omit it. Jobs
+dispatched without a queue go to `connection.queue`. With the agent enabled, each worker
+processes one queue.
 
 ## Smoke Testing Your Deployment
 

@@ -32,6 +32,7 @@ import os
 import signal
 import threading
 import time
+import tomllib
 import types
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -42,6 +43,7 @@ import anyio.lowlevel
 import anyio.to_thread
 from laravel_cloud_logging import configure, flush
 
+from .._narrowing import is_mapping
 from ..config import QueueConfig
 from ..errors import (
     AgentProtocolError,
@@ -279,20 +281,18 @@ class Worker:
     def _select_queues(self, config: QueueConfig) -> tuple[str, ...]:
         """Determine which queues the worker should process.
 
-        Raises a :class:`ConfigurationError` if the requested queues conflict with the queue
-        Laravel Cloud assigns to the worker.
+        Like Laravel, ``--queue`` wins over the managed top-level ``queue``. Raises a
+        :class:`ConfigurationError` if the agent is enabled and several queues are requested.
         """
         requested = self._options.queues
         if config.managed is not None:
-            assigned = config.managed.queue
-            if not config.uses_agent:
-                return requested or (assigned,)
-            if requested and requested != (assigned,):
+            queues = requested or (config.managed.queue,)
+            if config.uses_agent and len(queues) > 1:
                 raise ConfigurationError(
-                    f"Laravel Cloud assigns queue [{assigned}] to this worker; "
-                    f"--queue {','.join(requested)} conflicts with it. Remove --queue."
+                    f"The Laravel Cloud agent serves one queue per worker; "
+                    f"--queue {','.join(queues)} names several. Run one worker per queue."
                 )
-            return (assigned,)
+            return queues
         return requested or (config.default_queue,)
 
     def _watch_signals(self, runtime: _Runtime) -> None:
@@ -702,26 +702,35 @@ def _traceback(frame: types.FrameType | None) -> types.TracebackType | None:
     return tb
 
 
-def resolve_target(spec: str) -> WorkerTarget:
+_CONVENTIONAL_MODULES = ("main", "app", "api", "app.main", "app.api")
+"""The modules searched, in order, when no worker target is named."""
+_CONVENTIONAL_ATTRIBUTES = ("app", "api", "registry")
+"""The attributes searched, in order, in each conventional module."""
+
+
+def resolve_target(spec: str | None = None) -> WorkerTarget:
     """Resolve the worker target named by a ``module:attribute`` spec.
 
     The target may be a registry, an object exposing ``registry`` and ``lifespan()``, or an
-    app whose ``state.laravel_cloud_queues`` is one. Raises a :class:`ConfigurationError`
-    otherwise. FastAPI itself is never imported.
+    app whose ``state.laravel_cloud_queues`` is one. Without a spec, the target is
+    ``[tool.laravel-cloud-queues] target`` in ``./pyproject.toml``, else the first
+    conventional ``app``, ``api`` or ``registry`` attribute of ``main``, ``app``, ``api``,
+    ``app.main`` or ``app.api``. Raises a :class:`ConfigurationError` when no target is
+    found. FastAPI itself is never imported.
     """
+    if spec is None:
+        spec = _configured_target()
+    if spec is None:
+        return _discover_target()
     module_name, _, attribute = spec.partition(":")
     if not module_name or not attribute:
         raise ConfigurationError(f"Worker target must look like 'module:attribute', got [{spec}].")
-    try:
-        module = importlib.import_module(module_name)
-    except ModuleNotFoundError as exc:
-        missing = exc.name or ""
-        if module_name == missing or module_name.startswith(missing + "."):
-            raise ConfigurationError(
-                f"Cannot import module [{module_name}] for worker target [{spec}]; "
-                "run from the directory that contains it."
-            ) from None
-        raise
+    module = _import(module_name)
+    if module is None:
+        raise ConfigurationError(
+            f"Cannot import module [{module_name}] for worker target [{spec}]; "
+            "run from the directory that contains it."
+        )
     obj: object = module
     for part in attribute.split("."):
         try:
@@ -730,15 +739,67 @@ def resolve_target(spec: str) -> WorkerTarget:
             raise ConfigurationError(
                 f"Module [{module_name}] has no attribute [{attribute}]."
             ) from None
+    target = _as_target(obj)
+    if target is None:
+        raise ConfigurationError(
+            f"[{spec}] is not a worker target: expected a Registry, a FastAPI app with "
+            "LaravelCloudQueues bound, or an object with 'registry' and 'lifespan()'."
+        )
+    return target
+
+
+def _configured_target() -> str | None:
+    """Get the worker target configured in ``./pyproject.toml``, if any."""
+    try:
+        with open("pyproject.toml", "rb") as file:
+            document = tomllib.load(file)
+    except FileNotFoundError:
+        return None
+    except tomllib.TOMLDecodeError:
+        raise ConfigurationError("pyproject.toml is not valid TOML.") from None
+    tool = document.get("tool")
+    section = tool.get("laravel-cloud-queues") if is_mapping(tool) else None
+    target = section.get("target") if is_mapping(section) else None
+    if target is None or isinstance(target, str):
+        return target
+    raise ConfigurationError("[tool.laravel-cloud-queues] target must be a string.")
+
+
+def _discover_target() -> WorkerTarget:
+    """Find the worker target among the conventional modules and attributes."""
+    for module_name in _CONVENTIONAL_MODULES:
+        module = _import(module_name)
+        for attribute in _CONVENTIONAL_ATTRIBUTES if module is not None else ():
+            target = _as_target(getattr(module, attribute, None))
+            if target is not None:
+                return target
+    raise ConfigurationError(
+        "No worker target found: pass TARGET as 'module:attribute', set "
+        "[tool.laravel-cloud-queues] target in pyproject.toml, or define app, api or registry "
+        f"in one of the modules {', '.join(_CONVENTIONAL_MODULES)}."
+    )
+
+
+def _import(module_name: str) -> types.ModuleType | None:
+    """Import the given module, or return ``None`` when it does not exist.
+
+    A missing dependency of an existing module still raises.
+    """
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        missing = exc.name or ""
+        if module_name == missing or module_name.startswith(missing + "."):
+            return None
+        raise
+
+
+def _as_target(obj: object) -> WorkerTarget | None:
+    """Get the worker target the given object is or binds, if any."""
     if isinstance(obj, WorkerTarget):
         return obj
     bound = getattr(getattr(obj, "state", None), "laravel_cloud_queues", None)
-    if isinstance(bound, WorkerTarget):
-        return bound
-    raise ConfigurationError(
-        f"[{spec}] is not a worker target: expected a Registry, a FastAPI app with "
-        "LaravelCloudQueues bound, or an object with 'registry' and 'lifespan()'."
-    )
+    return bound if isinstance(bound, WorkerTarget) else None
 
 
 __all__ = [

@@ -719,14 +719,16 @@ Payload rules and limits:
 ## The worker
 
 ```text
-laravel-cloud-queues work TARGET [--queue Q[,Q...]] [--max-jobs N] [--max-time S]
+laravel-cloud-queues work [TARGET] [--queue Q[,Q...]] [--max-jobs N] [--max-time S]
                               [--stop-when-empty] [--stop-when-empty-for S]
                               [--timeout S] [--sleep S] [--rest S] [--debug]
 ```
 
 `TARGET` is `module:attribute`: a FastAPI app with `LaravelCloudQueues` bound, a plain
 `Registry`, or any object exposing `registry` and `lifespan()`. The current directory is
-put on `sys.path`, like uvicorn. Run `laravel-cloud-queues --help` or
+put on `sys.path`, like uvicorn. Without `TARGET`, the worker uses
+`[tool.laravel-cloud-queues] target` from `pyproject.toml`, else the first `app`, `api` or
+`registry` in `main`, `app`, `api`, `app.main` or `app.api`. Run `laravel-cloud-queues --help` or
 `laravel-cloud-queues work --help` for the full option reference.
 
 The CLI is built on [click](https://click.palletsprojects.com/). Its command group,

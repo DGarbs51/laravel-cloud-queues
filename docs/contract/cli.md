@@ -7,14 +7,18 @@ Flask's: `app.cli.add_command(cli, "queues")` gives `flask queues work ...`. A m
 keeps the same error handling and exit codes.
 Errors are actionable one-line messages; `--debug` adds tracebacks. Secrets are never printed.
 
-## `work TARGET`
+## `work [TARGET]`
 
 `TARGET` = `module:attr`: a `Registry`, a FastAPI app with `LaravelCloudQueues` bound, or any
-`WorkerTarget`. The current working directory is put on `sys.path` (like uvicorn).
+`WorkerTarget`. The current working directory is put on `sys.path` (like uvicorn). Without
+`TARGET`: `[tool.laravel-cloud-queues] target` in `./pyproject.toml`, else the first worker
+target among attributes `app`, `api`, `registry` of modules `main`, `app`, `api`,
+`app.main`, `app.api`; none found is a `ConfigurationError` (exit 2). `inspect` resolves the
+same way.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--queue Q[,Q...]` | backend default | Priority list (direct/Redis). Agent mode: must match the assignment or be omitted |
+| `--queue Q[,Q...]` | backend default | Priority list. Managed: defaults to the top-level `queue`. Agent mode: one queue only |
 | `--max-jobs N` | none | Stop after N deliveries |
 | `--max-time S` | none | Stop after S seconds (checked between jobs) |
 | `--stop-when-empty` | off | Stop on the first empty poll (not for supervised worker clusters) |
@@ -26,7 +30,7 @@ Errors are actionable one-line messages; `--debug` adds tracebacks. Secrets are 
 
 Exit codes: see worker.md (0, 1, 2, 124).
 
-## `inspect TARGET [--json]`
+## `inspect [TARGET] [--json]`
 
 Prints mode, resolved queues (default, worker assignment, managed inventory), registered jobs
 (name, default queue, declared policy) and non-secret configuration. Opens no broker

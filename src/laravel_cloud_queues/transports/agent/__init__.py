@@ -54,8 +54,10 @@ class _OutcomeClaims:
             self.reported[id(delivery)] = delivery
 
 
-def _parse_delivery(managed: ManagedQueuesConfig, body: bytes) -> Delivery | None:
-    """Parse a ``GET /next`` response body into a delivery.
+def _parse_delivery(
+    managed: ManagedQueuesConfig, queues: Sequence[str], body: bytes
+) -> Delivery | None:
+    """Parse a ``GET /next`` response body into a delivery for the worker's queue.
 
     Returns ``None`` when the response carries no message, and raises an
     ``AgentUnavailableError`` when the body is not a JSON object or array.
@@ -77,7 +79,7 @@ def _parse_delivery(managed: ManagedQueuesConfig, body: bytes) -> Delivery | Non
     count = attributes.get("ApproximateReceiveCount") if json_object(attributes) else None
     attempt = receive_count(count)  # missing-receive-count-is-one (D13.5)
     queue_url = data.get("queueUrl")
-    queue = managed.queue
+    queue = queues[0] if queues else managed.queue
     meta: dict[str, str] = {}
     if isinstance(queue_url, str) and queue_url:
         queue = normalize_queue(managed.connection, queue_url)
@@ -173,8 +175,9 @@ class AgentConsumer:
     def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
         """Poll the agent for the next assigned message.
 
-        The given queues and wait time are ignored, since the agent's assignment is
-        authoritative. Raises an ``AgentUnavailableError`` once the retries are exhausted.
+        The agent routes the worker's messages, so the wait time is ignored and the
+        first queue only names a delivery that carries no ``queueUrl``. Raises an
+        ``AgentUnavailableError`` once the retries are exhausted.
         """
         failure = _UNREACHABLE
         for attempt in range(3):
@@ -191,15 +194,15 @@ class AgentConsumer:
                     return None
                 if status == 200:
                     # Do not check stopping here: a handed-over message must run.
-                    return self._delivery(body)
+                    return self._delivery(queues, body)
                 failure = _retryable_poll_failure(status)
             if attempt == 1 and self._stopping.wait(0.5):
                 return None
         raise AgentUnavailableError(failure)
 
-    def _delivery(self, body: bytes) -> Delivery | None:
+    def _delivery(self, queues: Sequence[str], body: bytes) -> Delivery | None:
         """Parse a ``GET /next`` response body into a delivery."""
-        return _parse_delivery(self._managed, body)
+        return _parse_delivery(self._managed, queues, body)
 
     def complete(self, delivery: Delivery) -> None:
         """Report the delivery to the agent as processed."""
@@ -310,8 +313,9 @@ class AsyncAgentConsumer:
     async def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
         """Poll the agent for the next assigned message.
 
-        The given queues and wait time are ignored, since the agent's assignment is
-        authoritative. Raises an ``AgentUnavailableError`` once the retries are exhausted.
+        The agent routes the worker's messages, so the wait time is ignored and the
+        first queue only names a delivery that carries no ``queueUrl``. Raises an
+        ``AgentUnavailableError`` once the retries are exhausted.
         An in-flight poll is never cancelled.
         """
         self._loop = asyncio.get_running_loop()
@@ -330,7 +334,7 @@ class AsyncAgentConsumer:
                     return None
                 if status == 200:
                     # Do not check stopping here: a handed-over message must run.
-                    return _parse_delivery(self._managed, body)
+                    return _parse_delivery(self._managed, queues, body)
                 failure = _retryable_poll_failure(status)
             if attempt != 1:
                 continue

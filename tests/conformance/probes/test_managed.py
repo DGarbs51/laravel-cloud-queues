@@ -308,19 +308,19 @@ def test_socket_outage(run_process, artifacts, agent_emulator, log_collector, ev
 
 
 @pytest.mark.conformance("agent.receive_selection", tier="emulated")
-def test_agent_queue_assignment(run_process, artifacts, agent_emulator, log_collector, evidence):
+def test_agent_queue_selection(run_process, artifacts, agent_emulator, log_collector, evidence):
     result = worker(
         run_process,
         artifacts,
         managed_env(artifacts, agent_emulator, log_collector),
         "--queue",
-        "wrong",
+        "reports,emails",
         "--max-jobs",
         "1",
     ).wait(10)
     assert result.returncode == 2, result.stderr
     assert not agent_emulator.results
-    evidence.record("conflicting_queue_exit", result.returncode)
+    evidence.record("multi_queue_exit", result.returncode)
 
 
 @pytest.mark.conformance("worker.ambiguous_ack_stops", tier="emulated")

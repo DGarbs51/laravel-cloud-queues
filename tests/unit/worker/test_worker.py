@@ -664,17 +664,21 @@ def test_agent_mode_uses_assignment_and_sleeps_after_empty_poll(make: Any) -> No
     assert pauses == [3.0]
 
 
-def test_agent_mode_accepts_matching_queue(make: Any) -> None:
-    h = make([None], mode="managed", agent=True, queues=("assigned",))
+def test_agent_mode_queue_option_wins_over_the_managed_queue(make: Any) -> None:
+    """Laravel's worker queue is ``--queue``, else the config ``queue`` (``Cloud/Queue.php``)."""
+    h = make([None], mode="managed", agent=True, queues=("reports",))
     assert h.run() == EXIT_OK
+    assert h.consumer.receives[0][0] == ("reports",)
 
 
-def test_agent_mode_queue_conflict_exits_2(make: Any, caplog: pytest.LogCaptureFixture) -> None:
-    h = make([delivery()], mode="managed", agent=True, queues=("other",))
+def test_agent_mode_with_several_queues_exits_2(
+    make: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    h = make([delivery()], mode="managed", agent=True, queues=("reports", "emails"))
     assert h.run() == EXIT_CONFIG
     assert h.env.lifespan == []
     assert h.consumer.receives == []
-    assert "assigned" in caplog.text and "other" in caplog.text
+    assert "reports,emails" in caplog.text
 
 
 def test_configuration_error_at_startup_exits_2(

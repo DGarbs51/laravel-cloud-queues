@@ -89,3 +89,60 @@ def test_import_errors_inside_the_app_propagate(module: Callable[[str], str]) ->
     name = module("import lcq_missing_dependency_xyz\n")
     with pytest.raises(ModuleNotFoundError):
         resolve_target(f"{name}:app")
+
+
+@pytest.fixture
+def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """A project directory as the working directory, with conventional modules unloaded."""
+    conventional = ("main", "app", "api", "app.main", "app.api")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for name in conventional:
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    yield tmp_path
+    for name in conventional:
+        sys.modules.pop(name, None)
+
+
+def test_pyproject_target(project: Path, module: Callable[[str], str]) -> None:
+    name = module(TARGETS)
+    (project / "pyproject.toml").write_text(f'[tool.laravel-cloud-queues]\ntarget = "{name}:app"\n')
+    assert resolve_target() is sys.modules[name].target
+
+
+@pytest.mark.parametrize(
+    ("pyproject", "error"),
+    [
+        ("[tool.laravel-cloud-queues]\ntarget = 1\n", "must be a string"),
+        ("[tool\n", "not valid TOML"),
+    ],
+)
+def test_invalid_pyproject_target(project: Path, pyproject: str, error: str) -> None:
+    (project / "pyproject.toml").write_text(pyproject)
+    with pytest.raises(ConfigurationError, match=error):
+        resolve_target()
+
+
+@pytest.mark.parametrize(
+    ("files", "attribute"),
+    [
+        ({"main.py": TARGETS}, "app"),
+        ({"main.py": "app = None\n", "app.py": TARGETS.replace("app =", "api =")}, "api"),
+        ({"app/__init__.py": "", "app/main.py": TARGETS + "registry = target\n"}, "app"),
+        ({"api.py": "registry = None\n", "app/__init__.py": "", "app/api.py": TARGETS}, "app"),
+    ],
+)
+def test_conventional_target_is_discovered(
+    project: Path, files: dict[str, str], attribute: str
+) -> None:
+    (project / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    for path, source in files.items():
+        (project / path).parent.mkdir(exist_ok=True)
+        (project / path).write_text(source)
+    target = resolve_target()
+    assert target.registry == "the-registry"  # type: ignore[comparison-overlap]
+
+
+def test_no_target_found(project: Path) -> None:
+    with pytest.raises(ConfigurationError, match="No worker target found"):
+        resolve_target()
