@@ -7,7 +7,7 @@ Foundation/Cloud/QueueConnector.php:29-74. Project deviations are catalogued und
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -41,7 +41,7 @@ def test_failure_sizes(log_collector, evidence):
         failed_job_event,
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     sink = SocketEventSink(log_collector.socket_path)
     try:
         for payload_size, error_size, replayable in [

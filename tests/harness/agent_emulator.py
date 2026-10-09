@@ -15,9 +15,7 @@ from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler
-from typing import Literal, cast
-
-from typing_extensions import Self
+from typing import Literal, Self, cast
 
 from tests.harness._socket import SocketService, UnixServer
 

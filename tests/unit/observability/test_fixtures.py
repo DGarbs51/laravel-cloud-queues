@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from laravel_cloud_queues.observability import lifecycle_event
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "events"
-_TS = datetime(2026, 9, 27, 12, 0, 0, 123456, tzinfo=timezone.utc)
+_TS = datetime(2026, 9, 27, 12, 0, 0, 123456, tzinfo=UTC)
 _FAILED_JOB_KEYS = [
     "_cloud_event",
     "id",

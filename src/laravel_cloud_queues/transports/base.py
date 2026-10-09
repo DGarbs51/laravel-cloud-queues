@@ -1,10 +1,12 @@
 """The contract shared by every queue transport.
 
-Transports are synchronous and body-opaque: they move UTF-8 ``str`` bodies and know
-nothing about envelopes, jobs or events. Async callers offload them with
-``anyio.to_thread.run_sync``. The worker's renewal watchdog calls :meth:`Consumer.renew`
-from its own thread, so implementations must make ``renew`` thread-safe, although
-nothing else runs concurrently with it on the same delivery.
+Transports are body-opaque: they move UTF-8 ``str`` bodies and know nothing about
+envelopes, jobs or events. :class:`Producer` and :class:`Consumer` are synchronous.
+:class:`AsyncProducer` and :class:`AsyncConsumer` are their native asyncio counterparts,
+which a backend offers when its client library has one; otherwise the sync transport runs
+in a worker thread. The worker's renewal watchdog calls :meth:`Consumer.renew` from its own
+thread, so implementations must make ``renew`` thread-safe, although nothing else runs
+concurrently with it on the same delivery.
 
 Producers and consumers are separate because managed mode sends through SQS while
 receiving through the in-container agent.
@@ -217,4 +219,86 @@ class Consumer(Protocol):
 
     def close(self) -> None:
         """Close the consumer and release its resources."""
+        ...
+
+
+@runtime_checkable
+class AsyncProducer(Protocol):
+    """A transport that sends messages to the queue from an asyncio event loop.
+
+    An instance belongs to the event loop that created it and must never be shared with
+    another loop.
+    """
+
+    @property
+    def max_payload_bytes(self) -> int | None:
+        """Get the UTF-8 byte limit for the encoded body."""
+        ...
+
+    @property
+    def supports_fifo(self) -> bool:
+        """Determine if the transport supports FIFO and fair-queue options."""
+        ...
+
+    async def send(self, message: OutgoingMessage) -> SentMessage:
+        """Send the message to the queue once.
+
+        Raises the same errors as :meth:`Producer.send`.
+        """
+        ...
+
+    async def aclose(self) -> None:
+        """Close the producer and release its resources."""
+        ...
+
+
+@runtime_checkable
+class AsyncConsumer(Protocol):
+    """A transport that receives and settles deliveries on the worker's event loop.
+
+    Only one delivery is in flight at a time. Each method raises the same errors as its
+    :class:`Consumer` counterpart.
+    """
+
+    @property
+    def supports_renewal(self) -> bool:
+        """Determine if the worker should renew the lease on deliveries."""
+        ...
+
+    @property
+    def blocking(self) -> Consumer:
+        """Get the synchronous twin of this consumer.
+
+        The watchdog thread renews through it while a sync handler blocks the loop, and the
+        ``SIGALRM`` handler completes a timed-out delivery through it. It accepts the
+        deliveries this consumer receives and must not open connections until it is used.
+        """
+        ...
+
+    async def receive(self, queues: Sequence[str], wait_seconds: float) -> Delivery | None:
+        """Receive the next delivery, or ``None`` after roughly ``wait_seconds``."""
+        ...
+
+    async def complete(self, delivery: Delivery) -> None:
+        """Complete the delivery after success or terminal failure."""
+        ...
+
+    async def release(self, delivery: Delivery, delay_seconds: int) -> None:
+        """Release the same message back onto the queue after the given delay."""
+        ...
+
+    async def renew(self, delivery: Delivery, lease_seconds: int) -> None:
+        """Extend the delivery's visibility or reservation to now plus ``lease_seconds``."""
+        ...
+
+    def interrupt(self) -> None:
+        """Make a pending :meth:`receive` return early during shutdown.
+
+        This never blocks and is safe to call from any thread, including a signal handler
+        running on the loop.
+        """
+        ...
+
+    async def aclose(self) -> None:
+        """Close the consumer, including its blocking twin, and release its resources."""
         ...

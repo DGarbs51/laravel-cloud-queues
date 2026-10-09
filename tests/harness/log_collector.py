@@ -12,9 +12,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import cast
-
-from typing_extensions import Self
+from typing import Self, cast
 
 from tests.harness._socket import SocketService, UnixServer
 

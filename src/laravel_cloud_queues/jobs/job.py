@@ -185,18 +185,24 @@ class Job(Generic[P, R]):
     async def dispatch_async(self, *args: P.args, **kwargs: P.kwargs) -> DispatchReceipt:
         """Dispatch the job to the queue without blocking the event loop.
 
-        Every blocking call runs in a worker thread.
+        The message is sent through the running loop's async producer. The first dispatch
+        builds the configuration and backend in a worker thread, and backends without a
+        native async producer send in one. Without a running asyncio loop (trio), the whole
+        dispatch runs in a worker thread.
         """
-        from .dispatch import prepare_dispatch, send_prepared
+        from .dispatch import prepare_dispatch, send_prepared, send_prepared_async
 
-        session = self._registry.testing_session
+        registry = self._registry
+        session = registry.testing_session
         if session is not None:
             return await session.dispatch_async(prepare_dispatch(self, args, kwargs, self._options))
-        # Preparing may build the configuration and backend lazily (blocking), so it shares
-        # the worker-thread hop with the send.
-        return await anyio.to_thread.run_sync(
-            lambda: send_prepared(self, prepare_dispatch(self, args, kwargs, self._options))
-        )
+        producer = await registry.async_producer()
+        if producer is None:
+            return await anyio.to_thread.run_sync(
+                lambda: send_prepared(self, prepare_dispatch(self, args, kwargs, self._options))
+            )
+        prepared = prepare_dispatch(self, args, kwargs, self._options)
+        return await send_prepared_async(self, producer, prepared)
 
 
 class AnyJob(Protocol):

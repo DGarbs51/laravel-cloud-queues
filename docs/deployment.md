@@ -3,6 +3,7 @@
 ## Introduction
 
 Laravel Cloud runs Python applications, including FastAPI, on Python 3.10 through 3.14.
+This package requires Python 3.11 or newer.
 Your web process dispatches jobs, and a separate worker process runs them. On Laravel
 Cloud, that worker runs as a **worker cluster** or as a **background process** on your App
 cluster.
@@ -51,11 +52,11 @@ ignores them in `sqs` mode. See [Why SQS Mode Has Its Own Variables](configurati
 :::
 
 There is no Laravel Cloud queue agent outside managed mode, so the worker keeps long jobs
-alive itself. It receives each message with a 60-second lease, and a watchdog thread
-extends that lease every 20 seconds while the job runs, even while a synchronous handler
-blocks the event loop. If a renewal fails because the message was deleted or reassigned,
-the worker has lost its lease: it never reports success for a job it no longer owns, and
-it exits with code `1`.
+alive itself. It receives each message with a 60-second lease and extends it every 20
+seconds while the job runs: from a watchdog thread for a sync handler, even while it blocks
+the event loop, and from a task on the loop for an `async def` handler. If a renewal fails
+because the message was deleted or reassigned, the worker has lost its lease: it never
+reports success for a job it no longer owns, and it exits with code `1`.
 
 ## Worker Clusters Are Supervised
 
@@ -82,6 +83,19 @@ finish. Keep your job [timeouts](retries-and-timeouts.md#timeouts) inside those 
 
 Web requests are cut off after 20 seconds, so keep dispatching inside a request short. A
 single dispatch is one SQS `SendMessage` call or one Redis command.
+
+## Thread Pools Are Small
+
+On Laravel Cloud, `os.cpu_count()` reports your instance's CPU quota, not the host's. Python
+sizes its default thread pools from it: a `ThreadPoolExecutor` without `max_workers`, and
+asyncio's default executor behind `asyncio.to_thread()` and `loop.run_in_executor(None,
+...)`, get `cpu_count + 4` threads, which is 5 threads on 1 vCPU. Code that leans on those
+pools queues up quickly.
+
+The `redis` backend's `dispatch_async` and worker, and the managed agent worker, are native
+async and use no threads at all. The paths that still need a thread (SQS sends and
+receives) use AnyIO's worker threads, which are not sized from the CPU count. See
+[Native Async Paths](dispatching.md#native-async-paths).
 
 ## Managed Queues
 

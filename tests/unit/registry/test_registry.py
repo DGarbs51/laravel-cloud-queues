@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import sys
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import anyio
 import anyio.lowlevel
@@ -24,6 +25,7 @@ from laravel_cloud_queues.registry import (
     WorkerTarget,
     bind_injected,
 )
+from laravel_cloud_queues.transports import Backend
 from tests.unit.jobs.fakes import make_registry
 
 
@@ -210,12 +212,100 @@ def test_load_surfaces_import_errors(tmp_path: Path, monkeypatch: pytest.MonkeyP
             del sys.modules[name]
 
 
-def test_lifespan_is_a_noop() -> None:
+def test_lifespan_without_an_async_producer_is_a_noop() -> None:
     async def main() -> None:
         async with Registry().lifespan():
             pass
 
     anyio.run(main)
+
+
+def test_async_producer_is_cached_per_running_loop() -> None:
+    registry, producer, _ = make_registry(native_async=True)
+
+    async def main() -> object:
+        first = await registry.async_producer()
+        assert await registry.async_producer() is first
+        return first
+
+    assert anyio.run(main) is not anyio.run(main)
+    assert len(producer.opened) == 2
+
+
+def test_async_producer_drops_the_producers_of_closed_loops() -> None:
+    """A producer whose connections reference its loop keeps that loop alive."""
+    from types import SimpleNamespace
+
+    registry, producer, _ = make_registry()
+    registry._backend = Backend(
+        mode="sqs",
+        producer=producer,
+        consumer_factory=lambda **_: None,  # type: ignore[arg-type,return-value]
+        async_producer_factory=lambda: SimpleNamespace(loop=asyncio.get_running_loop()),  # type: ignore[arg-type,return-value]
+    )
+
+    async def main() -> list[object]:
+        await registry.async_producer()
+        return list(registry._async_producers)
+
+    first = anyio.run(main)
+    assert anyio.run(main) != first  # the closed first loop and its producer were dropped
+
+
+def _run_without_a_loop(coroutine: Any) -> object:
+    """Drive a coroutine that never suspends, without any running event loop (like trio)."""
+    with pytest.raises(StopIteration) as stopped:
+        coroutine.send(None)
+    return stopped.value.value
+
+
+def test_no_async_producer_without_an_asyncio_loop() -> None:
+    registry, producer, _ = make_registry(native_async=True)
+    assert _run_without_a_loop(registry.async_producer()) is None
+    assert _run_without_a_loop(registry.aclose_producer()) is None
+    assert producer.opened == []
+
+
+def test_cancelled_lifespan_still_closes_the_async_producer() -> None:
+    class SlowClose:
+        closed = 0
+
+        async def aclose(self) -> None:
+            await anyio.lowlevel.checkpoint()
+            self.closed += 1
+
+    registry, producer, _ = make_registry()
+    native = SlowClose()
+    registry._backend = Backend(
+        mode="sqs",
+        producer=producer,
+        consumer_factory=lambda **_: None,  # type: ignore[arg-type,return-value]
+        async_producer_factory=lambda: native,  # type: ignore[arg-type,return-value]
+    )
+
+    async def main() -> None:
+        with anyio.CancelScope() as scope:
+            async with registry.lifespan():
+                await registry.async_producer()
+                scope.cancel()
+
+    anyio.run(main)
+    assert native.closed == 1
+
+
+def test_lifespan_closes_the_loops_async_producer() -> None:
+    registry, producer, _ = make_registry(native_async=True)
+
+    async def main() -> None:
+        async with registry.lifespan():
+            first = await registry.async_producer()
+        assert producer.opened[0].closed == 1
+        assert await registry.async_producer() is not first
+        await registry.aclose_producer()
+        await registry.aclose_producer()
+
+    anyio.run(main)
+    assert [native.closed for native in producer.opened] == [1, 1]
 
 
 def test_telemetry_is_noop_outside_managed_mode() -> None:

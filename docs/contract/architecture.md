@@ -30,10 +30,14 @@ transports/          observability/  (events, socket, failure records, tracing)
 worker/ cli/  (delivery state machine, timeouts, watchdog, signals, exit codes)
 ```
 
-- **Transports are synchronous and body-opaque.** They move `str` bodies and return
-  `Delivery` records. They never see envelopes, jobs or events. Async code offloads them with
-  `anyio.to_thread.run_sync`. `Producer` and `Consumer` are separate because managed mode
-  sends via SQS but receives via the agent.
+- **Transports are body-opaque.** They move `str` bodies and return `Delivery` records.
+  They never see envelopes, jobs or events. Sync `Producer`/`Consumer` are always present;
+  native `AsyncProducer`/`AsyncConsumer` exist for `redis` (both) and the agent (consumer).
+  `Backend.open_async_producer()`/`open_async_consumer()` fall back to
+  `ThreadedProducer`/`ThreadedConsumer` (`anyio.to_thread`), so async code has one path for
+  every backend. `AsyncConsumer.blocking` is the sync twin used by the watchdog thread and
+  `SIGALRM`. `Producer` and `Consumer` are separate because managed mode sends via SQS but
+  receives via the agent.
 - **Core owns every job semantic.** One dispatch pipeline (`jobs/dispatch.py`) serves
   `dispatch` and `dispatch_async`. One execution path (`jobs/execution.py`) serves the worker
   and eager mode.
@@ -46,15 +50,22 @@ worker/ cli/  (delivery state machine, timeouts, watchdog, signals, exit codes)
 
 ## Key flows
 
-**Dispatch.** `job.options(...).dispatch_async(**kw)` -> `prepare_dispatch` (queue resolution,
-option validation, argument encoding, envelope, size check; pure CPU) -> `to_thread(send_prepared)`
-(`producer.send`, then `queued` event in managed mode) -> `DispatchReceipt`.
+**Dispatch.** `job.options(...).dispatch_async(**kw)` -> `registry.async_producer()` (one per
+running loop; the first call builds config and backend in a worker thread) ->
+`prepare_dispatch` on the loop (queue resolution, option validation, argument encoding,
+envelope, size check; pure CPU) -> `send_prepared_async` (`await producer.send`, then
+`telemetry.aemit(queued)`, which leaves the loop only in managed mode) -> `DispatchReceipt`.
+No running asyncio loop (trio): `to_thread(send_prepared(prepare_dispatch(...)))`. Sync
+`dispatch` is `prepare_dispatch` -> `send_prepared` on the calling thread.
 
 **Worker.** `anyio.run(..., backend="asyncio")` on the main thread. Enter the target's
-lifespan once. Loop: `to_thread(consumer.receive)` -> `started` -> `prepare_execution`
-(job defects are terminal) -> pre-run attempt check -> arm `setitimer` + start watchdog
-thread -> `run_prepared` (handler + per-job teardown; sync handlers run on the main thread)
--> disarm, stop watchdog -> report outcome. Managed mode completes a terminal message before
+lifespan once. Consumer: `backend.open_async_consumer()`. Loop: `await consumer.receive` ->
+`started` (`aemit`) -> `prepare_execution` (job defects are terminal) -> pre-run attempt
+check -> arm `setitimer` + start lease renewal (`async def` handler: `AsyncWatchdog` task on
+the loop; otherwise `Watchdog` thread on `consumer.blocking`) -> `run_prepared` (handler +
+per-job teardown; sync handlers run on the main thread) -> disarm, stop renewal (thread join
+off the loop) -> `await consumer.complete/release` -> completion records (in a worker thread
+in managed mode, so socket writes never block the loop). Managed mode completes a terminal message before
 `failed_job` -> `failed`; self-managed `sqs`/`redis` writes the failure line to stdout before
 completion and sends no socket events (D6b/D12). Completion events are immediate, and the
 timer excludes reporting/rest (`completion-event-immediate`, `timeout-window-handler-only`,

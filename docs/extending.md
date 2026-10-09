@@ -102,6 +102,8 @@ To serialize your own types as job arguments, register a codec on the registry's
 
 A new broker implements the `Producer` and `Consumer` protocols from
 `laravel_cloud_queues.transports.base`. Transports work with opaque string bodies and
-delivery records, and never see jobs or envelopes. Only the SQS, agent and Redis transports
+delivery records, and never see jobs or envelopes. A broker with an asyncio client may also
+implement `AsyncProducer` and `AsyncConsumer` and pass factories for them to `Backend`;
+without them, `dispatch_async` and the worker run the sync transport in a worker thread. Only the SQS, agent and Redis transports
 are part of the product today, and the transport interface may still change during the
 0.x releases.

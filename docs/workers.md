@@ -20,6 +20,10 @@ The worker imports your target, finds its registry, enters your application's li
 once, and then processes **one job at a time** until it is told to stop. To process more
 jobs in parallel, run more worker processes, not in-process concurrency.
 
+The worker talks to the broker from its event loop: natively on `redis` and the Laravel
+Cloud agent, and through a worker thread on SQS (see
+[Native Async Paths](dispatching.md#native-async-paths)).
+
 ## Worker Targets
 
 The target may be any of the following:
@@ -136,10 +140,12 @@ Credentials in URLs and query strings are redacted.
 ## Long-Running Jobs
 
 On the `sqs` and `redis` backends, the worker renews the job's lease itself while it
-runs. It receives each message with a 60-second lease, and a watchdog thread extends the
-lease every 20 seconds, even while a sync handler blocks the event loop. If a renewal
-fails, the worker no longer owns the message: it never reports success for that job, and
-exits with code `1`.
+runs. It receives each message with a 60-second lease and extends it every 20 seconds. For
+a sync handler, a watchdog thread renews the lease, even while the handler blocks the event
+loop. For an `async def` handler, a task on the worker's loop renews it while the handler
+awaits, so do not block the loop inside an async handler (see
+[Sync and Async Handlers](jobs.md#sync-and-async-handlers)). If a renewal fails, the worker
+no longer owns the message: it never reports success for that job, and exits with code `1`.
 
 In managed mode, the Laravel Cloud agent extends the job's visibility instead.
 

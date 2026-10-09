@@ -25,7 +25,7 @@ from functools import partial
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PYTHONS = ("3.10", "3.11", "3.12", "3.13", "3.14")
+PYTHONS = ("3.11", "3.12", "3.13", "3.14")
 RUN = ("uv", "run", "-q", "--locked", "--no-sync")
 # Each version gets a throwaway env like a CI matrix job; uv's cache keeps this fast.
 TEST = ("uv", "run", "-q", "--locked", "--isolated")

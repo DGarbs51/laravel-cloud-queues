@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Coroutine
 from datetime import timedelta
-from typing import Any
-
-from typing_extensions import assert_type
+from typing import Any, assert_type
 
 from laravel_cloud_queues import DispatchReceipt, Job, JobContext, Registry, current_job
 

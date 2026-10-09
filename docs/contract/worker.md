@@ -7,6 +7,9 @@ Decisions D2, D4, D6b, D7, D12, D13. Laravel references: `Illuminate\Queue\Worke
 ## Process
 
 - One process, one in-flight delivery, main thread. `anyio.run(main, backend="asyncio")`.
+- The consumer is an `AsyncConsumer` (`backend.open_async_consumer()`): native for `redis` and
+  the agent, threaded for SQS. receive/complete/release are awaited on the loop. Every loop
+  iteration yields at least once, so stop signals run even when a receive never suspends.
 - The target's `lifespan()` is entered once at start and exited on clean termination.
 - SIGTERM/SIGINT (via the loop's signal handling): set `stopping`, call
   `consumer.interrupt()`. The current delivery always runs to completion and is reported.
@@ -15,7 +18,8 @@ Decisions D2, D4, D6b, D7, D12, D13. Laravel references: `Illuminate\Queue\Worke
   for the current `GET /next` (at most its 65 s timeout, within Flex's 90 s) and a single-queue
   SQS worker for its long poll (at most 20 s), so the agent never has a popped message with no
   worker to hand it to. Only the next receive returns immediately.
-- SIGALRM uses `signal.signal` so it interrupts sync handlers on the main thread (D2).
+- SIGALRM uses `signal.signal` so it interrupts sync handlers on the main thread (D2). It
+  applies to `async def` handlers too; there is no per-job cancellation.
 
 ## Per-delivery states
 
@@ -28,10 +32,14 @@ Decisions D2, D4, D6b, D7, D12, D13. Laravel references: `Illuminate\Queue\Worke
 3. **pre-run check**: `policy.exceeded_before_run(attempt)` -> terminal with
    `MaxAttemptsExceededError` (handler not run).
 4. **running**: build `JobContext`; arm `setitimer(ITIMER_REAL, policy.timeout)` (0 = off);
-   start the watchdog when `consumer.supports_renewal` (renews `lease_seconds` every third;
-   a failed renewal sets `lease_lost`); `await run_prepared(...)`, including per-job teardown.
+   start lease renewal when `consumer.supports_renewal` (renews `lease_seconds` every third;
+   `LeaseLostError` or 3 consecutive failures set `lease_lost`). `async def` handlers: an
+   `AsyncWatchdog` task awaiting `consumer.renew` on the loop (runs only while the handler
+   awaits). Other handlers: the `Watchdog` thread on `consumer.blocking`.
+   `await run_prepared(...)`, including per-job teardown.
 5. **outcome chosen** (exactly one, recorded outcome wins over success/exception):
-   disarm the timer; stop + join the watchdog.
+   disarm the timer; stop the renewal (the thread join runs off the loop). If no renewal landed
+   within the last lease window, ownership is confirmed with one more renew first.
    - `lease_lost` -> do not report anything; log; stop worker, exit 1.
    - `success` -> complete.
    - `release(delay)` (explicit) -> release(delay).
@@ -54,7 +62,9 @@ Decisions D2, D4, D6b, D7, D12, D13. Laravel references: `Illuminate\Queue\Worke
 | timeout, terminal (last attempt or `fail_on_timeout`) | failure record line -> `complete` -> `failed_job` (`JobTimeoutError`) -> `failed` (same timestamp) -> exit 124 | failure record line -> `complete` -> exit 124 |
 
 Timeout path runs inside the SIGALRM handler: apply the terminal check, then follow the
-mode-specific sequence above, ending with `os._exit(124)`. A retryable timeout makes no release
+mode-specific sequence above, settling through `consumer.blocking`, then
+`laravel_cloud_logging.flush(0.5)` (atexit does not run) and `os._exit(124)`, which runs even
+if the flush fails. A retryable timeout makes no release
 call or backoff change; visibility/reservation expiry redelivers. Self-managed modes never
 send socket events (D12). Every write in this path uses bounded lock waits (`lock_timeout`)
 so it cannot deadlock on a write the main thread was performing.

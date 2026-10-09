@@ -2,7 +2,7 @@
 
 ## What this is
 
-`laravel-cloud-queues` is a typed Python library (`py.typed`, Python 3.10 to 3.14) for Laravel Cloud queues. It has three backends (`managed`, `sqs` and `redis`), a FastAPI adapter, and a worker CLI (`laravel-cloud-queues`, alias `lcq`). It is built with hatchling and managed with uv. Read `docs/architecture.md` and `docs/contract/architecture.md` before you change behavior. `docs/decisions.md` records the decisions (D1 to D15) that comments refer to.
+`laravel-cloud-queues` is a typed Python library (`py.typed`, Python 3.11 to 3.14) for Laravel Cloud queues. It has three backends (`managed`, `sqs` and `redis`), a FastAPI adapter, and a worker CLI (`laravel-cloud-queues`, alias `lcq`). It is built with hatchling and managed with uv. Read `docs/architecture.md` and `docs/contract/architecture.md` before you change behavior. `docs/decisions.md` records the decisions (D1 to D16) that comments refer to.
 
 ## Commands
 
@@ -12,7 +12,7 @@ uv run --locked scripts/check.py           # every CI gate in parallel, then the
 uv run ruff check --fix . && uv run ruff format .   # autofix, then format (solo.yml "fix")
 uv run pytest tests/unit -q                # fast loop; tests that need a service skip when it is absent
 uv run pytest -m redis                     # one marker (markers: [tool.pytest.ini_options])
-uv run --isolated --python 3.10 pytest tests/unit   # another interpreter in a throwaway env
+uv run --isolated --python 3.11 pytest tests/unit   # another interpreter in a throwaway env
 uv run ty check && uv run mypy && uv run pyright     # the three type checkers
 uv run pyright --verifytypes laravel_cloud_queues --ignoreexternal   # public API type completeness (must be 100%)
 uv run --no-project scripts/update_pythons.py        # upgrade uv-managed Pythons
@@ -41,7 +41,7 @@ CI (`.github/workflows/ci.yml`) requires all of these. `scripts/check.py` mirror
 - actionlint on the workflows.
 - ty on `src` and `tests/harness`. mypy strict and pyright strict on `src/laravel_cloud_queues` only. See `[tool.ty]`, `[tool.mypy]` and `[tool.pyright]`.
 - The public API must score 100% on `pyright --verifytypes`. Annotate attributes assigned in `__init__` and public module-level variables (`logger: logging.Logger = ...`), since inferred types can differ between type checkers. Name an import guard's exception `_exc`, not `exc`, because a module-level `except ... as exc` becomes a public symbol.
-- pytest on Python 3.10 to 3.14 inside `python:<v>-slim-bookworm` arm64 (Laravel Cloud's runtime), against LocalStack, Valkey, Redis and TLS Valkey.
+- pytest on Python 3.11 to 3.14 inside `python:<v>-slim-bookworm` arm64 (Laravel Cloud's runtime), against LocalStack, Valkey, Redis and TLS Valkey.
 - 100% line and branch coverage of the shipped package, combined across all versions (`[tool.coverage]`). Some branches run on only one Python version, so check coverage with `scripts/check.py`, not a single run.
 - Packaging tests and `twine check --strict` on the built wheel and sdist.
 - The conformance catalog gate (`docs/contract/catalog.json`). Locally, `scripts/check.py` runs every feature except `redis.tls`. The full `python -m tests.conformance` gate fails without CI's TLS Valkey.
@@ -64,7 +64,7 @@ value = call()  # type: ignore[mypy-code]  # pyright: ignore[rule]  # ty: ignore
 
 ## Architecture
 
-- Transports are synchronous and never see envelopes or jobs: they handle `str` bodies only. Async code calls them through `anyio.to_thread.run_sync`.
+- Transports never see envelopes or jobs: they handle `str` bodies only. `Producer`/`Consumer` are sync. `AsyncProducer`/`AsyncConsumer` are the native asyncio variants (redis, agent), and backends without one fall back to `transports/_threaded.py` (`anyio.to_thread`). An async client belongs to one event loop: never share it across loops. `AsyncConsumer.blocking` is the sync twin that the watchdog thread and the `SIGALRM` path use.
 - There is one dispatch pipeline (`jobs/dispatch.py`) and one execution path (`jobs/execution.py`). The worker and eager test mode share that path. Never add a second one.
 - Argument decoding uses the handler's type annotations. Payloads never name a Python type, module or callable, because a payload is untrusted input.
 - Job lookup goes through the registry only. Never import a module named in a message.

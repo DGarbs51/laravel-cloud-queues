@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "laravel-cloud-queues"
-version = "0.2.2"
+version = "0.3.0"
 description = "Laravel Cloud queues for Python: managed queues, plus SQS and Redis/Valkey on worker clusters, with a FastAPI adapter."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["laravel", "laravel-cloud", "queue", "sqs", "redis", "valkey", "fastapi", "worker"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -20,7 +20,6 @@ classifiers = [
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -33,7 +32,7 @@ dependencies = [
     "boto3>=1.35",
     "click>=8.2",
     "httpx>=0.27",
-    "laravel-cloud-logging>=0.2.3",
+    "laravel-cloud-logging>=0.4.0",
     "typing-extensions>=4.12",
 ]
 
@@ -88,7 +87,7 @@ only-include = ["src/laravel_cloud_queues", "README.md", "LICENSE", "pyproject.t
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 src = ["src", "."]
 extend-exclude = [".worktrees", "*.md"]
 
@@ -110,7 +109,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 "tests/runtime_proof/**" = ["ASYNC", "RUF046", "SIM105"]
 
 [tool.ty.environment]
-python-version = "3.10"
+python-version = "3.11"
 
 [tool.ty.src]
 include = ["src", "tests/harness"]
@@ -130,7 +129,7 @@ unused-ignore-comment = "error"
 # ty above still covers src and tests/harness. disallow_any_expr/disallow_any_decorated stay
 # off: they flag every call into untyped third-party APIs (boto3, redis, FastAPI internals).
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 files = ["src/laravel_cloud_queues"]
 strict = true
 disallow_any_explicit = true
@@ -139,7 +138,7 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "po
 
 [tool.pyright]
 include = ["src/laravel_cloud_queues"]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 typeCheckingMode = "strict"
 reportUnnecessaryTypeIgnoreComment = "error"
 # Pyright honors only `# pyright: ignore[rule]`, so each checker owns its own suppression

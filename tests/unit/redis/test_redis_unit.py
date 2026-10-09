@@ -1,7 +1,10 @@
+"""Verify synchronous Redis connection safety and queue operations."""
+
 from __future__ import annotations
 
 import builtins
 import importlib
+import json
 import traceback
 from unittest.mock import Mock
 
@@ -275,3 +278,37 @@ def test_invalid_reservation_replies_are_transport_errors(monkeypatch, reply):
     monkeypatch.setattr(consumer, "_command", Mock(return_value=reply))
     with pytest.raises(TransportError, match="Invalid Redis reservation response"):
         consumer.receive(["default"], 0)
+
+
+@pytest.mark.parametrize("wait", [0, 10])
+def test_receive_waits_only_until_deadline_or_next_reservation(wait):
+    consumer = RedisConsumer(CONFIG)
+    wrapper = json.dumps({"id": "id", "body": "body", "attempts": 1})
+    consumer._command = Mock(side_effect=[None, None, wrapper])
+    try:
+        delivery = consumer.receive(["default"], wait)
+        if wait:
+            assert delivery.body == "body"
+            assert delivery.receipt == wrapper
+            assert consumer._command.call_args_list[1].args == (
+                "BLPOP",
+                f"{CONFIG.prefix}queues:default:notify",
+                1.0,
+            )
+        else:
+            assert delivery is None
+            consumer._command.assert_called_once()
+    finally:
+        consumer.close()
+
+
+@pytest.mark.parametrize("operation", ["complete", "release", "renew"])
+def test_missing_or_expired_reservation_cannot_be_reported(operation):
+    consumer = RedisConsumer(CONFIG)
+    consumer._command = Mock(return_value=0)
+    args = (DELIVERY,) if operation == "complete" else (DELIVERY, 60)
+    try:
+        with pytest.raises(LeaseLostError):
+            getattr(consumer, operation)(*args)
+    finally:
+        consumer.close()

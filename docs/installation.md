@@ -5,7 +5,7 @@
 Laravel Cloud Queues has a few requirements. Make sure your environment meets them
 before you install the package:
 
-- CPython 3.10, 3.11, 3.12, 3.13 or 3.14
+- CPython 3.11, 3.12, 3.13 or 3.14
 - Linux (the production runtime on Laravel Cloud) or macOS (development). Windows is
   supported on a best-effort basis only.
 - FastAPI 0.121 or later if you use the FastAPI integration

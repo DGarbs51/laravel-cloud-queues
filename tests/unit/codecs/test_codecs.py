@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from enum import Enum, IntEnum
 from typing import Annotated, Any, Literal, Optional, Union
@@ -65,7 +65,7 @@ class Parent:
         (datetime(2026, 9, 27, 12, 15, tzinfo=timezone(timedelta(hours=5, minutes=30))), datetime),
         (datetime(2026, 9, 27), datetime),
         (date(2026, 9, 27), date),
-        (time(12, 15, tzinfo=timezone.utc), time),
+        (time(12, 15, tzinfo=UTC), time),
         (Decimal("123.4500"), Decimal),
         (b"\x00\xffhello", bytes),
         (Color.RED, Color),

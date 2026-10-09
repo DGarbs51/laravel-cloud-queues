@@ -52,7 +52,6 @@ def test_ci_gate(evidence):
     for required in (
         "branches: [main]",
         "pull_request:",
-        '"3.10"',
         '"3.11"',
         '"3.12"',
         '"3.13"',
