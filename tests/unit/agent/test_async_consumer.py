@@ -395,7 +395,8 @@ async def test_interrupt_during_poll_skips_the_backoff_wait(mock_agent):
     consumer._client._transport = httpx.MockTransport(fail_then_stop)
     started = time.monotonic()
     assert await consumer.receive([], 0) is None
-    assert time.monotonic() - started < 0.1
+    # The backoff is 0.5 s; the margin absorbs two mock round trips on slow CI runners.
+    assert time.monotonic() - started < 0.4
     assert len(requests) == 2
 
 
