@@ -11,7 +11,7 @@ from collections.abc import Mapping
 import anyio
 import anyio.to_thread
 import pytest
-from laravel_cloud_logging import CloudHandler, LineFormatter, MonologFormatter
+from laravel_cloud_logging import CloudHandler, LineFormatter, MonologFormatter, flush
 
 from laravel_cloud_queues.observability import NullSink, Telemetry
 
@@ -125,6 +125,7 @@ def test_log_line_writes_one_monolog_line(capfd: pytest.CaptureFixture[str]) -> 
         level=logging.ERROR,
         exception=_raise(RuntimeError("boom")),
     )
+    flush()
     captured = capfd.readouterr().out
     assert captured.count("\n") == 1
     line = json.loads(captured)
@@ -175,6 +176,7 @@ def test_log_line_goes_through_the_worker_logger() -> None:
 def test_log_line_is_not_gated_on_cloud_events(capfd: pytest.CaptureFixture[str]) -> None:
     telemetry = Telemetry(sink=NullSink(), emits_cloud_events=True)
     telemetry.log_line({"ok": True}, message="ok")
+    flush()
     line = json.loads(capfd.readouterr().out)
     assert line["context"] == {"ok": True}
     assert line["level_name"] == "INFO"
