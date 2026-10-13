@@ -61,6 +61,46 @@ def _boolean(value: object, setting: str) -> bool:
     return value
 
 
+def _flag(value: str, setting: str) -> bool:
+    """Parse a boolean environment variable, accepting Laravel's ``(true)`` and ``(false)``."""
+    normalized = value.strip().lower()
+    if normalized in ("true", "(true)", "1"):
+        return True
+    if normalized in ("false", "(false)", "0", ""):
+        return False
+    raise ConfigurationError(f"{setting} must be true or false.")
+
+
+def _credential_cache(
+    options: Mapping[str, object], env: Mapping[str, str], *, enabled: bool, refreshable: bool
+) -> bool:
+    """Determine if refreshable credentials are shared through the file cache.
+
+    Each ``connection.credential_cache`` setting wins over its ``CLOUD_QUEUE_CREDENTIAL_CACHE_*``
+    variable. Only the ``file`` store exists, so another store is skipped with a warning, like
+    an unavailable Laravel cache store, and never fails.
+    """
+    if "enabled" in options:
+        enabled = _boolean(options["enabled"], "connection.credential_cache.enabled")
+    elif (value := env.get("CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED")) is not None:
+        enabled = _flag(value, "CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED")
+    if not (enabled and refreshable):
+        return False
+    store = options.get("store", env.get("CLOUD_QUEUE_CREDENTIAL_CACHE_STORE")) or "file"
+    if store == "file":
+        return True
+    fallback = options.get(
+        "fallback_store", env.get("CLOUD_QUEUE_CREDENTIAL_CACHE_FALLBACK_STORE", "file")
+    )
+    consequence = (
+        "using the file store" if fallback == "file" else "each worker resolves its own credentials"
+    )
+    logging.getLogger("laravel_cloud_queues").warning(
+        "credential_cache store %r is not supported; %s.", store, consequence
+    )
+    return fallback == "file"
+
+
 def _invalid_json_constant(value: str) -> NoReturn:
     """Reject the non-standard ``NaN`` and ``Infinity`` JSON constants."""
     raise ValueError("Non-JSON numeric constant.")
@@ -150,6 +190,7 @@ def load_config(
         credentials = _managed_provider(conn.get("credentials"))
         if sqs_credentials is not None:
             credentials = _managed_provider(sqs_credentials)
+        cache = _object(conn.get("credential_cache", {}), "connection.credential_cache")
         connection = SqsConnectionConfig(
             prefix=_string(
                 sqs_prefix if sqs_prefix is not None else conn.get("prefix", ""),
@@ -167,6 +208,7 @@ def load_config(
             ),
             region=_string(sqs_region if sqs_region is not None else region, "connection.region"),
             credentials=credentials,
+            credential_cache=_credential_cache(cache, env, enabled=True, refreshable=True),
         )
         agent = _object(raw.get("agent", {}), "agent")
         socket = agent.get("socket")
@@ -177,7 +219,6 @@ def load_config(
             raise ConfigurationError("queues must be a list or object.")
         queues = tuple(_string(queue, "queues entry") for queue in inventory)
         overflow = _object(conn.get("overflow", {}), "connection.overflow")
-        cache = _object(conn.get("credential_cache", {}), "connection.credential_cache")
         after_commit = _boolean(conn.get("after_commit", False), "connection.after_commit")
         managed = ManagedQueuesConfig(
             connection=connection,
@@ -192,14 +233,10 @@ def load_config(
             credential_cache=cache,
             raw=raw,
         )
-        for name, options, consequence in (
-            ("overflow", overflow, "oversized payloads are rejected"),
-            ("credential_cache", cache, "each worker resolves its own credentials"),
-        ):
-            if _boolean(options.get("enabled", False), f"connection.{name}.enabled"):
-                logging.getLogger("laravel_cloud_queues").warning(
-                    "%s is not supported; %s.", name, consequence
-                )
+        if _boolean(overflow.get("enabled", False), "connection.overflow.enabled"):
+            logging.getLogger("laravel_cloud_queues").warning(
+                "overflow is not supported; oversized payloads are rejected."
+            )
         return QueueConfig(mode="managed", sqs=connection, managed=managed, log_socket=log)
 
     direct_credentials = sqs_credentials
@@ -233,5 +270,8 @@ def load_config(
                 setting(sqs_queue, "LARAVEL_CLOUD_QUEUES_SQS_QUEUE", DEFAULT_QUEUE), "sqs_queue"
             ),
             endpoint_url=_string(endpoint, "sqs_endpoint") if endpoint is not None else None,
+            credential_cache=_credential_cache(
+                {}, env, enabled=False, refreshable=direct_credentials in ("ecs", "instance")
+            ),
         ),
     )

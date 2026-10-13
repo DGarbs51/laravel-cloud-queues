@@ -60,6 +60,12 @@ class SqsConnectionConfig:
 
     It comes only from ``LARAVEL_CLOUD_QUEUES_SQS_ENDPOINT`` or code, never ``AWS_ENDPOINT_URL*``.
     """
+    credential_cache: bool = False
+    """Indicates if ``ecs`` and ``instance`` credentials are shared by the processes on a host.
+
+    The credentials live in a ``0600`` file in the temporary directory. Other credentials
+    ignore this setting.
+    """
 
 
 @dataclass(frozen=True)
@@ -92,7 +98,7 @@ class ManagedQueuesConfig:
     overflow: Mapping[str, object] = field(default_factory=dict[str, object])
     """The oversized payload settings, which are not supported."""
     credential_cache: Mapping[str, object] = field(default_factory=dict[str, object])
-    """The shared credential cache settings, which are not supported."""
+    """The ``connection.credential_cache`` settings as given; ``connection`` holds the result."""
     raw: Mapping[str, object] = field(default_factory=dict[str, object], repr=False)
     """The full decoded document, with unknown fields kept for forward compatibility."""
 

@@ -9,12 +9,18 @@ from typing import TYPE_CHECKING
 import boto3.session
 import botocore.session
 from botocore.config import Config
-from botocore.credentials import ContainerProvider, CredentialResolver, InstanceMetadataProvider
+from botocore.credentials import (
+    ContainerProvider,
+    CredentialProvider,
+    CredentialResolver,
+    InstanceMetadataProvider,
+)
 from botocore.exceptions import BotoCoreError
 from botocore.utils import InstanceMetadataFetcher
 
 from ...config import SqsConnectionConfig, StaticCredentials
 from ...errors import ConfigurationError, TransportError
+from ._credential_cache import CachedCredentialProvider, credentials_cache_key
 
 if TYPE_CHECKING:
     from mypy_boto3_sqs import SQSClient
@@ -68,9 +74,14 @@ def _build_client(connection: SqsConnectionConfig) -> SQSClient:
             )
         else:
             raise ConfigurationError("Unknown SQS credentials provider.")
+        resolved: CredentialProvider = provider
+        if connection.credential_cache:
+            resolved = CachedCredentialProvider(
+                provider, credentials_cache_key(connection, credentials)
+            )
         # Both providers return refreshable credentials, including the refresh
         # callback and SDK locking. Never install the ambient credential chain.
-        core.register_component("credential_provider", CredentialResolver([provider]))
+        core.register_component("credential_provider", CredentialResolver([resolved]))
         session = boto3.session.Session(botocore_session=core, region_name=connection.region)
     if credentials != "default" and session.get_credentials() is None:
         raise ConfigurationError("The selected SQS credentials provider returned no credentials.")

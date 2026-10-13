@@ -42,3 +42,14 @@ read in `sqs` mode.
 | `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` | *(injected by Laravel Cloud)* | The managed queue configuration document |
 | `LARAVEL_CLOUD_AGENT_SOCKET` | `/tmp/cloud-agent.sock` | The queue agent socket, when the document does not name one |
 | `LARAVEL_CLOUD_LOG_SOCKET` | `unix:///tmp/cloud-init.sock` | The observability socket for lifecycle and `failed_job` events |
+
+## Credential Cache
+
+These variables apply when the managed document has no matching `connection.credential_cache`
+setting, and in `sqs` mode when code selects the `ecs` or `instance` provider.
+
+| Variable | Default | Description |
+|---|---|---|
+| `CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED` | `true` in managed mode, `false` in `sqs` mode | Share `ecs` and `instance` credentials between the processes on a host. Accepts `true`, `false`, `1` and `0` |
+| `CLOUD_QUEUE_CREDENTIAL_CACHE_STORE` | `file` | The cache store. Only `file` is supported. Another value logs a warning and uses the fallback store |
+| `CLOUD_QUEUE_CREDENTIAL_CACHE_FALLBACK_STORE` | `file` | The store used when the main store is not supported. When it is not `file` either, each process resolves its own credentials |
