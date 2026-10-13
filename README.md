@@ -1065,8 +1065,11 @@ Roadmap, in rough priority order:
 5. A manual live worker-cluster smoke test on Laravel Cloud.
 6. `retry_until` and `max_exceptions` (the envelope already reserves room for them).
 7. Dead-letter handling and failed-job tooling outside managed mode.
-8. Advanced queue workflow features, only after core compatibility is proven live.
-9. Follow upstream Laravel managed-queue changes detected by the weekly drift check.
+8. Laravel Cloud exception reporting (`LARAVEL_CLOUD_EXCEPTIONS`, `exception` events and
+   `failed_job.exception_id`), once that Cloud feature is generally available. It is in
+   early access and enabled only for Laravel environments today.
+9. Advanced queue workflow features, only after core compatibility is proven live.
+10. Follow upstream Laravel managed-queue changes detected by the weekly drift check.
 
 ## License
 

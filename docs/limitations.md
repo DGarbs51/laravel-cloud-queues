@@ -20,6 +20,13 @@ limitations are acceptable for your application:
 - **No lifecycle events in `sqs` and `redis` modes.** Laravel Cloud ingests them for
   managed queues only, so workers log structured lines instead.
 - **One job in flight per worker process**, and no result backend.
+- **No Laravel Cloud exception reporting yet.** Laravel 13.34+ can send each job
+  exception to Cloud's exceptions view (`LARAVEL_CLOUD_EXCEPTIONS`, an
+  `{"_cloud_event": "exception"}` log line, and an `exception_id` on `failed_job`).
+  That Cloud feature is in early access and only Laravel environments can enable it
+  today, so this package does not emit those events. Support will be added once the
+  feature is generally available. Until then, job exceptions appear in the Logs tab and,
+  for terminal failures, in the Queues dashboard's failed jobs.
 - **Not yet supported:** job chains, batches, unique jobs, job middleware,
   `retry_until`, `max_exceptions`, memory-limit recycling, `after_commit`, credential
   caching, and payload interoperability with PHP jobs.
@@ -39,9 +46,13 @@ In rough priority order:
 6. `retry_until` and `max_exceptions`. The message format already reserves room for
    them.
 7. Dead-letter handling and failed-job tooling outside managed mode.
-8. Advanced queue workflow features, once core compatibility is proven live.
-9. Following upstream changes to Laravel's managed queues, detected by a weekly drift
-   check.
+8. Laravel Cloud exception reporting, once the Cloud feature is generally available:
+   one `exception` event per job exception, with Python stack frames, app-relative
+   paths, `execution_type: "job"` and the job's execution context. Each line stays under
+   1 MB, and its id is reused as `failed_job.exception_id`.
+9. Advanced queue workflow features, once core compatibility is proven live.
+10. Following upstream changes to Laravel's managed queues, detected by a weekly drift
+    check.
 
 Have an idea, or found a bug? Open an issue on
 [GitHub](https://github.com/DGarbs51/laravel-cloud-queues/issues).
