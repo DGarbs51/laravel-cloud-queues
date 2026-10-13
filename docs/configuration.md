@@ -170,16 +170,13 @@ the process fetches its own credentials instead.
 
 The `connection.credential_cache` object (`enabled`, `store`, `fallback_store`) and the
 `CLOUD_QUEUE_CREDENTIAL_CACHE_*` variables configure it. A document setting wins over its
-variable. Only the `file` store is supported. Static and `default` credentials are never
-cached. In `sqs` mode, the cache is off unless `CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED` is
+variable. Only the `file` store is supported. Another store logs a warning and uses
+`fallback_store`, which defaults to `file`. If the fallback is not `file` either, each
+process resolves its own credentials. Static and `default` credentials are never cached.
+In `sqs` mode, the cache is off unless `CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED` is
 `true` and code selects the `ecs` or `instance` provider. See
 [Environment Variables](environment-variables.md#credential-cache).
 
-:::{note}
-Managed queues are not yet available for Python applications on Laravel Cloud. Managed
-mode is built and tested against the pinned Laravel contract and local emulators, and
-will be verified live once the platform enables it.
-:::
 
 ## Configuring in Code
 

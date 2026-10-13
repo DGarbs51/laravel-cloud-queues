@@ -53,3 +53,10 @@ setting, and in `sqs` mode when code selects the `ecs` or `instance` provider.
 | `CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED` | `true` in managed mode, `false` in `sqs` mode | Share `ecs` and `instance` credentials between the processes on a host. Accepts `true`, `false`, `1` and `0` |
 | `CLOUD_QUEUE_CREDENTIAL_CACHE_STORE` | `file` | The cache store. Only `file` is supported. Another value logs a warning and uses the fallback store |
 | `CLOUD_QUEUE_CREDENTIAL_CACHE_FALLBACK_STORE` | `file` | The store used when the main store is not supported. When it is not `file` either, each process resolves its own credentials |
+
+## Worker and Retry
+
+| Variable | Default | Description |
+|---|---|---|
+| `LARAVEL_CLOUD_QUEUES_MEMORY` | 90% of a finite cgroup v2 `memory.max` in managed mode; none otherwise | The worker's RSS limit in MiB (`256`) or as a percentage of the cgroup limit (`80%`). After reporting a job at or over the limit, the worker exits 12 and Laravel Cloud restarts it in place. `0` disables it. The `--memory` option takes precedence |
+| `LARAVEL_CLOUD_QUEUES_KEY` | *(unset)* | The Laravel encryption key `retry` uses to decrypt Cloud's failed-job payloads. Falls back to `APP_KEY`. A `base64:` prefix is decoded |

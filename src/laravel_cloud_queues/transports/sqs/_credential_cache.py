@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 import json
 import os
+import stat
 import tempfile
 import time
 from datetime import UTC, datetime
@@ -21,10 +22,11 @@ from botocore.exceptions import CredentialRetrievalError
 
 from ...config import SqsConnectionConfig
 
-# botocore refreshes 15 minutes before expiry and rejects a refresh that expires within 10,
-# so an entry used by another process must outlive both windows (Laravel uses 60 seconds).
+# Outlive botocore's 15-minute advisory refresh window with a one-minute safety margin.
+# Its 10-minute mandatory window blocks callers and propagates refresh failures.
 _STALE_SECONDS = 16 * 60
 _LOCK_WAIT_SECONDS = 5.0
+_MAX_CACHE_BYTES = 64 * 1024
 _FIELDS = ("access_key", "secret_key", "token", "expiry_time")
 
 
@@ -42,6 +44,23 @@ def credentials_cache_key(connection: SqsConnectionConfig, provider: str) -> str
         connection.suffix,
     )
     return "aws:sqs:credentials:" + hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
+def _open_private_file(path: str, flags: int) -> int:
+    """Open a regular file owned by this user with no group or other permissions."""
+    fd = os.open(path, flags | os.O_NONBLOCK | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or stat.S_IMODE(info.st_mode) & 0o077
+        ):
+            raise OSError("The credential cache file is not private or regular.")
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
 
 
 class CachedCredentialProvider(CredentialProvider):
@@ -97,9 +116,9 @@ class CachedCredentialProvider(CredentialProvider):
         credentials = self._provider.load()
         if credentials is None:
             return None
-        # botocore keeps the expiry of refreshable credentials private.
-        expiry = vars(credentials).get("_expiry_time")
         frozen = credentials.get_frozen_credentials()
+        # Freezing can refresh credentials; read their matching expiry afterwards.
+        expiry = vars(credentials).get("_expiry_time")
         if not (isinstance(expiry, datetime) and frozen.access_key and frozen.secret_key):
             raise CredentialRetrievalError(provider=self._method, error_msg="Incomplete.")
         return {
@@ -112,18 +131,21 @@ class CachedCredentialProvider(CredentialProvider):
     def _read(self) -> dict[str, str] | None:
         """Read the shared metadata if this user owns it and it is fresh."""
         try:
-            fd = os.open(self._path, os.O_RDONLY | os.O_NOFOLLOW)
-            with os.fdopen(fd) as file:
-                if os.fstat(fd).st_uid != os.geteuid():
+            fd = _open_private_file(self._path, os.O_RDONLY)
+            with os.fdopen(fd, "rb") as file:
+                body = file.read(_MAX_CACHE_BYTES + 1)
+                if len(body) > _MAX_CACHE_BYTES:
                     return None
-                data = json.load(file)
+                data = json.loads(body)
             metadata: dict[str, str] = {
                 name: value for name in _FIELDS if isinstance(value := data[name], str)
             }
             if len(metadata) != len(_FIELDS):
                 return None
+            if not metadata["access_key"] or not metadata["secret_key"]:
+                return None
             remaining = datetime.fromisoformat(metadata["expiry_time"]) - datetime.now(UTC)
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError, RecursionError):
             return None
         return metadata if remaining.total_seconds() > _STALE_SECONDS else None
 
@@ -133,7 +155,7 @@ class CachedCredentialProvider(CredentialProvider):
         The kernel releases the lock if its holder dies.
         """
         try:
-            fd = os.open(self._path + ".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            fd = _open_private_file(self._path + ".lock", os.O_RDWR | os.O_CREAT)
         except OSError:
             return None
         deadline = time.monotonic() + _LOCK_WAIT_SECONDS

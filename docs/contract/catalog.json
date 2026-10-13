@@ -2638,6 +2638,53 @@
         "tests/unit/failed_jobs/test_retry.py::test_telemetry_failure_does_not_fail_sent_job",
         "tests/unit/failed_jobs/test_retry.py::test_self_managed_mode_emits_no_cloud_events"
       ]
+    },
+    {
+      "id": "sqs.credential_cache",
+      "title": "Share refreshable AWS credentials across the processes on a host",
+      "expected": "With credential_cache enabled (the managed-mode default) and ecs or instance credentials, processes on one host share refreshable credentials through a 0600 file in the temp directory, keyed by Laravel's SqsConnector::credentialsCacheKey inputs (AWS_CONTAINER_CREDENTIALS_FULL_URI|AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE|provider|region|prefix|suffix). A missing entry, or one expiring within 16 minutes, is refreshed by one process under an exclusive flock (5 s wait) and the others read the result. Expiry is read after freezing the wrapped credentials. Data and lock files are opened with O_NONBLOCK|O_NOFOLLOW and used only when fstat shows a regular file owned by this user with no group or other permission bits; reads are capped at 64 KiB and entries need non-empty keys. Any cache read, lock or write failure falls back to a direct provider fetch. Static and default credentials are never cached.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/AwsCredentialCache.php",
+          "lines": "20-200",
+          "symbol": "AwsCredentialCache::resolve, freshCredentials, resolveAndCache"
+        },
+        {
+          "path": "src/Illuminate/Queue/Connectors/SqsConnector.php",
+          "lines": "109-169",
+          "symbol": "SqsConnector::cachedCredentialProvider, credentialsCacheKey, credentialCachingEnabled"
+        },
+        {
+          "path": "src/Illuminate/Foundation/CloudBootstrapper.php",
+          "lines": "246-268",
+          "symbol": "CloudBootstrapper credential_cache defaults"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": {
+        "label": "credential-cache-file-store",
+        "follows": "project",
+        "summary": "Laravel's cache is opt-in, uses any lock-capable cache store with a 15 s lock and refreshes 60 s before expiry. This package enables it by default in managed mode because Cloud sets nothing for Python, implements only the file store with a kernel flock released when its holder exits, and treats entries as stale 16 minutes before expiry to stay ahead of botocore's 15-minute advisory refresh. An unsupported store falls back to fallback_store (default file), as in Laravel.",
+        "decision": "D17"
+      },
+      "project_decision": "D17",
+      "probe": [
+        "tests/unit/sqs/test_credential_cache.py::test_processes_share_one_fetch",
+        "tests/unit/sqs/test_credential_cache.py::test_stale_entry_is_refreshed_and_shared",
+        "tests/unit/sqs/test_credential_cache.py::test_wrapped_refresh_preserves_matching_expiry",
+        "tests/unit/sqs/test_credential_cache.py::test_waiter_rereads_the_entry_after_the_lock",
+        "tests/unit/sqs/test_credential_cache.py::test_lock_timeout_fetches_directly",
+        "tests/unit/sqs/test_credential_cache.py::test_corrupted_entry_fetches_directly",
+        "tests/unit/sqs/test_credential_cache.py::test_fifo_cache_path_does_not_block",
+        "tests/unit/sqs/test_credential_cache.py::test_non_private_file_is_rejected",
+        "tests/unit/sqs/test_credential_cache.py::test_foreign_lock_file_is_rejected",
+        "tests/unit/sqs/test_credential_cache.py::test_key_matches_laravel",
+        "tests/unit/sqs/test_credential_cache.py::test_client_uses_the_cache_only_when_enabled",
+        "tests/unit/config/test_loader.py::test_managed_credential_cache",
+        "tests/unit/config/test_loader.py::test_sqs_credential_cache_is_opt_in_for_refreshable_providers"
+      ]
     }
   ]
 }

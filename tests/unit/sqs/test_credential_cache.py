@@ -1,7 +1,13 @@
+"""Verify shared refreshable credentials and private file-cache fallbacks."""
+
+from __future__ import annotations
+
 import fcntl
 import json
 import os
 import stat
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -57,6 +63,7 @@ def entry(access_key="cached-key", expires_in=timedelta(hours=1), **changes):
 
 def write(path, data):
     (path / KEY).write_text(data if isinstance(data, str) else json.dumps(data))
+    (path / KEY).chmod(0o600)
 
 
 def access_key(provider):
@@ -114,6 +121,22 @@ def test_botocore_refresh_reads_the_shared_entry(temp_dir):
     provider.load.assert_called_once()
 
 
+@pytest.mark.parametrize("expires_in", [timedelta(minutes=14), timedelta(seconds=-1)])
+def test_wrapped_refresh_preserves_matching_expiry(temp_dir, expires_in):
+    credentials = fetched(expires_in=expires_in)
+    refresh = Mock(return_value=entry("refreshed-key"))
+    credentials._refresh_using = refresh
+    provider = wrapped(Mock(return_value=credentials))
+    loaded = CachedCredentialProvider(provider, KEY).load()
+    assert loaded._expiry_time == credentials._expiry_time
+    assert loaded.get_frozen_credentials().access_key == "refreshed-key"
+    assert datetime.fromisoformat(json.loads((temp_dir / KEY).read_text())["expiry_time"]) == (
+        credentials._expiry_time
+    )
+    refresh.assert_called_once()
+    provider.load.assert_called_once()
+
+
 def test_waiter_rereads_the_entry_after_the_lock(temp_dir):
     holder = os.open(temp_dir / f"{KEY}.lock", os.O_RDWR | os.O_CREAT, 0o600)
     fcntl.flock(holder, fcntl.LOCK_EX)
@@ -150,6 +173,8 @@ def test_lock_timeout_fetches_directly(temp_dir, monkeypatch):
         "null",
         {"access_key": "cached-key"},
         entry(token=None),
+        entry(access_key=""),
+        entry(secret_key=""),
         entry(expiry_time="tomorrow"),
         entry(expiry_time="2999-01-01T00:00:00"),
     ],
@@ -158,6 +183,106 @@ def test_corrupted_entry_fetches_directly(temp_dir, data):
     write(temp_dir, data)
     assert access_key(CachedCredentialProvider(wrapped(), KEY)) == "fetched-key"
     assert json.loads((temp_dir / KEY).read_text())["access_key"] == "fetched-key"
+
+
+@pytest.mark.parametrize(
+    "content", [json.dumps(entry(extra="x" * (64 * 1024))), "[" * 2000 + "]" * 2000]
+)
+def test_oversized_or_nested_cache_fetches_directly(temp_dir, content):
+    write(temp_dir, content)
+    assert access_key(CachedCredentialProvider(wrapped(), KEY)) == "fetched-key"
+
+
+def test_cache_entry_at_size_limit_is_used(temp_dir):
+    write(temp_dir, json.dumps(entry(token="")).ljust(64 * 1024))
+    provider = wrapped()
+    assert access_key(CachedCredentialProvider(provider, KEY)) == "cached-key"
+    provider.load.assert_not_called()
+
+
+def test_cache_parser_recursion_error_is_a_miss(temp_dir, monkeypatch):
+    write(temp_dir, entry())
+    monkeypatch.setattr(_credential_cache.json, "loads", Mock(side_effect=RecursionError))
+    provider = wrapped()
+    assert access_key(CachedCredentialProvider(provider, KEY)) == "fetched-key"
+    provider.load.assert_called_once()
+
+
+@pytest.mark.parametrize("suffix", ["", ".lock"])
+def test_fifo_cache_path_does_not_block(temp_dir, suffix):
+    path = temp_dir / (KEY + suffix)
+    os.mkfifo(path, 0o600)
+    script = """
+import sys
+from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock
+from botocore.credentials import RefreshableCredentials
+from laravel_cloud_queues.transports.sqs._credential_cache import CachedCredentialProvider
+
+metadata = {"access_key": "direct", "secret_key": "dummy", "token": "",
+            "expiry_time": (datetime.now(UTC) + timedelta(hours=1)).isoformat()}
+credentials = RefreshableCredentials.create_from_metadata(
+    metadata, refresh_using=lambda: metadata, method="container-role")
+provider = Mock(METHOD="container-role", load=Mock(return_value=credentials))
+cache = CachedCredentialProvider(provider, "unused")
+cache._path = sys.argv[1]
+assert cache.load().get_frozen_credentials().access_key == "direct"
+provider.load.assert_called_once()
+"""
+    subprocess.run([sys.executable, "-c", script, str(temp_dir / KEY)], check=True, timeout=3)
+
+
+@pytest.mark.parametrize("suffix", ["", ".lock"])
+@pytest.mark.parametrize("mode", [0o640, 0o604, 0o660, 0o666, 0o601])
+def test_non_private_file_is_rejected(temp_dir, suffix, mode):
+    path = temp_dir / (KEY + suffix)
+    path.write_text(json.dumps(entry()))
+    path.chmod(mode)
+    cache = CachedCredentialProvider(wrapped(), KEY)
+    assert (cache._read() if not suffix else cache._lock()) is None
+    assert access_key(cache) == "fetched-key"
+
+
+def test_foreign_lock_file_is_rejected(temp_dir, monkeypatch):
+    path = temp_dir / (KEY + ".lock")
+    path.touch(mode=0o600)
+    cache = CachedCredentialProvider(wrapped(), KEY)
+    monkeypatch.setattr(os, "geteuid", lambda: -1)
+    assert cache._lock() is None
+    assert access_key(cache) == "fetched-key"
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink"])
+def test_non_regular_lock_file_is_rejected(temp_dir, kind):
+    path = temp_dir / (KEY + ".lock")
+    if kind == "directory":
+        path.mkdir()
+    else:
+        target = temp_dir / "lock-target"
+        target.touch(mode=0o600)
+        path.symlink_to(target)
+    cache = CachedCredentialProvider(wrapped(), KEY)
+    assert cache._lock() is None
+    assert access_key(cache) == "fetched-key"
+
+
+@pytest.mark.parametrize("suffix", ["", ".lock"])
+def test_descriptor_stat_failure_closes_the_file(temp_dir, monkeypatch, suffix):
+    write(temp_dir, entry())
+    cache = CachedCredentialProvider(wrapped(), KEY)
+    fds = []
+
+    def fail_stat(fd):
+        fds.append(fd)
+        raise OSError("fstat failed")
+
+    original_stat = os.fstat
+    monkeypatch.setattr(os, "fstat", fail_stat)
+    assert (cache._read() if not suffix else cache._lock()) is None
+    monkeypatch.setattr(os, "fstat", original_stat)
+    assert len(fds) == 1
+    with pytest.raises(OSError):
+        os.fstat(fds[0])
 
 
 def test_foreign_or_linked_entry_is_ignored(temp_dir, monkeypatch):
