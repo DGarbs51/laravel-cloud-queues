@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from collections.abc import Sequence
 from contextlib import suppress
@@ -28,6 +29,34 @@ _CONNECTION_ERRORS = (httpx.NetworkError, httpx.TimeoutException, httpx.RemotePr
 """The HTTP errors treated as connection failures and eligible for retry."""
 _UNREACHABLE = "The agent runtime socket is unreachable."
 """The error message used once the connection retries are exhausted."""
+_AGENT_URLS = frozenset({"http://localhost/next", "http://localhost/result"})
+"""The agent endpoints whose per-request httpx log lines are dropped."""
+
+
+class _QuietAgentRequests(logging.Filter):
+    """Drop httpx's INFO ``HTTP Request:`` line for agent calls.
+
+    Laravel's worker logs nothing per agent request, and httpx would add two lines per
+    job plus one per idle poll. The application's own httpx requests still log.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Keep every record except an INFO line about an agent endpoint."""
+        args = record.args
+        return not (
+            record.levelno == logging.INFO
+            and isinstance(args, tuple)
+            and len(args) > 1
+            and str(args[1]) in _AGENT_URLS
+        )
+
+
+_QUIET_AGENT_REQUESTS = _QuietAgentRequests()
+
+
+def _quiet_agent_requests() -> None:
+    """Install the filter on the ``httpx`` logger; adding the same filter twice is a no-op."""
+    logging.getLogger("httpx").addFilter(_QUIET_AGENT_REQUESTS)
 
 
 class _OutcomeClaims:
@@ -156,6 +185,7 @@ class AgentConsumer:
     ) -> None:
         """Create a new agent consumer instance."""
         self._managed = managed
+        _quiet_agent_requests()
         self._client = httpx.Client(
             transport=httpx.HTTPTransport(uds=managed.agent.socket),
             base_url="http://localhost",
@@ -287,6 +317,7 @@ class AsyncAgentConsumer:
         """Create a new async agent consumer and its sync twin."""
         self._managed = managed
         self._claims = _OutcomeClaims()
+        _quiet_agent_requests()
         self._client = httpx.AsyncClient(
             transport=httpx.AsyncHTTPTransport(uds=managed.agent.socket),
             base_url="http://localhost",
