@@ -5,12 +5,10 @@
 Laravel Cloud runs Python applications, including FastAPI, on Python 3.10 through 3.14.
 This package requires Python 3.11 or newer.
 Your web process dispatches jobs, and a separate worker process runs them. On Laravel
-Cloud, that worker runs as a **worker cluster** or as a **background process** on your App
-cluster.
-
-Managed queues are not yet available for Python applications, so today you point your
-worker at one of the two self-managed backends: a Laravel Valkey cache (`redis`) or your
-own SQS queues (`sqs`).
+Cloud, the recommended setup is a **managed queue**: Cloud runs and scales the workers for
+you (see [Managed Queues](#managed-queues)). You can also run the worker yourself, as a
+**worker cluster** or a **background process** on your App cluster, with one of the two
+self-managed backends: a Laravel Valkey cache (`redis`) or your own SQS queues (`sqs`).
 
 ## Using Laravel Valkey
 
@@ -99,15 +97,32 @@ receives) use AnyIO's worker threads, which are not sized from the CPU count. Se
 
 ## Managed Queues
 
-When Laravel Cloud enables managed queues for Python, the platform will inject
-`LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` and the package will select managed mode
-automatically. No AWS or queue wiring is needed.
+Add a managed queue to your environment. Cloud injects `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG`
+and the package selects managed mode automatically, with no AWS or queue wiring. Don't set
+`LARAVEL_CLOUD_QUEUES_BACKEND`, because an explicit backend wins over the injected
+configuration.
+
+Cloud starts each worker with `laravel-cloud-queues work --queue=<name>`, and the dashboard
+doesn't let you edit that command. Name your worker target in `pyproject.toml` so the
+command finds it:
+
+```toml
+[tool.laravel-cloud-queues]
+target = "myapp.main:app"
+```
+
+Anything else you want to tune comes from environment variables: the memory limit
+(`LARAVEL_CLOUD_QUEUES_MEMORY`, by default 90% of the container's limit, after which the
+worker exits 12 and Cloud restarts it in place) and the shared credential cache (on by
+default). See [Environment Variables](environment-variables.md).
 
 In managed mode, jobs are dispatched straight to Laravel Cloud's SQS queues. The worker
 receives them through the queue agent's Unix socket when the agent is enabled, or
 directly from SQS otherwise. Lifecycle and `failed_job` events go to Laravel Cloud's log
 socket, so your jobs appear in the **Queues** dashboard, and failed jobs can be inspected
-and retried there. The agent extends a running job's visibility in three-minute increments
+there. The dashboard's **Retry** button needs a platform change for Python: Cloud has to
+run `laravel-cloud-queues retry` and provide an encryption key (see
+[Failed Jobs](failed-jobs.md)). The agent extends a running job's visibility in three-minute increments
 and manages the worker's lifetime and scaling.
 
 The worker processes `--queue`, or the configuration's `queue` when you omit it. Jobs

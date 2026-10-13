@@ -247,7 +247,7 @@ Differences: GET retry count; GET connect timeout; missing receive count (`Error
 | `job_name` | `(json_decode($payload, associative: true) ?? [])['displayName'] ?? ''` (`:85`). |
 | `exception` | `(string) $exception` — PHP `Throwable::__toString()`: `"{Class}: {message} in {file}:{line}\nStack trace:\n#0 ..."` plus any `previous` chain; invalid UTF-8 is substituted by the writer's `JSON_INVALID_UTF8_SUBSTITUTE` (test `:734-757`). |
 
-Field order in the emitted object is the array order above. Not emitted in v1: the `retried_at` variant (`:220-225`).
+Field order in the emitted object is the array order above. The `retried_at` variant (`:220-225`) is emitted only by `laravel-cloud-queues retry` after a successful re-dispatch (D17).
 
 ### Q6. Lifecycle event details
 

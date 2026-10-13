@@ -5,9 +5,6 @@
 Laravel Cloud Queues is a young package. Before you adopt it, make sure these
 limitations are acceptable for your application:
 
-- **Managed queues are not yet verified live.** Laravel Cloud has not yet enabled managed
-  queues for Python. Managed mode is tested against the pinned Laravel contract and
-  local emulators.
 - **No compression or large-payload offload.** Payloads over 1 MiB on SQS and managed
   queues are rejected with `PayloadTooLargeError`. Laravel's cache-backed overflow is not
   implemented.
@@ -15,7 +12,8 @@ limitations are acceptable for your application:
   non-Python call overruns its timeout until control returns to the interpreter. See
   [Timeouts](retries-and-timeouts.md#timeouts).
 - **Failure records are best-effort**, and outside Laravel Cloud's dashboard (managed
-  mode) there is no failed-job store, dead-letter queue or retry command.
+  mode) there is no failed-job store or dead-letter queue. Dashboard Retry needs Cloud to
+  run `laravel-cloud-queues retry` for Python apps, which it doesn't yet.
 - **Delivery is at least once.** Handlers must be idempotent.
 - **No lifecycle events in `sqs` and `redis` modes.** Laravel Cloud ingests them for
   managed queues only, so workers log structured lines instead.
@@ -28,8 +26,8 @@ limitations are acceptable for your application:
   feature is generally available. Until then, job exceptions appear in the Logs tab and,
   for terminal failures, in the Queues dashboard's failed jobs.
 - **Not yet supported:** job chains, batches, unique jobs, job middleware,
-  `retry_until`, `max_exceptions`, memory-limit recycling, `after_commit`, credential
-  caching, and payload interoperability with PHP jobs.
+  `retry_until`, `max_exceptions`, `after_commit`, and payload interoperability with PHP
+  jobs.
 
 ## Roadmap
 
@@ -38,10 +36,9 @@ In rough priority order:
 1. Transparent payload compression.
 2. Transparent S3 or object-storage offload for large payloads, with configurable
    thresholds and worker-side hydration and cleanup.
-3. A Django adapter (`[django]`), then a Flask adapter (`[flask]`), on the same core and
-   wire format.
-4. Live verification of Laravel Cloud managed queues, once the platform enables them for
-   Python.
+3. Django, Flask, Celery and RQ adapters, on the same core and wire format.
+4. Dashboard Retry for Python apps, once Laravel Cloud runs `laravel-cloud-queues retry`
+   and provides an encryption key (platform change).
 5. A manual live smoke test on Laravel Cloud worker clusters.
 6. `retry_until` and `max_exceptions`. The message format already reserves room for
    them.
