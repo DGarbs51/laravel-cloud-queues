@@ -44,12 +44,16 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6a",
-      "probe": ["tests/unit/config/test_loader.py::test_backend_must_be_explicit", "tests/unit/config/test_loader.py::test_redis_precedence", "tests/unit/config/test_loader.py::test_sqs_settings_and_code_overrides"]
+      "probe": [
+        "tests/unit/config/test_loader.py::test_backend_must_be_explicit",
+        "tests/unit/config/test_loader.py::test_redis_precedence",
+        "tests/unit/config/test_loader.py::test_sqs_settings_and_code_overrides"
+      ]
     },
     {
       "id": "config.managed_parse",
       "title": "Managed configuration parsing",
-      "expected": "LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG is parsed as JSON. Malformed JSON, driver != \"cloud\", or a missing connection object is a ConfigurationError (never treated as unconfigured). queues may be a list or an object (keys); it is an inventory, not a dispatch allowlist. Sender default queue = connection.queue; worker assignment = top-level queue, else \"default\". region is required. after_commit, overflow and credential_cache are preserved; overflow.enabled or credential_cache.enabled true logs a startup warning naming the consequence. Unknown fields are preserved. Credentials, receipt handles and payloads are never logged by default.",
+      "expected": "LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG is parsed as JSON. Malformed JSON, driver != \"cloud\", or a missing connection object is a ConfigurationError (never treated as unconfigured). queues may be a list or an object (keys); it is an inventory, not a dispatch allowlist. Sender default queue = connection.queue; worker assignment = top-level queue, else \"default\". region is required. after_commit and overflow are preserved; overflow.enabled true logs a startup warning naming the consequence. credential_cache {enabled, store, fallback_store} is honoured per field over CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED/_STORE/_FALLBACK_STORE and defaults to enabled with the file store in managed mode (sqs mode: env opt-in, ecs/instance only). Unknown fields are preserved. Credentials, receipt handles and payloads are never logged by default.",
       "tier": "unit",
       "required": true,
       "laravel_source": [
@@ -88,7 +92,11 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["tests/unit/config/test_loader.py::test_managed_strict_shape", "tests/unit/config/test_loader.py::test_managed_inventory_defaults_and_preservation", "tests/unit/config/test_loader.py::test_invalid_managed_field_types"]
+      "probe": [
+        "tests/unit/config/test_loader.py::test_managed_strict_shape",
+        "tests/unit/config/test_loader.py::test_managed_inventory_defaults_and_preservation",
+        "tests/unit/config/test_loader.py::test_invalid_managed_field_types"
+      ]
     },
     {
       "id": "config.credentials_explicit",
@@ -117,7 +125,14 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["tests/unit/config/test_loader.py::test_managed_strict_shape", "tests/unit/config/test_loader.py::test_required_sqs_settings", "tests/unit/config/test_loader.py::test_default_credentials_are_opt_in", "tests/unit/sqs/test_client.py::test_selected_provider_is_refreshable_and_exclusive", "tests/unit/sqs/test_client.py::test_no_provider_credentials_never_falls_back", "tests/unit/sqs/test_client.py::test_default_chain_requires_explicit_opt_in_and_ignores_endpoint"]
+      "probe": [
+        "tests/unit/config/test_loader.py::test_managed_strict_shape",
+        "tests/unit/config/test_loader.py::test_required_sqs_settings",
+        "tests/unit/config/test_loader.py::test_default_credentials_are_opt_in",
+        "tests/unit/sqs/test_client.py::test_selected_provider_is_refreshable_and_exclusive",
+        "tests/unit/sqs/test_client.py::test_no_provider_credentials_never_falls_back",
+        "tests/unit/sqs/test_client.py::test_default_chain_requires_explicit_opt_in_and_ignores_endpoint"
+      ]
     },
     {
       "id": "config.agent_socket_resolution",
@@ -161,7 +176,9 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/unit/config/test_loader.py::test_code_and_socket_precedence"]
+      "probe": [
+        "tests/unit/config/test_loader.py::test_code_and_socket_precedence"
+      ]
     },
     {
       "id": "config.sqs_isolated_aws",
@@ -173,7 +190,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6a",
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes"
+      ]
     },
     {
       "id": "queue.url_and_normalization",
@@ -212,7 +231,10 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/unit/sqs/test_naming.py::test_queue_names", "tests/unit/sqs/test_naming.py::test_normalization_chops_suffix_once"]
+      "probe": [
+        "tests/unit/sqs/test_naming.py::test_queue_names",
+        "tests/unit/sqs/test_naming.py::test_normalization_chops_suffix_once"
+      ]
     },
     {
       "id": "sqs.queue_not_found",
@@ -236,7 +258,9 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/integration/sqs/test_sqs.py::test_queue_not_found_and_lower_size_limit"]
+      "probe": [
+        "tests/integration/sqs/test_sqs.py::test_queue_not_found_and_lower_size_limit"
+      ]
     },
     {
       "id": "envelope.v1_shape",
@@ -265,7 +289,11 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/unit/envelope/test_envelope.py::test_dashboard_retry_and_policy_survive_roundtrip", "tests/unit/envelope/test_envelope.py::test_policy_omission_and_zero_values", "tests/unit/envelope/test_envelope.py::test_namespaced_unknown_keys_do_not_collide"]
+      "probe": [
+        "tests/unit/envelope/test_envelope.py::test_dashboard_retry_and_policy_survive_roundtrip",
+        "tests/unit/envelope/test_envelope.py::test_policy_omission_and_zero_values",
+        "tests/unit/envelope/test_envelope.py::test_namespaced_unknown_keys_do_not_collide"
+      ]
     },
     {
       "id": "envelope.retry_policy_in_message",
@@ -314,7 +342,9 @@
       ],
       "deviation": null,
       "project_decision": "D4",
-      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[policy-deploy]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_outcomes[policy-deploy]"
+      ]
     },
     {
       "id": "envelope.codecs",
@@ -326,7 +356,19 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/unit/codecs/test_codecs.py::test_roundtrip", "tests/unit/codecs/test_codecs.py::test_invalid_values_are_job_defects", "tests/unit/codecs/test_codecs.py::test_unserializable_values_are_dispatch_errors", "tests/unit/codecs/test_codecs.py::test_numeric_and_union_rules", "tests/unit/codecs/test_codecs.py::test_any_scalar_and_escaped_dict", "tests/unit/codecs/test_codecs.py::test_payload_cannot_import", "tests/unit/codecs/test_codecs.py::test_cycles_and_direct_decode_depth_are_bounded", "tests/unit/codecs/test_codecs.py::test_custom_codec_is_explicit_and_registry_local", "tests/unit/codecs/test_codecs.py::test_custom_output_must_be_json", "tests/unit/codecs/test_codecs.py::test_pydantic_roundtrip_and_strict_fields", "tests/unit/codecs/test_codecs.py::test_enum_scalar_values_and_literals"]
+      "probe": [
+        "tests/unit/codecs/test_codecs.py::test_roundtrip",
+        "tests/unit/codecs/test_codecs.py::test_invalid_values_are_job_defects",
+        "tests/unit/codecs/test_codecs.py::test_unserializable_values_are_dispatch_errors",
+        "tests/unit/codecs/test_codecs.py::test_numeric_and_union_rules",
+        "tests/unit/codecs/test_codecs.py::test_any_scalar_and_escaped_dict",
+        "tests/unit/codecs/test_codecs.py::test_payload_cannot_import",
+        "tests/unit/codecs/test_codecs.py::test_cycles_and_direct_decode_depth_are_bounded",
+        "tests/unit/codecs/test_codecs.py::test_custom_codec_is_explicit_and_registry_local",
+        "tests/unit/codecs/test_codecs.py::test_custom_output_must_be_json",
+        "tests/unit/codecs/test_codecs.py::test_pydantic_roundtrip_and_strict_fields",
+        "tests/unit/codecs/test_codecs.py::test_enum_scalar_values_and_literals"
+      ]
     },
     {
       "id": "envelope.trust_boundary",
@@ -343,7 +385,13 @@
         "decision": null
       },
       "project_decision": "D4",
-      "probe": ["tests/unit/envelope/test_envelope.py::test_malformed_json_is_a_job_defect", "tests/unit/envelope/test_envelope.py::test_million_deep_body_rejected_before_parser", "tests/unit/envelope/test_envelope.py::test_unsupported_version", "tests/unit/envelope/test_envelope.py::test_pointer_takes_precedence_over_missing_envelope", "tests/unit/codecs/test_codecs.py::test_payload_cannot_import"]
+      "probe": [
+        "tests/unit/envelope/test_envelope.py::test_malformed_json_is_a_job_defect",
+        "tests/unit/envelope/test_envelope.py::test_million_deep_body_rejected_before_parser",
+        "tests/unit/envelope/test_envelope.py::test_unsupported_version",
+        "tests/unit/envelope/test_envelope.py::test_pointer_takes_precedence_over_missing_envelope",
+        "tests/unit/codecs/test_codecs.py::test_payload_cannot_import"
+      ]
     },
     {
       "id": "envelope.payload_size_limit",
@@ -371,7 +419,10 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/unit/jobs/test_dispatch.py::test_payload_size_is_measured_in_utf8_bytes", "tests/unit/jobs/test_dispatch.py::test_redis_is_bounded_only_by_the_decode_ceiling"]
+      "probe": [
+        "tests/unit/jobs/test_dispatch.py::test_payload_size_is_measured_in_utf8_bytes",
+        "tests/unit/jobs/test_dispatch.py::test_redis_is_bounded_only_by_the_decode_ceiling"
+      ]
     },
     {
       "id": "sqs.max_message_size_mapping",
@@ -383,7 +434,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7",
-      "probe": ["tests/integration/sqs/test_sqs.py::test_queue_not_found_and_lower_size_limit"]
+      "probe": [
+        "tests/integration/sqs/test_sqs.py::test_queue_not_found_and_lower_size_limit"
+      ]
     },
     {
       "id": "registry.job_declaration",
@@ -395,7 +448,31 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["tests/unit/registry/test_registry.py::test_construction_is_lazy", "tests/unit/registry/test_registry.py::test_bare_decorator_uses_module_qualname", "tests/unit/registry/test_registry.py::test_decorator_with_arguments", "tests/unit/registry/test_registry.py::test_nested_function_default_name", "tests/unit/registry/test_registry.py::test_shorthand_overrides_policy_fields", "tests/unit/registry/test_registry.py::test_invalid_policy_fails_at_declaration", "tests/unit/registry/test_registry.py::test_duplicate_name_is_a_configuration_error", "tests/unit/registry/test_registry.py::test_same_name_in_separate_registries_is_fine", "tests/unit/registry/test_registry.py::test_get_unknown_job", "tests/unit/registry/test_registry.py::test_get_never_imports", "tests/unit/registry/test_registry.py::test_jobs_view_is_read_only", "tests/unit/registry/test_registry.py::test_varargs_handler_rejected", "tests/unit/registry/test_registry.py::test_load_imports_include_and_discover", "tests/unit/registry/test_registry.py::test_load_is_idempotent", "tests/unit/registry/test_registry.py::test_load_surfaces_import_errors", "tests/unit/registry/test_registry.py::test_lifespan_without_an_async_producer_is_a_noop", "tests/unit/registry/test_registry.py::test_lifespan_closes_the_loops_async_producer", "tests/unit/registry/test_registry.py::test_telemetry_is_noop_outside_managed_mode", "tests/unit/registry/test_registry.py::test_is_injected", "tests/unit/registry/test_registry.py::test_postponed_annotations_are_resolved_before_injection", "tests/unit/registry/test_registry.py::test_merge_injected_keeps_positional_shape", "tests/unit/registry/test_registry.py::test_invoke_sync_handler_on_calling_thread_with_injection", "tests/unit/registry/test_registry.py::test_invoke_awaits_async_handler"]
+      "probe": [
+        "tests/unit/registry/test_registry.py::test_construction_is_lazy",
+        "tests/unit/registry/test_registry.py::test_bare_decorator_uses_module_qualname",
+        "tests/unit/registry/test_registry.py::test_decorator_with_arguments",
+        "tests/unit/registry/test_registry.py::test_nested_function_default_name",
+        "tests/unit/registry/test_registry.py::test_shorthand_overrides_policy_fields",
+        "tests/unit/registry/test_registry.py::test_invalid_policy_fails_at_declaration",
+        "tests/unit/registry/test_registry.py::test_duplicate_name_is_a_configuration_error",
+        "tests/unit/registry/test_registry.py::test_same_name_in_separate_registries_is_fine",
+        "tests/unit/registry/test_registry.py::test_get_unknown_job",
+        "tests/unit/registry/test_registry.py::test_get_never_imports",
+        "tests/unit/registry/test_registry.py::test_jobs_view_is_read_only",
+        "tests/unit/registry/test_registry.py::test_varargs_handler_rejected",
+        "tests/unit/registry/test_registry.py::test_load_imports_include_and_discover",
+        "tests/unit/registry/test_registry.py::test_load_is_idempotent",
+        "tests/unit/registry/test_registry.py::test_load_surfaces_import_errors",
+        "tests/unit/registry/test_registry.py::test_lifespan_without_an_async_producer_is_a_noop",
+        "tests/unit/registry/test_registry.py::test_lifespan_closes_the_loops_async_producer",
+        "tests/unit/registry/test_registry.py::test_telemetry_is_noop_outside_managed_mode",
+        "tests/unit/registry/test_registry.py::test_is_injected",
+        "tests/unit/registry/test_registry.py::test_postponed_annotations_are_resolved_before_injection",
+        "tests/unit/registry/test_registry.py::test_merge_injected_keeps_positional_shape",
+        "tests/unit/registry/test_registry.py::test_invoke_sync_handler_on_calling_thread_with_injection",
+        "tests/unit/registry/test_registry.py::test_invoke_awaits_async_handler"
+      ]
     },
     {
       "id": "dispatch.standard",
@@ -424,7 +501,10 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]", "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.async]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]",
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.async]"
+      ]
     },
     {
       "id": "dispatch.named_queue",
@@ -442,7 +522,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[named]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_options[named]"
+      ]
     },
     {
       "id": "dispatch.queue_override",
@@ -454,7 +536,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[override]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_options[override]"
+      ]
     },
     {
       "id": "dispatch.options_builder",
@@ -466,7 +550,11 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["tests/unit/jobs/test_dispatch.py::test_handler_parameters_named_like_options", "tests/unit/jobs/test_dispatch.py::test_prepare_dispatch_accepts_explicit_options", "tests/unit/jobs/test_dispatch.py::test_queue_resolution_order"]
+      "probe": [
+        "tests/unit/jobs/test_dispatch.py::test_handler_parameters_named_like_options",
+        "tests/unit/jobs/test_dispatch.py::test_prepare_dispatch_accepts_explicit_options",
+        "tests/unit/jobs/test_dispatch.py::test_queue_resolution_order"
+      ]
     },
     {
       "id": "dispatch.delay_standard",
@@ -495,7 +583,9 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[delay]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_options[delay]"
+      ]
     },
     {
       "id": "dispatch.delay_validation",
@@ -529,7 +619,10 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/unit/jobs/test_policy.py::test_normalize_delay", "tests/unit/jobs/test_policy.py::test_normalize_delay_rejects"]
+      "probe": [
+        "tests/unit/jobs/test_policy.py::test_normalize_delay",
+        "tests/unit/jobs/test_policy.py::test_normalize_delay_rejects"
+      ]
     },
     {
       "id": "dispatch.fifo_defaults",
@@ -553,7 +646,10 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[fifo]", "tests/conformance/probes/test_brokers.py::test_sqs_options[fifo-explicit]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_options[fifo]",
+        "tests/conformance/probes/test_brokers.py::test_sqs_options[fifo-explicit]"
+      ]
     },
     {
       "id": "dispatch.fifo_delay_rejected",
@@ -582,7 +678,9 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/unit/jobs/test_dispatch.py::test_sqs_options_rejected"]
+      "probe": [
+        "tests/unit/jobs/test_dispatch.py::test_sqs_options_rejected"
+      ]
     },
     {
       "id": "dispatch.fair_queue_group",
@@ -606,7 +704,9 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_options[fair]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_options[fair]"
+      ]
     },
     {
       "id": "dispatch.cross_model_rejected",
@@ -635,7 +735,10 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/unit/jobs/test_dispatch.py::test_sqs_options_rejected", "tests/unit/jobs/test_dispatch.py::test_redis_options_rejected"]
+      "probe": [
+        "tests/unit/jobs/test_dispatch.py::test_sqs_options_rejected",
+        "tests/unit/jobs/test_dispatch.py::test_redis_options_rejected"
+      ]
     },
     {
       "id": "agent.receive_selection",
@@ -674,7 +777,10 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_managed.py::test_agent_queue_selection", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_agent_queue_selection",
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "agent.next_protocol",
@@ -718,7 +824,10 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/integration/agent/test_socket.py::test_protocol_response_fixtures", "tests/integration/agent/test_socket.py::test_named_emulator_faults"]
+      "probe": [
+        "tests/integration/agent/test_socket.py::test_protocol_response_fixtures",
+        "tests/integration/agent/test_socket.py::test_named_emulator_faults"
+      ]
     },
     {
       "id": "agent.next_retries",
@@ -752,7 +861,10 @@
       ],
       "deviation": null,
       "project_decision": "D13",
-      "probe": ["tests/integration/agent/test_socket.py::test_disconnect_retries", "tests/integration/agent/test_socket.py::test_protocol_fault_fixtures"]
+      "probe": [
+        "tests/integration/agent/test_socket.py::test_disconnect_retries",
+        "tests/integration/agent/test_socket.py::test_protocol_fault_fixtures"
+      ]
     },
     {
       "id": "agent.receive_count_default",
@@ -791,7 +903,10 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["tests/unit/agent/test_consumer.py::test_receive_count", "tests/unit/agent/test_consumer.py::test_malformed_attributes"]
+      "probe": [
+        "tests/unit/agent/test_consumer.py::test_receive_count",
+        "tests/unit/agent/test_consumer.py::test_malformed_attributes"
+      ]
     },
     {
       "id": "agent.result_protocol",
@@ -835,7 +950,11 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/integration/agent/test_socket.py::test_delivery_processed_deletes", "tests/integration/agent/test_socket.py::test_release_redelivers_same_message", "tests/integration/agent/test_socket.py::test_competing_outcomes_send_only_once"]
+      "probe": [
+        "tests/integration/agent/test_socket.py::test_delivery_processed_deletes",
+        "tests/integration/agent/test_socket.py::test_release_redelivers_same_message",
+        "tests/integration/agent/test_socket.py::test_competing_outcomes_send_only_once"
+      ]
     },
     {
       "id": "agent.result_4xx_nonfatal",
@@ -879,7 +998,9 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_result_failure[422]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_result_failure[422]"
+      ]
     },
     {
       "id": "agent.unhealthy_exit_zero",
@@ -938,7 +1059,9 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_managed.py::test_result_failure[503]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_result_failure[503]"
+      ]
     },
     {
       "id": "worker.ambiguous_ack_stops",
@@ -950,7 +1073,10 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D7, D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_ambiguous_ack", "tests/conformance/probes/test_brokers.py::test_ambiguous_direct_ack"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_ambiguous_ack",
+        "tests/conformance/probes/test_brokers.py::test_ambiguous_direct_ack"
+      ]
     },
     {
       "id": "sqs.receive_direct",
@@ -989,7 +1115,9 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.sync]"
+      ]
     },
     {
       "id": "sqs.retry_visibility_release",
@@ -1028,7 +1156,10 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "tests/conformance/probes/test_managed.py::test_outcomes[retry]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]",
+        "tests/conformance/probes/test_managed.py::test_outcomes[retry]"
+      ]
     },
     {
       "id": "sqs.attempts_receive_count",
@@ -1062,7 +1193,10 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]", "tests/conformance/probes/test_managed.py::test_outcomes[retry]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.retry]",
+        "tests/conformance/probes/test_managed.py::test_outcomes[retry]"
+      ]
     },
     {
       "id": "sqs.visibility_renewal",
@@ -1090,7 +1224,9 @@
         "decision": null
       },
       "project_decision": "D6, D7",
-      "probe": ["tests/conformance/probes/test_brokers.py::test_visibility_renewal"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_visibility_renewal"
+      ]
     },
     {
       "id": "redis.transport",
@@ -1128,7 +1264,13 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6, D7, D13",
-      "probe": ["tests/conformance/probes/test_brokers.py::test_redis_processes", "tests/integration/redis/test_redis_integration.py::test_dispatch_reserve_complete", "tests/integration/redis/test_redis_integration.py::test_retry_preserves_exact_member_id_and_counts", "tests/integration/redis/test_redis_integration.py::test_delayed_job_becomes_visible_during_blocking_wait", "tests/integration/redis/test_redis_integration.py::test_no_package_payload_limit"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_redis_processes",
+        "tests/integration/redis/test_redis_integration.py::test_dispatch_reserve_complete",
+        "tests/integration/redis/test_redis_integration.py::test_retry_preserves_exact_member_id_and_counts",
+        "tests/integration/redis/test_redis_integration.py::test_delayed_job_becomes_visible_during_blocking_wait",
+        "tests/integration/redis/test_redis_integration.py::test_no_package_payload_limit"
+      ]
     },
     {
       "id": "redis.reservation_renewal_and_expiry",
@@ -1151,7 +1293,10 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6, D7, D13",
-      "probe": ["tests/integration/redis/test_redis_integration.py::test_expiry_after_crash_redelivers", "tests/integration/redis/test_redis_integration.py::test_watchdog_renewal_prevents_redelivery_past_initial_lease"]
+      "probe": [
+        "tests/integration/redis/test_redis_integration.py::test_expiry_after_crash_redelivers",
+        "tests/integration/redis/test_redis_integration.py::test_watchdog_renewal_prevents_redelivery_past_initial_lease"
+      ]
     },
     {
       "id": "redis.atomicity_concurrent_workers",
@@ -1169,7 +1314,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6",
-      "probe": ["tests/integration/redis/test_redis_integration.py::test_concurrent_reservations_are_unique"]
+      "probe": [
+        "tests/integration/redis/test_redis_integration.py::test_concurrent_reservations_are_unique"
+      ]
     },
     {
       "id": "redis.tls",
@@ -1181,7 +1328,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6",
-      "probe": ["tests/integration/redis/test_redis_integration.py::test_tls_roundtrip"]
+      "probe": [
+        "tests/integration/redis/test_redis_integration.py::test_tls_roundtrip"
+      ]
     },
     {
       "id": "retry.default_tries_one",
@@ -1210,7 +1359,11 @@
       ],
       "deviation": null,
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[default]", "tests/integration/worker/test_sqs_worker.py::test_default_tries_is_one", "tests/integration/worker/test_redis_worker.py::test_default_tries_is_one"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_outcomes[default]",
+        "tests/integration/worker/test_sqs_worker.py::test_default_tries_is_one",
+        "tests/integration/worker/test_redis_worker.py::test_default_tries_is_one"
+      ]
     },
     {
       "id": "retry.attempt_checks",
@@ -1243,7 +1396,11 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/unit/jobs/test_policy.py::test_attempt_checks", "tests/unit/jobs/test_policy.py::test_declared_fields_win_over_worker_defaults", "tests/unit/jobs/test_policy.py::test_worker_defaults_match_laravel"]
+      "probe": [
+        "tests/unit/jobs/test_policy.py::test_attempt_checks",
+        "tests/unit/jobs/test_policy.py::test_declared_fields_win_over_worker_defaults",
+        "tests/unit/jobs/test_policy.py::test_worker_defaults_match_laravel"
+      ]
     },
     {
       "id": "retry.exhaustion",
@@ -1271,7 +1428,11 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[exhaustion]", "tests/integration/worker/test_sqs_worker.py::test_retry_releases_the_same_message_until_exhausted", "tests/integration/worker/test_redis_worker.py::test_retry_releases_the_same_job_until_exhausted"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_outcomes[exhaustion]",
+        "tests/integration/worker/test_sqs_worker.py::test_retry_releases_the_same_message_until_exhausted",
+        "tests/integration/worker/test_redis_worker.py::test_retry_releases_the_same_job_until_exhausted"
+      ]
     },
     {
       "id": "retry.backoff_schedule",
@@ -1305,7 +1466,11 @@
         "decision": null
       },
       "project_decision": null,
-      "probe": ["tests/unit/jobs/test_policy.py::test_retry_delay", "tests/unit/jobs/test_policy.py::test_normalize_release_delay", "tests/unit/jobs/test_policy.py::test_normalize_release_delay_rejects"]
+      "probe": [
+        "tests/unit/jobs/test_policy.py::test_retry_delay",
+        "tests/unit/jobs/test_policy.py::test_normalize_release_delay",
+        "tests/unit/jobs/test_policy.py::test_normalize_release_delay_rejects"
+      ]
     },
     {
       "id": "retry.explicit_release",
@@ -1333,7 +1498,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[release]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_outcomes[release]"
+      ]
     },
     {
       "id": "retry.explicit_fail",
@@ -1356,7 +1523,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[fail]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_outcomes[fail]"
+      ]
     },
     {
       "id": "retry.dashboard_replay",
@@ -1374,7 +1543,9 @@
       ],
       "deviation": null,
       "project_decision": "D3",
-      "probe": ["tests/conformance/probes/test_managed.py::test_replay"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_replay"
+      ]
     },
     {
       "id": "timeout.release_exit_124",
@@ -1417,7 +1588,13 @@
         "decision": "D13"
       },
       "project_decision": "D2, D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_timeout[python]", "tests/conformance/probes/test_managed.py::test_timeout[async]", "tests/conformance/probes/test_managed.py::test_timeout[sleep]", "tests/integration/worker/test_sqs_worker.py::test_retryable_timeout_exits_124_and_redelivers_with_next_attempt", "tests/integration/worker/test_redis_worker.py::test_retryable_timeout_redelivers_after_reservation_expiry"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_timeout[python]",
+        "tests/conformance/probes/test_managed.py::test_timeout[async]",
+        "tests/conformance/probes/test_managed.py::test_timeout[sleep]",
+        "tests/integration/worker/test_sqs_worker.py::test_retryable_timeout_exits_124_and_redelivers_with_next_attempt",
+        "tests/integration/worker/test_redis_worker.py::test_retryable_timeout_redelivers_after_reservation_expiry"
+      ]
     },
     {
       "id": "timeout.fail_on_timeout",
@@ -1460,7 +1637,10 @@
         "decision": "D13"
       },
       "project_decision": "D2, D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_timeout[fail-on-timeout]", "tests/integration/worker/test_sqs_worker.py::test_fail_on_timeout_fails_with_attempts_left"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_timeout[fail-on-timeout]",
+        "tests/integration/worker/test_sqs_worker.py::test_fail_on_timeout_fails_with_attempts_left"
+      ]
     },
     {
       "id": "timeout.last_attempt_terminal",
@@ -1498,7 +1678,11 @@
         "decision": "D13"
       },
       "project_decision": "D2, D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_timeout[last-attempt]", "tests/integration/worker/test_sqs_worker.py::test_timeout_on_last_attempt_fails_and_deletes", "tests/integration/worker/test_redis_worker.py::test_timeout_on_last_attempt_fails"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_timeout[last-attempt]",
+        "tests/integration/worker/test_sqs_worker.py::test_timeout_on_last_attempt_fails_and_deletes",
+        "tests/integration/worker/test_redis_worker.py::test_timeout_on_last_attempt_fails"
+      ]
     },
     {
       "id": "timeout.native_blocking_limitation",
@@ -1510,7 +1694,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D2",
-      "probe": ["tests/conformance/probes/test_managed.py::test_native_timeout"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_native_timeout"
+      ]
     },
     {
       "id": "worker.separate_process_single_job",
@@ -1528,7 +1714,10 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes",
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "worker.sync_handler",
@@ -1540,7 +1729,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "worker.async_handler",
@@ -1552,7 +1743,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "worker.unknown_job_terminal",
@@ -1586,7 +1779,9 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_poison[unknown]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_poison[unknown]"
+      ]
     },
     {
       "id": "worker.schema_mismatch_terminal",
@@ -1603,7 +1798,9 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_poison[schema]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_poison[schema]"
+      ]
     },
     {
       "id": "worker.undecodable_message",
@@ -1642,7 +1839,12 @@
         "decision": null
       },
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_poison[json]", "tests/conformance/probes/test_managed.py::test_poison[array]", "tests/conformance/probes/test_managed.py::test_poison[version]", "tests/conformance/probes/test_managed.py::test_poison[pointer]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_poison[json]",
+        "tests/conformance/probes/test_managed.py::test_poison[array]",
+        "tests/conformance/probes/test_managed.py::test_poison[version]",
+        "tests/conformance/probes/test_managed.py::test_poison[pointer]"
+      ]
     },
     {
       "id": "worker.terminal_failure_order",
@@ -1691,7 +1893,9 @@
       ],
       "deviation": null,
       "project_decision": "D1, D6b, D12, D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_failure_order"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_failure_order"
+      ]
     },
     {
       "id": "worker.log_only_failures",
@@ -1703,7 +1907,10 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D6b, D12, D13",
-      "probe": ["tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.default_failure]", "tests/conformance/probes/test_brokers.py::test_redis_processes[demo.default_failure]"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_sqs_processes[demo.default_failure]",
+        "tests/conformance/probes/test_brokers.py::test_redis_processes[demo.default_failure]"
+      ]
     },
     {
       "id": "worker.graceful_shutdown",
@@ -1726,7 +1933,12 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_managed.py::test_graceful_shutdown", "tests/integration/worker/test_agent_worker.py::test_sigterm_while_idle_exits_promptly", "tests/integration/worker/test_sqs_worker.py::test_sigterm_while_idle_waits_at_most_for_the_current_long_poll", "tests/integration/worker/test_redis_worker.py::test_sigterm_while_idle_exits_promptly"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_graceful_shutdown",
+        "tests/integration/worker/test_agent_worker.py::test_sigterm_while_idle_exits_promptly",
+        "tests/integration/worker/test_sqs_worker.py::test_sigterm_while_idle_waits_at_most_for_the_current_long_poll",
+        "tests/integration/worker/test_redis_worker.py::test_sigterm_while_idle_exits_promptly"
+      ]
     },
     {
       "id": "worker.lifecycle_options",
@@ -1754,7 +1966,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D8",
-      "probe": ["tests/conformance/probes/test_managed.py::test_lifecycle_options"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_lifecycle_options"
+      ]
     },
     {
       "id": "worker.multi_queue_priority",
@@ -1778,7 +1992,9 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_brokers.py::test_priority"]
+      "probe": [
+        "tests/conformance/probes/test_brokers.py::test_priority"
+      ]
     },
     {
       "id": "worker.two_sequential_jobs_isolated",
@@ -1790,7 +2006,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "fastapi.lifespan",
@@ -1802,7 +2020,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "fastapi.depends",
@@ -1814,7 +2034,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_fastapi.py::test_depends_and_eager"]
+      "probe": [
+        "tests/conformance/probes/test_fastapi.py::test_depends_and_eager"
+      ]
     },
     {
       "id": "fastapi.yield_teardown_before_ack",
@@ -1826,7 +2048,10 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_managed.py::test_failure_order", "tests/conformance/probes/test_managed.py::test_outcomes"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_failure_order",
+        "tests/conformance/probes/test_managed.py::test_outcomes"
+      ]
     },
     {
       "id": "observability.lifecycle_events",
@@ -1875,7 +2100,10 @@
         "decision": "D13"
       },
       "project_decision": "D13",
-      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_outcomes",
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "observability.queued_event",
@@ -1914,12 +2142,14 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_contracts.py::test_queued_event_after_send"]
+      "probe": [
+        "tests/conformance/probes/test_contracts.py::test_queued_event_after_send"
+      ]
     },
     {
       "id": "observability.failed_job_event",
       "title": "failed_job event fields and order",
-      "expected": "Managed-mode terminal failures emit {\"_cloud_event\": \"failed_job\", \"id\", \"queue\", \"started_at\", \"attempts\", \"payload\", \"exception_preview\", \"job_name\", \"exception\"}: id is a new UUIDv7 derived from the failure timestamp; queue is the normalized name; started_at is the delivery start in the lifecycle timestamp format; attempts is the integer attempt; payload is the original body as a string; exception_preview is \"<ExceptionClass>: <message> in <file>:<line>\" (or without \": <message>\" when empty) cut to at most 1,001 characters; job_name is the payload displayName (\"\" when unavailable); exception is the full traceback string. failed_job is emitted before the failed lifecycle event, which carries the same timestamp. The retried_at variant is not emitted.",
+      "expected": "Managed-mode terminal failures emit {\"_cloud_event\": \"failed_job\", \"id\", \"queue\", \"started_at\", \"attempts\", \"payload\", \"exception_preview\", \"job_name\", \"exception\"}: id is a new UUIDv7 derived from the failure timestamp; queue is the normalized name; started_at is the delivery start in the lifecycle timestamp format; attempts is the integer attempt; payload is the original body as a string; exception_preview is \"<ExceptionClass>: <message> in <file>:<line>\" (or without \": <message>\" when empty) cut to at most 1,001 characters; job_name is the payload displayName (\"\" when unavailable); exception is the full traceback string. failed_job is emitted before the failed lifecycle event, which carries the same timestamp. The retried_at variant is emitted only by the retry command (see events.failed_job_retried_at).",
       "tier": "socket",
       "required": true,
       "laravel_source": [
@@ -1953,7 +2183,10 @@
       ],
       "deviation": null,
       "project_decision": "D1",
-      "probe": ["tests/conformance/probes/test_managed.py::test_outcomes[fail]", "tests/conformance/probes/test_managed.py::test_poison[json]"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_outcomes[fail]",
+        "tests/conformance/probes/test_managed.py::test_poison[json]"
+      ]
     },
     {
       "id": "observability.failed_job_size_policy",
@@ -1987,7 +2220,9 @@
         "decision": "D1"
       },
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_contracts.py::test_failure_sizes"]
+      "probe": [
+        "tests/conformance/probes/test_contracts.py::test_failure_sizes"
+      ]
     },
     {
       "id": "observability.socket_writer",
@@ -2016,7 +2251,18 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/integration/observability/test_socket.py::test_reuses_one_connection", "tests/integration/observability/test_socket.py::test_accepts_unix_scheme_and_bare_path", "tests/integration/observability/test_socket.py::test_reconnects_after_peer_close", "tests/integration/observability/test_socket.py::test_outage_returns_false_quickly_and_recovers_after_restart", "tests/integration/observability/test_socket.py::test_partial_writes_are_reassembled", "tests/integration/observability/test_socket.py::test_five_consecutive_zero_byte_writes_disconnect", "tests/integration/observability/test_socket.py::test_zero_byte_counter_resets_after_progress", "tests/integration/observability/test_socket.py::test_lock_timeout_while_a_write_blocks", "tests/integration/observability/test_socket.py::test_concurrent_emits_do_not_interleave_lines", "tests/integration/observability/test_socket.py::test_logging_handler_reentry_does_not_recurse"]
+      "probe": [
+        "tests/integration/observability/test_socket.py::test_reuses_one_connection",
+        "tests/integration/observability/test_socket.py::test_accepts_unix_scheme_and_bare_path",
+        "tests/integration/observability/test_socket.py::test_reconnects_after_peer_close",
+        "tests/integration/observability/test_socket.py::test_outage_returns_false_quickly_and_recovers_after_restart",
+        "tests/integration/observability/test_socket.py::test_partial_writes_are_reassembled",
+        "tests/integration/observability/test_socket.py::test_five_consecutive_zero_byte_writes_disconnect",
+        "tests/integration/observability/test_socket.py::test_zero_byte_counter_resets_after_progress",
+        "tests/integration/observability/test_socket.py::test_lock_timeout_while_a_write_blocks",
+        "tests/integration/observability/test_socket.py::test_concurrent_emits_do_not_interleave_lines",
+        "tests/integration/observability/test_socket.py::test_logging_handler_reentry_does_not_recurse"
+      ]
     },
     {
       "id": "observability.outage_nonfatal",
@@ -2040,7 +2286,9 @@
       ],
       "deviation": null,
       "project_decision": null,
-      "probe": ["tests/conformance/probes/test_managed.py::test_socket_outage"]
+      "probe": [
+        "tests/conformance/probes/test_managed.py::test_socket_outage"
+      ]
     },
     {
       "id": "tracing.propagation",
@@ -2052,7 +2300,10 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_fastapi.py::test_tracing_optional", "tests/conformance/probes/test_managed.py::test_sequential_jobs"]
+      "probe": [
+        "tests/conformance/probes/test_fastapi.py::test_tracing_optional",
+        "tests/conformance/probes/test_managed.py::test_sequential_jobs"
+      ]
     },
     {
       "id": "testing.eager_mode",
@@ -2064,12 +2315,31 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/unit/testing/test_eager.py::test_records_every_dispatch_without_running", "tests/unit/testing/test_eager.py::test_records_fifo_and_fair_options", "tests/unit/testing/test_eager.py::test_dispatch_validation_still_applies", "tests/unit/testing/test_eager.py::test_follows_configured_redis_mode", "tests/unit/testing/test_eager.py::test_uses_given_backend_capabilities", "tests/unit/testing/test_eager.py::test_session_is_restored_on_exit", "tests/unit/testing/test_eager.py::test_eager_runs_sync_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_runs_async_handler_outside_a_loop", "tests/unit/testing/test_eager.py::test_eager_arguments_round_trip_through_the_payload", "tests/unit/testing/test_eager.py::test_eager_reraises_handler_exceptions", "tests/unit/testing/test_eager.py::test_eager_explicit_fail_raises", "tests/unit/testing/test_eager.py::test_eager_release_is_recorded_not_rerun", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_awaits_in_the_running_loop", "tests/unit/testing/test_eager.py::test_eager_dispatch_async_reraises", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_uses_a_helper_thread", "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_reraises", "tests/unit/testing/test_eager.py::test_eager_nested_dispatch", "tests/conformance/probes/test_fastapi.py::test_depends_and_eager"]
+      "probe": [
+        "tests/unit/testing/test_eager.py::test_records_every_dispatch_without_running",
+        "tests/unit/testing/test_eager.py::test_records_fifo_and_fair_options",
+        "tests/unit/testing/test_eager.py::test_dispatch_validation_still_applies",
+        "tests/unit/testing/test_eager.py::test_follows_configured_redis_mode",
+        "tests/unit/testing/test_eager.py::test_uses_given_backend_capabilities",
+        "tests/unit/testing/test_eager.py::test_session_is_restored_on_exit",
+        "tests/unit/testing/test_eager.py::test_eager_runs_sync_handler_outside_a_loop",
+        "tests/unit/testing/test_eager.py::test_eager_runs_async_handler_outside_a_loop",
+        "tests/unit/testing/test_eager.py::test_eager_arguments_round_trip_through_the_payload",
+        "tests/unit/testing/test_eager.py::test_eager_reraises_handler_exceptions",
+        "tests/unit/testing/test_eager.py::test_eager_explicit_fail_raises",
+        "tests/unit/testing/test_eager.py::test_eager_release_is_recorded_not_rerun",
+        "tests/unit/testing/test_eager.py::test_eager_dispatch_async_awaits_in_the_running_loop",
+        "tests/unit/testing/test_eager.py::test_eager_dispatch_async_reraises",
+        "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_uses_a_helper_thread",
+        "tests/unit/testing/test_eager.py::test_eager_sync_dispatch_inside_a_running_loop_reraises",
+        "tests/unit/testing/test_eager.py::test_eager_nested_dispatch",
+        "tests/conformance/probes/test_fastapi.py::test_depends_and_eager"
+      ]
     },
     {
       "id": "cli.commands_and_exit_codes",
       "title": "CLI commands and worker exit codes",
-      "expected": "laravel-cloud-queues work <module:app|module:registry> runs the worker; inspect reports mode, queues and registered jobs without opening broker connections or printing secrets; conformance explains how to run from a checkout when demo tooling is absent. Exit codes: 0 clean stop or agent unhealthy, 1 other fatal transport error (lost lease, Redis loss, ambiguous acknowledgement), 2 configuration error at startup, 124 job timeout. Errors are package-level; --debug shows tracebacks.",
+      "expected": "laravel-cloud-queues work [module:app|module:registry] runs the worker (target from pyproject [tool.laravel-cloud-queues] when omitted); retry URL [URL...] [--target] [--cipher] re-dispatches Cloud failed jobs (exit 1 on any fetch or job failure, 2 on key/URL configuration); inspect reports mode, queues and registered jobs without opening broker connections or printing secrets; conformance explains how to run from a checkout when demo tooling is absent. Exit codes: 0 clean stop or agent unhealthy, 1 other fatal transport error (lost lease, Redis loss, ambiguous acknowledgement), 2 configuration error at startup, 12 memory limit reached after reporting a delivery, 124 job timeout. Errors are package-level; --debug shows tracebacks.",
       "tier": "emulated",
       "required": true,
       "laravel_source": [
@@ -2086,8 +2356,14 @@
       ],
       "symfony_source": [],
       "deviation": null,
-      "project_decision": "D7",
-      "probe": ["tests/conformance/probes/test_project.py::test_cli", "tests/conformance/probes/test_managed.py::test_timeout", "tests/conformance/probes/test_managed.py::test_result_failure", "tests/conformance/test_runner.py::test_only_smoke[console]", "tests/conformance/test_runner.py::test_only_smoke[console-failed-gate]"]
+      "project_decision": "D7, D17",
+      "probe": [
+        "tests/conformance/probes/test_project.py::test_cli",
+        "tests/conformance/probes/test_managed.py::test_timeout",
+        "tests/conformance/probes/test_managed.py::test_result_failure",
+        "tests/conformance/test_runner.py::test_only_smoke[console]",
+        "tests/conformance/test_runner.py::test_only_smoke[console-failed-gate]"
+      ]
     },
     {
       "id": "packaging.build_and_isolated_install",
@@ -2099,7 +2375,18 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/packaging/test_packaging.py::test_wheel_contains_only_package_and_metadata", "tests/packaging/test_packaging.py::test_wheel_has_py_typed", "tests/packaging/test_packaging.py::test_sdist_contains_only_package_and_metadata", "tests/packaging/test_packaging.py::test_sdist_has_py_typed", "tests/packaging/test_packaging.py::test_no_shipped_module_imports_repo_only_tooling", "tests/packaging/test_packaging.py::test_wheel_install_core_import_without_extras", "tests/packaging/test_packaging.py::test_sdist_install_core_import_without_extras", "tests/packaging/test_packaging.py::test_fastapi_extra_installs_and_imports", "tests/packaging/test_packaging.py::test_console_entry_point_runs", "tests/packaging/test_packaging.py::test_wheel_venv_does_not_see_repo_source"]
+      "probe": [
+        "tests/packaging/test_packaging.py::test_wheel_contains_only_package_and_metadata",
+        "tests/packaging/test_packaging.py::test_wheel_has_py_typed",
+        "tests/packaging/test_packaging.py::test_sdist_contains_only_package_and_metadata",
+        "tests/packaging/test_packaging.py::test_sdist_has_py_typed",
+        "tests/packaging/test_packaging.py::test_no_shipped_module_imports_repo_only_tooling",
+        "tests/packaging/test_packaging.py::test_wheel_install_core_import_without_extras",
+        "tests/packaging/test_packaging.py::test_sdist_install_core_import_without_extras",
+        "tests/packaging/test_packaging.py::test_fastapi_extra_installs_and_imports",
+        "tests/packaging/test_packaging.py::test_console_entry_point_runs",
+        "tests/packaging/test_packaging.py::test_wheel_venv_does_not_see_repo_source"
+      ]
     },
     {
       "id": "packaging.typing_strict",
@@ -2111,7 +2398,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D5",
-      "probe": ["tests/conformance/probes/test_project.py::test_typing"]
+      "probe": [
+        "tests/conformance/probes/test_project.py::test_typing"
+      ]
     },
     {
       "id": "ci.full_gate",
@@ -2123,7 +2412,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D9, D11",
-      "probe": ["tests/conformance/probes/test_project.py::test_ci_gate"]
+      "probe": [
+        "tests/conformance/probes/test_project.py::test_ci_gate"
+      ]
     },
     {
       "id": "docs.readme",
@@ -2135,7 +2426,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_project.py::test_readme"]
+      "probe": [
+        "tests/conformance/probes/test_project.py::test_readme"
+      ]
     },
     {
       "id": "conformance.report_and_gate",
@@ -2147,7 +2440,20 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/test_runner.py::test_missing_record_fails", "tests/conformance/test_runner.py::test_unapproved_nonpass_fails", "tests/conformance/test_runner.py::test_approved_skip_passes", "tests/conformance/test_runner.py::test_duplicate_id_fails", "tests/conformance/test_runner.py::test_evidence_tier_and_error_are_preserved", "tests/conformance/test_runner.py::test_partial_explicit_and_incomplete_run", "tests/conformance/test_runner.py::test_report_redacts_sensitive_fields_and_endpoint", "tests/conformance/test_runner.py::test_unknown_selection_and_collection_failure_fail", "tests/conformance/test_runner.py::test_only_smoke", "tests/conformance/test_runner.py::test_parameter_deselection_cannot_pass", "tests/conformance/test_runner.py::test_explicit_nonpass_is_not_overwritten_by_passing_call", "tests/conformance/test_runner.py::test_all_catalog_nodes_resolve"]
+      "probe": [
+        "tests/conformance/test_runner.py::test_missing_record_fails",
+        "tests/conformance/test_runner.py::test_unapproved_nonpass_fails",
+        "tests/conformance/test_runner.py::test_approved_skip_passes",
+        "tests/conformance/test_runner.py::test_duplicate_id_fails",
+        "tests/conformance/test_runner.py::test_evidence_tier_and_error_are_preserved",
+        "tests/conformance/test_runner.py::test_partial_explicit_and_incomplete_run",
+        "tests/conformance/test_runner.py::test_report_redacts_sensitive_fields_and_endpoint",
+        "tests/conformance/test_runner.py::test_unknown_selection_and_collection_failure_fail",
+        "tests/conformance/test_runner.py::test_only_smoke",
+        "tests/conformance/test_runner.py::test_parameter_deselection_cannot_pass",
+        "tests/conformance/test_runner.py::test_explicit_nonpass_is_not_overwritten_by_passing_call",
+        "tests/conformance/test_runner.py::test_all_catalog_nodes_resolve"
+      ]
     },
     {
       "id": "cloud.live_managed",
@@ -2159,7 +2465,9 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "python-only",
-      "probe": ["tests/conformance/probes/test_project.py::test_live_managed"]
+      "probe": [
+        "tests/conformance/probes/test_project.py::test_live_managed"
+      ]
     },
     {
       "id": "cloud.dashboard_retry_live",
@@ -2171,7 +2479,212 @@
       "symfony_source": [],
       "deviation": null,
       "project_decision": "D3",
-      "probe": ["tests/conformance/probes/test_project.py::test_dashboard_retry_live"]
+      "probe": [
+        "tests/conformance/probes/test_project.py::test_dashboard_retry_live"
+      ]
+    },
+    {
+      "id": "worker.memory_limit",
+      "title": "Recycle the worker after reporting at its RSS limit",
+      "expected": "work --memory accepts finite non-negative MiB or 0-100% of a finite cgroup v2 memory.max limit. The explicit option wins over LARAVEL_CLOUD_QUEUES_MEMORY; managed mode otherwise defaults to 90% of a finite cgroup limit, with no default in sqs/redis or when memory.max is max/missing/unreadable. Zero disables recycling. Linux measures current RSS from /proc/self/statm; other hosts use resource.getrusage peak RSS. At RSS >= limit after a delivery's transport outcome and completion records, stop fetching, log RSS/limit, clean up and exit 12. A running job is never interrupted; fatal reporting exit codes take precedence. Invalid explicit values, or a percentage without a finite cgroup limit, exit 2 before opening the consumer.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "37-39",
+          "symbol": "Worker::EXIT_MEMORY_LIMIT"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "419-432",
+          "symbol": "Worker::stopIfNecessary"
+        },
+        {
+          "path": "src/Illuminate/Queue/Worker.php",
+          "lines": "1022-1025",
+          "symbol": "Worker::memoryExceeded"
+        },
+        {
+          "path": "src/Illuminate/Foundation/Cloud/QueueConnector.php",
+          "lines": "101-107",
+          "symbol": "QueueConnector::configureWorker"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": {
+        "label": "worker-memory-rss-and-managed-default",
+        "follows": "project",
+        "summary": "The pinned Laravel worker checks PHP allocated memory with a 128 MiB CLI default. This package measures process RSS (peak RSS fallback), checks only after delivery reporting, has no default outside managed mode, and reads LARAVEL_CLOUD_QUEUES_MEMORY or a managed 90% cgroup v2 default because Cloud's Python worker command is read-only. Recycling keeps Laravel's >= threshold and exit 12.",
+        "decision": "D17"
+      },
+      "project_decision": "D17",
+      "probe": [
+        "tests/unit/worker/test_memory.py::test_memory_limit_stops_after_reporting",
+        "tests/unit/worker/test_memory.py::test_memory_recycling_preserves_each_reported_outcome",
+        "tests/unit/worker/test_memory.py::test_memory_option_environment_default_precedence",
+        "tests/unit/worker/test_memory.py::test_managed_default_recycles_without_flag",
+        "tests/unit/worker/test_memory.py::test_environment_recycles_without_flag",
+        "tests/unit/worker/test_memory.py::test_percentage_requires_finite_cgroup_limit",
+        "tests/unit/worker/test_memory.py::test_read_cgroup_limit",
+        "tests/unit/worker/test_memory.py::test_linux_reads_current_rss_not_peak",
+        "tests/unit/worker/test_memory.py::test_non_linux_peak_rss_units",
+        "tests/unit/worker/test_memory.py::test_reporting_failure_keeps_its_exit_code",
+        "tests/unit/cli/test_memory.py::test_work_maps_memory_option",
+        "tests/unit/cli/test_memory.py::test_work_returns_memory_recycling_exit_code"
+      ]
+    },
+    {
+      "id": "retry.cloud_encryption",
+      "title": "Authenticate Laravel encryptString failed-job payloads",
+      "expected": "Retry reads LARAVEL_CLOUD_QUEUES_KEY then APP_KEY, decoding a base64: prefix; invalid or missing keys exit 2. AES-128/256-CBC authenticates HMAC-SHA256 over the encoded iv+value with a constant-time comparison before PKCS7 decryption. AES-128/256-GCM requires a 12-byte IV and a full 16-byte tag. A known ciphertext from the PHP framework tests decrypts identically; malformed or tampered input never dispatches.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Encryption/Encrypter.php",
+          "lines": "104-328",
+          "symbol": "Encrypter::encryptString, decryptString, validPayload, validMacForKey, ensureTagIsValid"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D17",
+      "probe": [
+        "tests/unit/failed_jobs/test_encryption.py::test_php_framework_known_vector",
+        "tests/unit/failed_jobs/test_encryption.py::test_laravel_cipher_roundtrip",
+        "tests/unit/failed_jobs/test_encryption.py::test_cbc_rejects_tampering",
+        "tests/unit/failed_jobs/test_encryption.py::test_gcm_rejects_tampering",
+        "tests/unit/failed_jobs/test_retry.py::test_bad_mac_from_endpoint_never_dispatches"
+      ]
+    },
+    {
+      "id": "retry.cloud_retrieval",
+      "title": "Fetch legacy and v1 Cloud failed-job pages",
+      "expected": "Retry accepts one or more absolute HTTPS URLs without credentials. GET sends Cloud-Payload-Version: 1 and Cloud-Encryption-Cipher, uses a ten-second timeout, no redirects and no ambient proxy configuration, caps responses at 64 MiB, decrypts legacy single-record and v1 data/links pages, follows HTTPS next links and rejects cycles. Transport errors, 408, 429 and 5xx get at most ten attempts with 500 ms * 2^(n-1) backoff; 403 is never retried. Page failures are reported and the remaining URLs continue.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/FailedJobProvider.php",
+          "lines": "125-203",
+          "symbol": "FailedJobProvider::find, failedJobsIterator, resolveFailedJobsPayload, fetchFailedJobs"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": {
+        "label": "failed-job-retry-http-transient-only",
+        "follows": "project",
+        "summary": "Laravel retries all HTTP client and server errors except 403 and does not bound the response. This package retries transport errors, 408, 429 and 5xx only, and refuses redirects, insecure links, cycles and responses over 64 MiB.",
+        "decision": "D17"
+      },
+      "project_decision": "D17",
+      "probe": [
+        "tests/unit/failed_jobs/test_retry.py::test_v1_pagination_skips_bad_job_and_continues_other_urls",
+        "tests/unit/failed_jobs/test_retry.py::test_http_non_transient_errors_are_not_retried",
+        "tests/unit/failed_jobs/test_retry.py::test_transient_errors_use_exponential_backoff",
+        "tests/unit/failed_jobs/test_retry.py::test_pagination_cycle_or_insecure_link_is_reported",
+        "tests/unit/failed_jobs/test_retry.py::test_response_limit_is_enforced"
+      ]
+    },
+    {
+      "id": "retry.cloud_redispatch",
+      "title": "Re-dispatch Cloud failure records through the existing pipeline",
+      "expected": "retry URL [URL...] accepts --target (resolved like work), --cipher (AES-256-CBC default) and --debug. It decodes package envelopes and annotated arguments through registry-only lookup, keeps the saved policy and the recorded queue, and dispatches through prepare_dispatch/send_prepared without running a handler. Fresh broker sends reset attempts; FIFO group and deduplication use normal pipeline defaults. Per-job failures are reported and skipped and make the command exit 1; invalid initial URL or key configuration exits 2.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/Console/RetryCommand.php",
+          "lines": "156-209",
+          "symbol": "RetryCommand::retryJob, resetAttempts, refreshRetryUntil"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": {
+        "label": "failed-job-retry-fresh-dispatch",
+        "follows": "project",
+        "summary": "Laravel pushRaw keeps the original payload UUID and most raw metadata while resetting attempts and retryUntil. This package reuses its validated dispatch pipeline: decoded arguments, the saved retry policy and the failure record's queue are kept, but the dispatch gets a fresh UUID, time and trace, and ignored envelope extras are dropped. Attempts live in the transport, so a fresh send resets them.",
+        "decision": "D17"
+      },
+      "project_decision": "D17",
+      "probe": [
+        "tests/unit/failed_jobs/test_retry.py::test_legacy_retry_dispatches_and_emits_in_order",
+        "tests/unit/failed_jobs/test_retry.py::test_fifo_uses_pipeline_defaults",
+        "tests/unit/failed_jobs/test_retry.py::test_send_failure_does_not_emit_retry_update",
+        "tests/unit/cli/test_retry.py::test_retry_resolves_target_and_accepts_multiple_urls",
+        "tests/unit/cli/test_retry.py::test_retry_reports_partial_failure_with_redacted_errors"
+      ]
+    },
+    {
+      "id": "events.failed_job_retried_at",
+      "title": "Emit the Cloud failed-job retry update after a successful dispatch",
+      "expected": "Only after a successful send and the normal queued event, managed telemetry emits exactly {_cloud_event: failed_job, id, queue, retried_at}, with retried_at in UTC Y-m-d H:i:s.u. Telemetry failures are best-effort and cannot fail an already-sent retry. Self-managed modes emit no Cloud events.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Foundation/Cloud/FailedJobProvider.php",
+          "lines": "212-229",
+          "symbol": "FailedJobProvider::forget"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": null,
+      "project_decision": "D17",
+      "probe": [
+        "tests/unit/failed_jobs/test_retry.py::test_legacy_retry_dispatches_and_emits_in_order",
+        "tests/unit/failed_jobs/test_retry.py::test_retry_timestamp_is_utc",
+        "tests/unit/failed_jobs/test_retry.py::test_telemetry_failure_does_not_fail_sent_job",
+        "tests/unit/failed_jobs/test_retry.py::test_self_managed_mode_emits_no_cloud_events"
+      ]
+    },
+    {
+      "id": "sqs.credential_cache",
+      "title": "Share refreshable AWS credentials across the processes on a host",
+      "expected": "With credential_cache enabled (the managed-mode default) and ecs or instance credentials, processes on one host share refreshable credentials through a 0600 file in the temp directory, keyed by Laravel's SqsConnector::credentialsCacheKey inputs (AWS_CONTAINER_CREDENTIALS_FULL_URI|AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE|provider|region|prefix|suffix). A missing entry, or one expiring within 16 minutes, is refreshed by one process under an exclusive flock (5 s wait) and the others read the result. Expiry is read after freezing the wrapped credentials. Data and lock files are opened with O_NONBLOCK|O_NOFOLLOW and used only when fstat shows a regular file owned by this user with no group or other permission bits; reads are capped at 64 KiB and entries need non-empty keys. Any cache read, lock or write failure falls back to a direct provider fetch. Static and default credentials are never cached.",
+      "tier": "unit",
+      "required": true,
+      "laravel_source": [
+        {
+          "path": "src/Illuminate/Queue/AwsCredentialCache.php",
+          "lines": "20-200",
+          "symbol": "AwsCredentialCache::resolve, freshCredentials, resolveAndCache"
+        },
+        {
+          "path": "src/Illuminate/Queue/Connectors/SqsConnector.php",
+          "lines": "109-169",
+          "symbol": "SqsConnector::cachedCredentialProvider, credentialsCacheKey, credentialCachingEnabled"
+        },
+        {
+          "path": "src/Illuminate/Foundation/CloudBootstrapper.php",
+          "lines": "246-268",
+          "symbol": "CloudBootstrapper credential_cache defaults"
+        }
+      ],
+      "symfony_source": [],
+      "deviation": {
+        "label": "credential-cache-file-store",
+        "follows": "project",
+        "summary": "Laravel's cache is opt-in, uses any lock-capable cache store with a 15 s lock and refreshes 60 s before expiry. This package enables it by default in managed mode because Cloud sets nothing for Python, implements only the file store with a kernel flock released when its holder exits, and treats entries as stale 16 minutes before expiry to stay ahead of botocore's 15-minute advisory refresh. An unsupported store falls back to fallback_store (default file), as in Laravel.",
+        "decision": "D17"
+      },
+      "project_decision": "D17",
+      "probe": [
+        "tests/unit/sqs/test_credential_cache.py::test_processes_share_one_fetch",
+        "tests/unit/sqs/test_credential_cache.py::test_stale_entry_is_refreshed_and_shared",
+        "tests/unit/sqs/test_credential_cache.py::test_wrapped_refresh_preserves_matching_expiry",
+        "tests/unit/sqs/test_credential_cache.py::test_waiter_rereads_the_entry_after_the_lock",
+        "tests/unit/sqs/test_credential_cache.py::test_lock_timeout_fetches_directly",
+        "tests/unit/sqs/test_credential_cache.py::test_corrupted_entry_fetches_directly",
+        "tests/unit/sqs/test_credential_cache.py::test_fifo_cache_path_does_not_block",
+        "tests/unit/sqs/test_credential_cache.py::test_non_private_file_is_rejected",
+        "tests/unit/sqs/test_credential_cache.py::test_foreign_lock_file_is_rejected",
+        "tests/unit/sqs/test_credential_cache.py::test_key_matches_laravel",
+        "tests/unit/sqs/test_credential_cache.py::test_client_uses_the_cache_only_when_enabled",
+        "tests/unit/config/test_loader.py::test_managed_credential_cache",
+        "tests/unit/config/test_loader.py::test_sqs_credential_cache_is_opt_in_for_refreshable_providers"
+      ]
     }
   ]
 }

@@ -76,8 +76,9 @@ def test_managed_inventory_defaults_and_preservation(inventory, caplog):
     assert config.managed.after_commit is True
     assert config.managed.overflow == raw["connection"]["overflow"]
     assert config.managed.credential_cache == {"enabled": True}
+    assert config.sqs.credential_cache is True
     assert "oversized payloads are rejected" in caplog.text
-    assert "each worker resolves its own credentials" in caplog.text
+    assert "credential_cache" not in caplog.text
     assert "hidden" not in caplog.text
 
 
@@ -245,3 +246,78 @@ def test_sqs_credentials_from_code_must_name_a_provider():
     assert load_config(env=env, sqs_credentials="instance").sqs.credentials == "instance"
     with pytest.raises(ConfigurationError):
         load_config(env=env, sqs_credentials="bogus")
+
+
+ENABLED = "CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED"
+STORE = "CLOUD_QUEUE_CREDENTIAL_CACHE_STORE"
+FALLBACK = "CLOUD_QUEUE_CREDENTIAL_CACHE_FALLBACK_STORE"
+
+
+@pytest.mark.parametrize(
+    ("options", "env", "expected", "warning"),
+    [
+        (None, {}, True, None),
+        ({}, {}, True, None),
+        ({"enabled": False}, {}, False, None),
+        (None, {ENABLED: "false"}, False, None),
+        (None, {ENABLED: "(false)"}, False, None),
+        (None, {ENABLED: "0"}, False, None),
+        (None, {ENABLED: " TRUE "}, True, None),
+        ({"enabled": True}, {ENABLED: "false"}, True, None),
+        ({"store": None}, {STORE: "redis"}, True, None),
+        ({"store": "file"}, {}, True, None),
+        ({"enabled": False, "store": "redis"}, {}, False, None),
+        ({"store": "redis"}, {}, True, "using the file store"),
+        (None, {STORE: "redis"}, True, "using the file store"),
+        ({"store": "redis", "fallback_store": None}, {}, False, "each worker resolves"),
+        (None, {STORE: "redis", FALLBACK: "database"}, False, "each worker resolves"),
+        ({"store": "redis", "fallback_store": "file"}, {FALLBACK: ""}, True, "file store"),
+    ],
+)
+def test_managed_credential_cache(options, env, expected, warning, caplog):
+    """CloudBootstrapper.php:246 credential_cache from the document, else CLOUD_QUEUE_* env."""
+    document = managed()
+    if options is not None:
+        document["connection"]["credential_cache"] = options
+    with caplog.at_level(logging.WARNING, logger="laravel_cloud_queues"):
+        config = load_config(env=env, managed_config=document)
+    assert config.sqs.credential_cache is expected
+    if warning is None:
+        assert "credential_cache" not in caplog.text
+    else:
+        assert warning in caplog.text
+        assert "'redis' is not supported" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("options", "env"),
+    [({"enabled": "true"}, {}), (None, {ENABLED: "sometimes"}), ([], {})],
+)
+def test_invalid_credential_cache_settings(options, env):
+    document = managed()
+    if options is not None:
+        document["connection"]["credential_cache"] = options
+    with pytest.raises(ConfigurationError, match=r"(?i)credential_cache"):
+        load_config(env=env, managed_config=document)
+
+
+@pytest.mark.parametrize(
+    ("credentials", "env", "expected"),
+    [
+        ("ecs", {}, False),
+        ("ecs", {ENABLED: "true"}, True),
+        ("instance", {ENABLED: "true"}, True),
+        ("default", {ENABLED: "true"}, False),
+        (StaticCredentials("k", "s"), {ENABLED: "true"}, False),
+    ],
+)
+def test_sqs_credential_cache_is_opt_in_for_refreshable_providers(credentials, env, expected):
+    """CloudBootstrapper::configureQueueCredentialCaching; never static or default credentials."""
+    config = load_config(
+        env=env,
+        backend="sqs",
+        sqs_prefix="https://sqs.example/123",
+        sqs_region="us-east-1",
+        sqs_credentials=credentials,
+    )
+    assert config.sqs.credential_cache is expected

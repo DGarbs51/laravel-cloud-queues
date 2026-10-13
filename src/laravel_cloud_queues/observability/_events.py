@@ -347,6 +347,16 @@ def failed_job_event(
     return assemble("", "", not_replayable=True)
 
 
+def retried_job_event(job_id: str, queue: str, *, timestamp: datetime) -> dict[str, object]:
+    """Build the Cloud failed-job update for a successful retry."""
+    return {
+        "_cloud_event": "failed_job",
+        "id": job_id,
+        "queue": queue,
+        "retried_at": format_timestamp(timestamp),
+    }
+
+
 def failure_log_record(
     *,
     queue: str,

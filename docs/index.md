@@ -41,11 +41,11 @@ laravel-cloud-queues work myapp.main:app
 ```
 
 :::{important}
-**Platform status (verified 2026-09-27).** Laravel Cloud runs Python 3.10–3.14
-applications (this package requires 3.11+), including FastAPI, but **managed queues are not yet available for Python**.
-Worker clusters *do* run Python today, so this package ships two self-managed backends
-that work on Laravel Cloud now: `sqs` (your own SQS queues) and `redis` (a Laravel Valkey
-cache). See [Deploying to Laravel Cloud](deployment.md) for details.
+**Platform status (verified 2026-10-12).** Laravel Cloud runs Python 3.10–3.14
+applications (this package requires 3.11+), and **managed queues are available for Python**:
+jobs appear in the Queues dashboard with metrics and failed jobs. Dashboard Retry for Python
+still needs a platform change. The self-managed `sqs` and `redis` backends keep working
+on worker clusters. See [Deploying to Laravel Cloud](deployment.md) for details.
 :::
 
 ## Where to Start

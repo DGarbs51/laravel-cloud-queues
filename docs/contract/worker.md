@@ -118,4 +118,5 @@ The exit-1 ambiguous-ack rule applies only to direct brokers; agent unavailabili
 | 0 | Clean stop, or agent unhealthy (Laravel parity) |
 | 1 | Other fatal transport error: lost lease, broker connection lost, direct-broker ambiguous acknowledgement |
 | 2 | Configuration error at startup (logged clearly on every start; restart-loops on clusters) |
+| 12 | Memory limit reached after delivery reporting; stop fetching and recycle |
 | 124 | Job timeout |

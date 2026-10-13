@@ -50,16 +50,44 @@ In every mode, the worker first logs the failure record as a log line; see
 
 In managed mode, the worker then completes the message, then sends a `failed_job` event and a
 `failed` lifecycle event to Laravel Cloud, which owns failed-job inspection and retry. You
-may inspect and retry failed jobs from the Laravel Cloud **Queues** dashboard.
+may inspect failed jobs from the Laravel Cloud **Queues** dashboard.
 
-A dashboard retry re-queues the message verbatim. The worker runs it as a fresh first
-attempt, with its original retry policy.
+The [retry command](#retrying-cloud-failed-jobs) dispatches the saved arguments to the
+recorded queue with the original retry policy. The worker runs it as a fresh first attempt.
+
+### Retrying Cloud Failed Jobs
+
+```shell
+laravel-cloud-queues retry 'https://cloud.laravel.com/...' --target myapp.main:app
+```
+
+Use a signed failed-job URL supplied by Laravel Cloud. The target resolves like `work`;
+you can omit `--target` when `[tool.laravel-cloud-queues] target` is configured. Set
+`LARAVEL_CLOUD_QUEUES_KEY` or `APP_KEY` to the endpoint's encryption key. The command supports
+Laravel's legacy responses and v1 batch responses, including pagination. See
+[the CLI reference](cli.md#retry) for encryption options and exit codes.
+
+The command validates each job against the application's current registered handler,
+then sends it through the normal dispatch pipeline without running the handler. It
+preserves arguments and the saved retry policy, and assigns a new dispatch UUID. Broker
+attempts restart from one. FIFO retries use the normal queue group and fresh deduplication
+ID. Managed mode sends `queued`, then the best-effort `failed_job` update with `retried_at`.
+Invalid jobs are reported and skipped; any failed fetch or dispatch makes the command
+exit with code `1`.
+
+Dashboard Retry also needs Laravel Cloud to invoke this Python command and provide a key
+that its endpoint can use. The package cannot make those platform changes. Until that
+integration is available, the dashboard button alone does not retry Python jobs.
+
+Retry remains at least once. If sending succeeds but reporting `retried_at` fails, the
+dashboard may still show the failure as retryable. Retrying the same URL again may send
+another copy; keep handlers idempotent using a business identifier that survives dispatch.
 
 ### SQS and Redis Modes
 
 In `sqs` and `redis` mode, the worker then deletes the message. There is no failed-job
-store, dead-letter queue or retry command in these modes yet. To re-run a failed job,
-dispatch it again.
+store, dead-letter queue or local failed-job retry command in these modes yet. To re-run a
+failed job, dispatch it again.
 
 ### The Failure Log Line
 

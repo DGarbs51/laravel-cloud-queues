@@ -23,6 +23,7 @@ from typing_extensions import ParamSpec
 from .._narrowing import is_list
 from ..config import QueueConfig, StaticCredentials
 from ..errors import ConfigurationError
+from ..failed_jobs._retry import retry_failed_jobs
 from ..jobs.job import AnyJob
 from ..worker import EXIT_CONFIG, EXIT_FATAL, Worker, WorkerOptions, resolve_target
 
@@ -35,7 +36,7 @@ P = ParamSpec("P")
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the console application and return its exit code.
 
-    The available commands are ``work [TARGET]``, ``inspect [TARGET]`` and ``conformance ...``.
+    The commands are ``work``, ``inspect``, ``retry`` and ``conformance``.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     try:
@@ -146,6 +147,7 @@ def _import_path() -> None:
 @click.option("--queue", type=_Queues(), help="Comma-separated priority list.")
 @click.option("--max-jobs", type=click.IntRange(min=1), help="Stop after N deliveries.")
 @click.option("--max-time", type=SECONDS, help="Stop after S seconds.")
+@click.option("--memory", metavar="MiB|N%", help="Recycle after reporting a job at this RSS limit.")
 @click.option("--stop-when-empty", is_flag=True, help="Stop on an empty poll.")
 @click.option("--stop-when-empty-for", type=SECONDS, help="Stop after S seconds without a job.")
 @click.option(
@@ -161,6 +163,7 @@ def work(
     queue: tuple[str, ...] | None,
     max_jobs: int | None,
     max_time: float | None,
+    memory: str | None,
     stop_when_empty: bool,
     stop_when_empty_for: float | None,
     timeout: float,
@@ -177,6 +180,7 @@ def work(
         queues=queue,
         max_jobs=max_jobs,
         max_time=max_time,
+        memory=memory,
         stop_when_empty=stop_when_empty,
         stop_when_empty_for=stop_when_empty_for,
         timeout=timeout,
@@ -198,6 +202,33 @@ def inspect(target: str | None, as_json: bool) -> int:
     report = _report(registry.config, registry.jobs())
     click.echo(json.dumps(report, indent=2) if as_json else _render(report))
     return 0
+
+
+@cli.command(short_help="Retry failed jobs from Cloud HTTPS URLs.")
+@click.argument("urls", metavar="URL [URL...]", nargs=-1, required=True)
+@click.option("--target", help="Registry or app (module:attribute); defaults as for work.")
+@click.option(
+    "--cipher",
+    type=click.Choice(
+        ["AES-256-CBC", "AES-128-CBC", "AES-256-GCM", "AES-128-GCM"], case_sensitive=False
+    ),
+    default="AES-256-CBC",
+    show_default=True,
+    help="Laravel encryption cipher used by the endpoint.",
+)
+@_command
+def retry(urls: tuple[str, ...], target: str | None, cipher: str) -> int:
+    """Retry Cloud failed jobs from URL, using the configured application target."""
+    _import_path()
+    registry = resolve_target(target).registry
+
+    def report_error(exc: Exception) -> None:
+        """Report a failed retry without exposing credentials or signed URL secrets."""
+        if click.get_current_context().params["debug"]:
+            click.echo(_redact("".join(traceback.format_exception(exc))), err=True, nl=False)
+        click.echo(f"{PROG}: error: {_describe(exc)}", err=True)
+
+    return retry_failed_jobs(registry, urls, cipher=cipher, report_error=report_error)
 
 
 class _Report(TypedDict):

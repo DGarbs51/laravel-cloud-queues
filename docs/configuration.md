@@ -153,15 +153,30 @@ The package is strict about this document. Malformed JSON, a `driver` other than
 `instance` is a configuration error. The boto3 default credential chain is never used in
 managed mode.
 
-The `after_commit`, `overflow` and `credential_cache` settings are parsed and preserved,
-but they are not implemented. The worker logs a warning when `overflow` or
-`credential_cache` is enabled.
+The `after_commit` and `overflow` settings are parsed and preserved, but they are not
+implemented. The worker logs a warning when `overflow` is enabled.
 
-:::{note}
-Managed queues are not yet available for Python applications on Laravel Cloud. Managed
-mode is built and tested against the pinned Laravel contract and local emulators, and
-will be verified live once the platform enables it.
-:::
+### Credential Cache
+
+In managed mode, the processes on a host share one set of `ecs` or `instance` credentials,
+so a pod with many workers does not hit the credential endpoint once per process. This
+matches Laravel's `credential_cache` connection option, and it is on by default.
+
+The credentials are kept in a `0600` file in the temporary directory, named after a hash of
+the credential endpoint, provider, region, prefix and suffix. When the entry is missing or
+expires within 16 minutes, one process refreshes it under an exclusive file lock while the
+others wait up to five seconds. A cache that cannot be read or written never fails a job:
+the process fetches its own credentials instead.
+
+The `connection.credential_cache` object (`enabled`, `store`, `fallback_store`) and the
+`CLOUD_QUEUE_CREDENTIAL_CACHE_*` variables configure it. A document setting wins over its
+variable. Only the `file` store is supported. Another store logs a warning and uses
+`fallback_store`, which defaults to `file`. If the fallback is not `file` either, each
+process resolves its own credentials. Static and `default` credentials are never cached.
+In `sqs` mode, the cache is off unless `CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED` is
+`true` and code selects the `ecs` or `instance` provider. See
+[Environment Variables](environment-variables.md#credential-cache).
+
 
 ## Configuring in Code
 

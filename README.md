@@ -13,17 +13,14 @@ observability events), not Laravel's PHP API.
 (sources in [`docs/`](docs/); build locally with
 `uv sync --group docs --all-extras && uv run sphinx-build -b html docs docs/_build/html`).
 
-> **Platform status (verified 2026-09-27).** Laravel Cloud runs Python 3.10–3.14
-> applications (this package requires 3.11+), including FastAPI, but **managed queues are not yet available for
-> Python**: the Cloud API rejects managed-queue creation for FastAPI applications, and
-> Python containers receive no managed queue configuration, no queue agent and no AWS
-> credentials. **Worker clusters do run Python today**, so this package ships two
-> self-managed backends that work on Laravel Cloud now: `LARAVEL_CLOUD_QUEUES_BACKEND=sqs`
-> (your own SQS queues) and `LARAVEL_CLOUD_QUEUES_BACKEND=redis` (a Laravel Valkey cache).
-> Managed mode is built and tested against the pinned Laravel contract and local
-> emulators; live verification waits on the platform. See
-> [Running on Laravel Cloud today](#running-on-laravel-cloud-today) and
-> [`docs/audits/2026-09-27/platform-findings.md`](https://github.com/DGarbs51/laravel-cloud-queues/blob/main/docs/audits/2026-09-27/platform-findings.md).
+> **Platform status (verified 2026-10-12).** Laravel Cloud runs Python 3.10–3.14
+> applications (this package requires 3.11+), and **managed queues are available for Python**.
+> Cloud injects the managed configuration and Pod Identity credentials, runs the queue agent
+> in the worker containers, and starts `laravel-cloud-queues work --queue=<name>`. Jobs
+> appear in the Queues dashboard with metrics and failed jobs, including Python tracebacks.
+> Dashboard **Retry** for Python still needs a platform change: Cloud must run
+> `laravel-cloud-queues retry` and provide an encryption key. Self-managed `sqs` and
+> `redis` backends keep working on worker clusters. See [Managed queues](#managed-queues).
 
 ## Contents
 
@@ -287,7 +284,7 @@ exited the worker with 124, **was restarted by Laravel Cloud 0.8 s later**, was 
 after the 60 s Redis lease expired and failed on its last attempt, all across five worker
 processes on two clusters sharing one Valkey queue over TLS.
 
-### Managed queues (when Laravel Cloud enables them for Python)
+### Managed queues
 
 In managed mode the platform injects `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG`; the package
 auto-detects it and needs no manual AWS or queue wiring: queue URL prefix and suffix,
@@ -301,6 +298,30 @@ running job's visibility in three-minute increments and owns worker lifetime and
 
 The Cloud queue assignment is authoritative: a `--queue` that differs from it is a startup
 configuration error, not an override.
+
+Cloud generates the worker command, `laravel-cloud-queues work --queue=<name>`, and it is
+read-only in the dashboard. Name your worker target in `pyproject.toml` so the command
+finds it without an argument:
+
+```toml
+[tool.laravel-cloud-queues]
+target = "myapp.main:app"
+```
+
+Do not set `LARAVEL_CLOUD_QUEUES_BACKEND` on Cloud: an explicit backend wins over the
+injected configuration. Because flags can't be added to the command, Cloud-relevant tuning
+comes from the environment:
+
+- **Memory recycling.** After reporting a job, the worker exits 12 once its RSS reaches
+  `LARAVEL_CLOUD_QUEUES_MEMORY` (MiB or `N%`), or 90% of the container's memory limit by
+  default, and Cloud restarts it in place instead of counting an out-of-memory kill as a crash.
+- **Shared credentials.** Processes on a pod share their Pod Identity credentials through
+  a cache file, so a pod start or a scale-out doesn't stampede the credential agent. This is
+  on by default in managed mode; `CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED=false` turns it off.
+- **Retrying failed jobs.** `laravel-cloud-queues retry URL...` implements Cloud's retry
+  contract: it fetches the signed failed-job URLs, decrypts them with
+  `LARAVEL_CLOUD_QUEUES_KEY` or `APP_KEY`, re-dispatches and records the retry. The
+  dashboard's Retry button will use it once Cloud runs this command for Python apps.
 
 ## Configuration
 
@@ -356,11 +377,15 @@ characters including `.fifo`. Dispatching to a queue that does not exist raises
 | `LARAVEL_CLOUD_MANAGED_QUEUES_CONFIG` | Injected by Laravel Cloud: `{"driver": "cloud", "queue": ..., "queues": [...], "connection": {"prefix", "suffix", "queue", "region", "credentials": "ecs"}, "agent": {"enabled", "socket"}}` |
 | `LARAVEL_CLOUD_AGENT_SOCKET` | Agent socket when the config omits it (default `/tmp/cloud-agent.sock`) |
 | `LARAVEL_CLOUD_LOG_SOCKET` | Observability socket (default `unix:///tmp/cloud-init.sock`) |
+| `CLOUD_QUEUE_CREDENTIAL_CACHE_ENABLED` | Share credentials between processes (default `true` in managed mode) |
+| `LARAVEL_CLOUD_QUEUES_MEMORY` | Worker memory limit in MiB or `N%` (default 90% of a finite cgroup limit in managed mode; `0` disables) |
+| `LARAVEL_CLOUD_QUEUES_KEY` | Key for `retry` (falls back to `APP_KEY`) |
 
 Malformed JSON, a `driver` other than `cloud`, a missing `connection` or `region`, or a
-`credentials` value other than `ecs`/`instance` is a configuration error. `after_commit`,
-`overflow` and `credential_cache` are parsed and preserved but not implemented; the worker
-logs a warning when either of the latter two is enabled. Credentials, receipt handles and
+`credentials` value other than `ecs`/`instance` is a configuration error. `after_commit` and
+`overflow` are parsed and preserved but not implemented; the worker logs a warning when
+`overflow` is enabled. `credential_cache` is honoured, and on by default (see
+[Credential cache](https://laravel-cloud-queues.readthedocs.io/en/latest/configuration.html)). Credentials, receipt handles and
 job payloads are never logged by default.
 
 ## Jobs
@@ -747,6 +772,7 @@ A mounted group keeps the same options, error handling and exit codes.
 | `--queue Q[,Q...]` | backend default | Priority list (direct SQS and Redis). In agent mode it must match the Cloud assignment or be omitted |
 | `--max-jobs N` | off | Stop after N deliveries (exit 0) |
 | `--max-time S` | off | Stop after S seconds, checked between jobs (exit 0) |
+| `--memory MiB\|N%` | env, else 90% of the cgroup limit in managed mode | Exit 12 after reporting a job once RSS reaches the limit; `0` disables |
 | `--stop-when-empty` | off | Stop on the first empty poll. **Not for supervised worker clusters** |
 | `--stop-when-empty-for S` | off | Stop after S seconds without a job. Same warning |
 | `--timeout S` | 60 | Default job timeout when the message omits one; `0` disables |
@@ -784,6 +810,7 @@ Behavior:
 | `0` | Clean stop (signal, `--max-jobs`, `--max-time`, `--stop-when-empty*`), or the Laravel Cloud agent became unhealthy (Laravel parity) |
 | `1` | Other fatal transport error: lost visibility lease, broker connection lost after retries, ambiguous acknowledgement on a direct broker |
 | `2` | Configuration error at startup (logged on every start; restart-loops on clusters) |
+| `12` | Memory limit reached after reporting a job (`--memory` / `LARAVEL_CLOUD_QUEUES_MEMORY`); Cloud restarts the worker in place |
 | `124` | Job timeout |
 
 On worker clusters every exit is followed by a restart, so these codes are diagnostic.
@@ -1038,17 +1065,14 @@ Limitations in v1:
 - **Timeouts cannot interrupt native code.** A handler blocked in a C extension or a long
   non-Python call overruns its timeout until control returns to the interpreter
   ([details](#timeouts)).
-- **Failure records are best-effort**, and there is no failed-job store, dead-letter queue
-  or retry command outside Laravel Cloud's dashboard (managed mode only).
+- **Failure records are best-effort**, and there is no failed-job store or dead-letter
+  queue outside Laravel Cloud's dashboard (managed mode only). Dashboard Retry needs Cloud
+  to run `laravel-cloud-queues retry` for Python apps, which it doesn't yet.
 - **At-least-once delivery.** Handlers must be idempotent.
 - **No lifecycle events in `sqs`/`redis` modes**: Laravel Cloud ingests them for managed
   queues only; workers log structured lines instead.
 - One in-flight job per worker process; no result backend; no job chains, batches, unique
-  jobs or middleware; no `retry_until`/`max_exceptions`; no memory-limit recycling
-  (Laravel Cloud restarts a worker that exceeds its memory allocation and redelivers the
-  job); no `after_commit`/credential caching; no PHP payload interoperability.
-- Live Laravel Cloud managed-queue behavior is unverified until the platform enables managed
-  queues for Python.
+  jobs or middleware; no `retry_until`/`max_exceptions`; no `after_commit`; no PHP payload interoperability.
 
 Roadmap, in rough priority order:
 
@@ -1056,17 +1080,17 @@ Roadmap, in rough priority order:
 2. **Transparent S3/object-storage offload for large payloads**, with configurable
    thresholds and worker-side hydration and cleanup (Laravel's `SqsQueue::overflow` is the
    reference).
-3. Django adapter (`[django]`), then Flask adapter (`[flask]`), on the same core and wire
-   contract.
-4. Live Laravel Cloud managed-queue verification once the platform allows Python in
-   managed-queue validation, injects the managed config and container credentials into
-   Python containers, accepts a Python worker command and runs the queue agent in Python
-   worker containers.
+3. Django, Flask, Celery and RQ adapters, on the same core and wire format.
+4. Dashboard Retry for Python apps, once Laravel Cloud runs `laravel-cloud-queues retry`
+   and provides an encryption key (platform change).
 5. A manual live worker-cluster smoke test on Laravel Cloud.
 6. `retry_until` and `max_exceptions` (the envelope already reserves room for them).
 7. Dead-letter handling and failed-job tooling outside managed mode.
-8. Advanced queue workflow features, only after core compatibility is proven live.
-9. Follow upstream Laravel managed-queue changes detected by the weekly drift check.
+8. Laravel Cloud exception reporting (`LARAVEL_CLOUD_EXCEPTIONS`, `exception` events and
+   `failed_job.exception_id`), once that Cloud feature is generally available. It is in
+   early access and enabled only for Laravel environments today.
+9. Advanced queue workflow features, only after core compatibility is proven live.
+10. Follow upstream Laravel managed-queue changes detected by the weekly drift check.
 
 ## License
 
