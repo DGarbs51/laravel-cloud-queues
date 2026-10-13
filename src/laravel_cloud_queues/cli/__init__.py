@@ -146,6 +146,7 @@ def _import_path() -> None:
 @click.option("--queue", type=_Queues(), help="Comma-separated priority list.")
 @click.option("--max-jobs", type=click.IntRange(min=1), help="Stop after N deliveries.")
 @click.option("--max-time", type=SECONDS, help="Stop after S seconds.")
+@click.option("--memory", metavar="MiB|N%", help="Recycle after reporting a job at this RSS limit.")
 @click.option("--stop-when-empty", is_flag=True, help="Stop on an empty poll.")
 @click.option("--stop-when-empty-for", type=SECONDS, help="Stop after S seconds without a job.")
 @click.option(
@@ -161,6 +162,7 @@ def work(
     queue: tuple[str, ...] | None,
     max_jobs: int | None,
     max_time: float | None,
+    memory: str | None,
     stop_when_empty: bool,
     stop_when_empty_for: float | None,
     timeout: float,
@@ -177,6 +179,7 @@ def work(
         queues=queue,
         max_jobs=max_jobs,
         max_time=max_time,
+        memory=memory,
         stop_when_empty=stop_when_empty,
         stop_when_empty_for=stop_when_empty_for,
         timeout=timeout,

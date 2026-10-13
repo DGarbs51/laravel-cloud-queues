@@ -64,6 +64,8 @@ from ..observability import Telemetry, failed_job_event, failure_log_record, lif
 from ..observability._guard import raw_diagnostic, signal_safe
 from ..registry import Registry, WorkerTarget
 from ..transports import AsyncConsumer, Delivery
+from ._memory import current_rss as _current_rss
+from ._memory import resolve_limit as _resolve_memory_limit
 from ._watchdog import AsyncWatchdog, Watchdog
 
 EXIT_OK = 0
@@ -72,6 +74,8 @@ EXIT_FATAL = 1
 """The exit code used when the worker stops because of a fatal error."""
 EXIT_CONFIG = 2
 """The exit code used when the worker stops because of a configuration error."""
+EXIT_MEMORY_LIMIT = 12
+"""The exit code used when the worker reaches its memory limit after reporting a job."""
 EXIT_TIMEOUT = 124
 """The exit code used when a job exceeds its timeout."""
 
@@ -127,6 +131,12 @@ class WorkerOptions:
 
     The watchdog renews the lease every third of this window while a job runs.
     """
+    memory: str | None = None
+    """The RSS limit in MiB or as a percentage of the cgroup v2 limit.
+
+    When omitted, use ``LARAVEL_CLOUD_QUEUES_MEMORY``, else 90% of a finite cgroup limit
+    in managed mode. Zero disables recycling. Checks run only after delivery reporting.
+    """
 
 
 @dataclass(frozen=True)
@@ -157,6 +167,8 @@ class _Runtime:
     """The worker-level defaults applied to each job's policy."""
     wake: anyio.Event
     """The event set by a stop signal, which ends a pause early."""
+    memory_limit: int | None
+    """The resolved RSS limit in bytes, or ``None`` when recycling is disabled."""
 
 
 @dataclass(frozen=True)
@@ -202,7 +214,7 @@ class Worker:
     def run(self) -> int:
         """Run the worker until a stop condition is reached and get the exit code.
 
-        The exit code is 0, 1 or 2; a job timeout exits the process with 124 directly
+        The exit code is 0, 1, 2 or 12; a job timeout exits the process with 124 directly
         from the timeout handler. The worker must run on the main thread. When the root
         logger has no handlers yet, this calls ``laravel_cloud_logging.configure()``; an app
         that sets up its own logging when imported keeps that configuration.
@@ -250,6 +262,7 @@ class Worker:
         registry.load()
         config = registry.config
         queues = self._select_queues(config)
+        memory_limit = _resolve_memory_limit(self._options.memory, managed=config.mode == "managed")
         if config.mode == "redis":
             wait, sleep_when_empty = self._options.sleep, False
         elif not config.uses_agent and len(queues) == 1:
@@ -259,6 +272,8 @@ class Worker:
             # ``GET /next`` itself; Laravel still sleeps ``--sleep`` after an empty pop.
             wait, sleep_when_empty = 0.0, True
         telemetry = registry.telemetry
+        if memory_limit is not None:
+            logger.info("Worker memory limit: %.2f MiB RSS.", memory_limit / 1024**2)
         consumer = registry.backend.open_async_consumer(lease_seconds=self._options.lease_seconds)
         logger.info(
             "Worker started (mode %s%s, queues %s).",
@@ -276,6 +291,7 @@ class Worker:
             sleep_when_empty=sleep_when_empty,
             defaults=WorkerDefaults(timeout=self._options.timeout),
             wake=anyio.Event(),
+            memory_limit=memory_limit,
         )
 
     def _select_queues(self, config: QueueConfig) -> tuple[str, ...]:
@@ -355,6 +371,16 @@ class Worker:
                 last_job = self._clock()
                 if code is not None:
                     return code
+                if runtime.memory_limit is not None:
+                    rss = _current_rss()
+                    if rss >= runtime.memory_limit:
+                        logger.warning(
+                            "Worker memory limit reached (RSS %.2f MiB, limit %.2f MiB); "
+                            "delivery reported, stopping with exit 12.",
+                            rss / 1024**2,
+                            runtime.memory_limit / 1024**2,
+                        )
+                        return EXIT_MEMORY_LIMIT
                 pause = options.rest
 
             now = self._clock()
@@ -805,6 +831,7 @@ def _as_target(obj: object) -> WorkerTarget | None:
 __all__ = [
     "EXIT_CONFIG",
     "EXIT_FATAL",
+    "EXIT_MEMORY_LIMIT",
     "EXIT_OK",
     "EXIT_TIMEOUT",
     "Worker",

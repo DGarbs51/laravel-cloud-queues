@@ -58,6 +58,7 @@ per queue; a `--queue` that names several is a configuration error.
 | `--queue Q[,Q...]` | backend default | The queues to process, in priority order |
 | `--max-jobs N` | off | Stop after processing N jobs |
 | `--max-time S` | off | Stop after S seconds, checked between jobs |
+| `--memory MiB\|N%` | env or managed 90% | Recycle at the RSS limit after reporting a delivery; `0` disables it |
 | `--stop-when-empty` | off | Stop as soon as the queue is empty |
 | `--stop-when-empty-for S` | off | Stop after S seconds without a job |
 | `--timeout S` | `60` | The default job timeout, for jobs that do not declare one. `0` disables it |
@@ -65,14 +66,37 @@ per queue; a `--queue` that names several is a configuration error.
 | `--rest S` | `0` | How long to pause between jobs |
 | `--debug` | off | Show full tracebacks for errors |
 
-Every exit, including those triggered by `--max-jobs` and `--max-time`, exits with code
-`0`, so they are a safe way to recycle a worker periodically.
+Stops triggered by `--max-jobs` and `--max-time` exit with code `0`, so they are a safe
+way to recycle a worker periodically. Memory recycling exits with code `12`.
 
 :::{warning}
 Do not use `--stop-when-empty` or `--stop-when-empty-for` on Laravel Cloud worker
 clusters. Laravel Cloud restarts a worker whenever it exits, so a worker that stops on an
 empty queue restarts in a tight loop. These options are meant for scripts and CI.
 :::
+
+## Memory Limits
+
+The worker checks resident memory (RSS) after each delivery's outcome and completion
+records have been reported. At or above its limit, it logs the measured RSS and limit,
+stops fetching, exits the application's lifespan, and exits with code `12`. It never
+interrupts a job in flight. Laravel Cloud treats exit `12` as a restart in place.
+
+Laravel Cloud's worker command is read-only. Set `LARAVEL_CLOUD_QUEUES_MEMORY=256` for
+a 256 MiB limit, or `LARAVEL_CLOUD_QUEUES_MEMORY=90%` for 90% of the container's cgroup
+v2 limit. When neither the option nor the environment variable is set, managed mode
+uses 90% of `/sys/fs/cgroup/memory.max`. A value of `max`, a missing file, or an unreadable
+limit means there is no automatic limit. Self-managed `sqs` and `redis` have no default.
+The resolved limit is logged at startup.
+
+On other hosts, pass `--memory 256` or `--memory 90%`. The flag takes precedence over
+the environment variable. MiB values must be finite and non-negative; percentages
+must be between 0 and 100 and require a finite cgroup limit. Invalid settings exit `2`
+before the consumer opens. Use `0` to disable memory recycling.
+
+Linux reads current RSS from `/proc/self/statm`; elsewhere, or if that file cannot be
+read, the worker uses `resource.getrusage()`'s peak RSS. This is a check between jobs,
+so a job can still exceed the container limit before it finishes.
 
 ## Polling
 
@@ -111,6 +135,7 @@ delivered again.
 | `0` | A clean stop: a signal, `--max-jobs`, `--max-time` or `--stop-when-empty*`. Also used when the Laravel Cloud agent becomes unavailable, matching Laravel |
 | `1` | A fatal transport error: a lost visibility lease, a lost broker connection after retries, or an ambiguous acknowledgement |
 | `2` | A configuration error at startup |
+| `12` | The memory limit was reached after reporting the current delivery; restart in place on Laravel Cloud |
 | `124` | A job timed out |
 
 On Laravel Cloud, every exit is followed by a restart, so these codes are mostly
@@ -164,4 +189,5 @@ sys.exit(worker.run())
 ```
 
 `WorkerOptions` accepts the same settings as the command line: `queues`, `max_jobs`,
-`max_time`, `stop_when_empty`, `stop_when_empty_for`, `timeout`, `sleep` and `rest`.
+`max_time`, `stop_when_empty`, `stop_when_empty_for`, `timeout`, `sleep`, `rest` and
+`memory` (a string such as `"256"` or `"90%"`).
