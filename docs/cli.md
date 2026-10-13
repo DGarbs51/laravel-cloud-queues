@@ -88,6 +88,38 @@ Settings:
 
 Credentials, passwords and tokens are never printed.
 
+## `retry`
+
+Retries failed jobs from one or more signed Laravel Cloud HTTPS URLs:
+
+```shell
+laravel-cloud-queues retry 'https://cloud.laravel.com/...' --target myapp.main:app
+```
+
+```text
+laravel-cloud-queues retry URL [URL...] [--target TARGET] [--cipher CIPHER] [--debug]
+```
+
+`--target` uses the same application resolution as `work`; omit it when the target is
+configured in `pyproject.toml`. The command reads the encryption key from
+`LARAVEL_CLOUD_QUEUES_KEY`, falling back to `APP_KEY`. A `base64:` key is decoded before use.
+The key must match the key used by the Cloud endpoint.
+
+`--cipher` defaults to `AES-256-CBC`. It also accepts `AES-128-CBC`, `AES-256-GCM` and
+`AES-128-GCM`, case-insensitively. Both legacy single-job responses and v1 paginated
+responses are supported. HTTP requests time out after ten seconds and retry transient
+failures up to ten attempts, with exponential backoff starting at half a second. A `403`
+is never retried. Redirects and non-HTTPS pagination links are refused.
+
+Each valid job is dispatched immediately to its recorded queue with its original retry
+policy and fresh dispatch identity and attempt count. A failed job is reported and skipped,
+so other jobs and URLs can still succeed. Exit `1` means at least one fetch, decode or
+dispatch failed; invalid URL or key configuration exits `2`. After a successful send,
+managed mode emits the normal `queued` event followed by a best-effort `retried_at` update.
+
+See [Failed Jobs and Delivery](failed-jobs.md#retrying-cloud-failed-jobs) for platform
+requirements and delivery guarantees.
+
 ## `conformance`
 
 Runs the repository's conformance suite, which checks the package's behavior against the
